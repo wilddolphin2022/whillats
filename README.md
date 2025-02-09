@@ -28,3 +28,10 @@ The following dependencies are included as submodules:
 ```bash
 git clone --recursive https://github.com/wilddolphin2022/whillats.git
 cd whillats
+
+chmod +x third_party.sh
+./third_party.sh
+
+cmake -B build
+cmake --build build --config Release
+cmake --build build --config Debug
