@@ -51,7 +51,7 @@ void writeWavFile(const std::string& filename, const std::vector<uint16_t>& audi
 }
 
 int main() {
-    setLogLevel(LogLevel::INFO);
+    setLogLevel(LogLevel::VERBOSE);
 
     // Test ESpeakTTS
     std::vector<uint16_t> audio_buffer;
@@ -108,20 +108,21 @@ int main() {
     // Stop the transcriber
     whisper.Stop();
     
-    //std::cout << "Transcription: " << whisper.lastTranscription << std::endl;
+    //  Test LlamaDeviceBase
+    const char* model_path = "models/llama-2-7b-chat.Q8_0.gguf";
 
-    // Test LlamaDeviceBase
-    // LlamaDeviceBase llama;
-    // const char* model_path = "models/DeepSeek-R1-Distill-Llama-8B-Q2_K_L.gguf";
-    // std::cout << "Initializing LLama with model: " << model_path << std::endl;
-    // if (llama.initialize(model_path)) {
-    //     std::string prompt = "Please summarize this text in one sentence: " + transcription;
-    //     std::cout << "Testing LLama with prompt: " << prompt << std::endl;
-    //     std::string response = llama.generate(prompt);
-    //     std::cout << "LLama response: " << response << std::endl;
-    // } else {
-    //     std::cout << "Failed to initialize LLama model" << std::endl;
-    // }
+    LlamaDeviceBase llama(nullptr, model_path);
+    std::cout << "Initializing LLama with model: " << model_path << std::endl;
+    if (llama.Start()) {
+        std::string prompt = "What will be 2+2?";
+        std::cout << "Testing LLama with prompt: " << prompt << std::endl;
+        llama.askLlama(prompt);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20000));
+        llama.Stop();
+    } else {
+        std::cout << "Failed to initialize LLama model" << std::endl;
+    }
 
     return 0;
 }
