@@ -26,19 +26,9 @@
 #include "whisper_helpers.h"
 #include "silence_finder.h"
 
-class SpeechAudioDevice {
- public:
-
-  virtual void speakText(const std::string& text) = 0;
-  virtual void askLlama(const std::string& text) = 0;
-
-  bool _whispering = false;
-  bool _llaming = false;
-
-  virtual ~SpeechAudioDevice() {}
-};
-
 struct whisper_context;
+
+class SpeechAudioDevice;
 
 class WhisperTranscriber {
  private:

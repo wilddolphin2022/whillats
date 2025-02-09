@@ -84,6 +84,17 @@ private:
     #define LOG_E(...) ((void)0)
 #endif
 
+class SpeechAudioDevice {
+ public:
+
+  virtual void speakText(const std::string& text) = 0;
+  virtual void askLlama(const std::string& text) = 0;
+
+  bool _whispering = false;
+  bool _llaming = false;
+
+  virtual ~SpeechAudioDevice() {}
+};
 
 class AudioRingBuffer {
 private:
