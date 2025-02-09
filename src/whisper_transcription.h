@@ -22,12 +22,6 @@
 #include <chrono>
 #include <fstream>
 
-// #include "rtc_base/synchronization/mutex.h"
-// #include "rtc_base/platform_thread.h"
-// #include "rtc_base/system/file_wrapper.h"
-// #include "rtc_base/logging.h"
-// #include "api/task_queue/default_task_queue_factory.h"
-
 #include "llama_device_base.h"
 #include "whisper_helpers.h"
 #include "silence_finder.h"
@@ -101,6 +95,9 @@ class WhisperTranscriber {
   static constexpr size_t kMinVoiceFrames = 3;
   static constexpr size_t kMinSilenceFrames = 5;
 
+  std::chrono::steady_clock::time_point _lastTranscriptionStart;
+  std::chrono::steady_clock::time_point _lastTranscriptionEnd;
+
  public:
   WhisperTranscriber(
       SpeechAudioDevice* _speech_audio_device = nullptr,
@@ -109,7 +106,6 @@ class WhisperTranscriber {
   ~WhisperTranscriber();
 
   void ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSize);
-  std::string lastTranscription;
 
   bool Start();
   void Stop();

@@ -1,7 +1,14 @@
 #include "espeak_tts.h"
 
+static constexpr int kSampleRate = 16000;       // 16 kHz
+static constexpr int kChannels = 1;             // Mono
+static constexpr int kBufferDurationMs = 10;    // 10ms buffer
+static constexpr int kTargetDurationSeconds = 3; // 3-second segments for Whisper
+static constexpr int kRingBufferSizeIncrement = kSampleRate * kTargetDurationSeconds * 2; // 3-seconds of 16-bit samples
+
 ESpeakTTS::ESpeakTTS() 
-    : last_read_time_(std::chrono::steady_clock::now()) {
+    : last_read_time_(std::chrono::steady_clock::now()),
+      ring_buffer_(kRingBufferSizeIncrement) {  // Size in bytes for 16-bit samples
     espeak_AUDIO_OUTPUT output = AUDIO_OUTPUT_SYNCHRONOUS;
     int Buflength = 500;
     const char* path = NULL;
@@ -9,7 +16,7 @@ ESpeakTTS::ESpeakTTS()
     char Voice[] = {"English"};
 
     if (espeak_Initialize(output, Buflength, path, Options) == EE_INTERNAL_ERROR) {
-        // "ESpeakTTS initialization failed!";
+        LOG_E("ESpeakTTS initialization failed!");
         return;
     }
 
@@ -23,7 +30,7 @@ ESpeakTTS::ESpeakTTS()
     voice.gender = 1;
     espeak_SetVoiceByProperties(&voice);
 
-    espeak_SetParameter(espeakRATE, 200, 0);
+    espeak_SetParameter(espeakRATE, 180, 0);
     espeak_SetParameter(espeakVOLUME, 75, 0);
     espeak_SetParameter(espeakPITCH, 150, 0);
     espeak_SetParameter(espeakRANGE, 100, 0);
@@ -34,58 +41,68 @@ ESpeakTTS::ESpeakTTS()
 
 void ESpeakTTS::synthesize(const char* text, std::vector<uint16_t>& buffer) {
     if (!text) return;
-
-    // "ESpeakTTS: Starting synthesis of text: '" << text << "'";
     
-    // Clear the ring buffer and output buffer
-    ring_buffer_.clear();
+    // Clear output buffer
     buffer.clear();
 
-    size_t size = strlen(text) + 1;
+    // Pre-allocate buffer with estimated size
+    size_t estimated_samples = strlen(text) * 200;  // More generous estimate
+    buffer.reserve(estimated_samples);
+
     unsigned int position = 0, end_position = 0, flags = espeakCHARS_AUTO;
 
-    espeak_ERROR result = espeak_Synth(text, size, position, POS_CHARACTER, 
+    // Process entire text at once
+    espeak_ERROR result = espeak_Synth(text, strlen(text) + 1,
+                                     position, POS_CHARACTER, 
                                      end_position, flags, NULL, 
                                      reinterpret_cast<void*>(this));
     
     if (result != EE_OK) {
-        // "ESpeakTTS: espeak_Synth error " << result;
+        LOG_E("Synthesis failed with error: " << result);
         return;
     }
 
     result = espeak_Synchronize();
     if (result != EE_OK) {
-        // "ESpeakTTS: espeak_Synchronize error " << result;
+        LOG_E("Synchronization failed with error: " << result);
         return;
     }
 
     // Read all available samples from the ring buffer
-    size_t ring_buffer_size = ring_buffer_.size();
-    if (ring_buffer_size > 0) {
-        buffer.resize(ring_buffer_size);
-        size_t read = ring_buffer_.read(buffer.data(), ring_buffer_size);
-        if (read != ring_buffer_size) {
-            // Resize buffer to actual read size if different
-            buffer.resize(read);
+    size_t bytes_available = ring_buffer_.availableToRead();
+    if (bytes_available > 0) {
+        // Convert bytes to samples (2 bytes per sample)
+        size_t samples_available = bytes_available / sizeof(uint16_t);
+        buffer.resize(samples_available);
+        
+        // Read the data
+        if (!ring_buffer_.read(reinterpret_cast<uint8_t*>(buffer.data()), bytes_available)) {
+            LOG_E("Failed to read from ring buffer");
+            buffer.clear();
+            return;
         }
+        LOG_V("Read " << samples_available << " samples from ring buffer");
     }
-
-    // "ESpeakTTS: Synthesis complete, buffer size: " << buffer.size();
 }
 
 int ESpeakTTS::internalSynthCallback(short* wav, int numsamples, espeak_EVENT* events) {
     if (wav == nullptr || numsamples <= 0) {
-        return 0;
+        return 1;  // Signal error
     }
 
     ESpeakTTS* context = static_cast<ESpeakTTS*>(events->user_data);
-    if (!context) return 0;
+    if (!context) return 1;  // Signal error
 
-    // Write samples to ring buffer
-    context->ring_buffer_.write((uint16_t*)wav, numsamples);
+    // Calculate size in bytes
+    size_t bytes_to_write = numsamples * sizeof(short);
     
-    // "ESpeakTTS: Received " << numsamples << " samples";
-    return 0;
+    // Write samples to ring buffer
+    if (!context->ring_buffer_.write(reinterpret_cast<uint8_t*>(wav), bytes_to_write)) {
+        LOG_E("Failed to write to ring buffer");
+        return 1;  // Signal error
+    }
+    
+    return 0;  // Success
 }
 
 int ESpeakTTS::getSampleRate() const {
@@ -93,6 +110,5 @@ int ESpeakTTS::getSampleRate() const {
 }
 
 ESpeakTTS::~ESpeakTTS() {
-    ring_buffer_.clear();
     espeak_Terminate();
 }

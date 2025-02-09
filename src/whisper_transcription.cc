@@ -16,9 +16,7 @@
 #include <whisper.h>
 #include "whisper_transcription.h"
 #include "silence_finder.h"  // Silence finder code
-
-#define RTC_LOG(x) std::cout
-#define RTC_ENDL std::endl
+#include "whisper_helpers.h"
 
 WhisperTranscriber::WhisperTranscriber(
     SpeechAudioDevice* speech_audio_device,
@@ -37,10 +35,10 @@ WhisperTranscriber::WhisperTranscriber(
 
     // Initialize Whisper context
     if (!InitializeWhisperModel(_modelFilename) || !_whisperContext) {
-        RTC_LOG(LS_ERROR) << "Failed to initialize Whisper model" << RTC_ENDL;
+        LOG_E("Failed to initialize Whisper model");
         _whisperContext = TryAlternativeInitMethods(_modelFilename);
         if (!_whisperContext) {
-            RTC_LOG(LS_ERROR) << "Failed to initialize Whisper model alternative ways" << RTC_ENDL;
+            LOG_E("Failed to initialize Whisper model alternative ways");
         }
     }
 }
@@ -55,27 +53,27 @@ WhisperTranscriber::~WhisperTranscriber() {
 bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pcmf32) {
     // Prevent multiple simultaneous processing attempts
     if (_processingActive.exchange(true)) {
-        RTC_LOG(LS_WARNING) << "Whisper transcription already in progress" << RTC_ENDL;
+        LOG_E("Whisper transcription already in progress");
         return false;
     }
 
     // Validate context
     if (!_whisperContext) {
-        RTC_LOG(LS_ERROR) << "Whisper context is null during transcription" << RTC_ENDL;
+        LOG_E("Whisper context is null during transcription");
         _processingActive = false;
         return false;
     }
 
     // Validate input
     if (pcmf32.empty()) {
-        RTC_LOG(LS_ERROR) << "Empty audio buffer for transcription" << RTC_ENDL;
+        LOG_E("Empty audio buffer for transcription");
         _processingActive = false;
         return false;
     }
 
     // Input size validation
     if (pcmf32.size() < kSampleRate || pcmf32.size() > kTargetSamples) {
-        RTC_LOG(LS_ERROR) << "Unexpected audio input size: " << pcmf32.size() << RTC_ENDL;
+        LOG_E("Unexpected audio input size: " << pcmf32.size());
         _processingActive = false;
         return false;
     }
@@ -90,7 +88,7 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
         
         // Check for NaN or infinite values
         if (!(sample == sample) || std::abs(sample) > 1.0f) {
-            RTC_LOG(LS_ERROR) << "Invalid sample at index " << i << ": " << sample << RTC_ENDL;
+            LOG_E("Invalid sample at index " << i << ": " << sample);
             validInput = false;
             break;
         }
@@ -110,14 +108,13 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
     float mean = sum / pcmf32.size();
     float variance = (squaredSum / pcmf32.size()) - (mean * mean);
 
-    RTC_LOG(LS_VERBOSE) << "Audio Input Analysis:"
+    LOG_V("Audio Input Analysis:"
                     << " Samples=" << pcmf32.size()
                     << " Mean=" << mean
                     << " Variance=" << variance
                     << " Min=" << minVal
-                    << " Max=" << maxVal 
-                    << RTC_ENDL
-                    ;
+                    << " Max=" << maxVal
+                    );
 
     // Prepare Whisper parameters
     whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
@@ -131,14 +128,13 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
     wparams.n_max_text_ctx = 64;
  
     // Diagnostic logging before transcription
-    RTC_LOG(LS_INFO) << "Preparing Whisper Transcription:"
+    LOG_V("Preparing Whisper Transcription:"
                     << " Threads=" << wparams.n_threads
                     << " Max Text Context=" << wparams.n_max_text_ctx
-                    << RTC_ENDL
-                    ;
+                    );
 
     if (!_whisperContext) {
-        RTC_LOG(LS_ERROR) << "Failed to initialize Whisper model!" << RTC_ENDL;
+        LOG_E("Failed to initialize Whisper model!");
         return false;
     }
 
@@ -154,35 +150,46 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
     // Process results
     if (result == 0) {
         int numSegments = whisper_full_n_segments(_whisperContext);
-        RTC_LOG(LS_VERBOSE) << "Transcription completed. Segments: " << numSegments << RTC_ENDL;
+        LOG_V("Transcription completed. Segments: " << numSegments);
 
         // Collect and log segments
         std::string fullTranscription;
         for (int i = 0; i < numSegments; ++i) {
             const char* text = whisper_full_get_segment_text(_whisperContext, i);
             if (text && strlen(text) > 0) {
-                fullTranscription += std::string(text) + " ";
-                RTC_LOG(LS_VERBOSE) << "Segment " << i << ": " << text << RTC_ENDL;
+                // Add proper spacing between segments
+                if (!fullTranscription.empty()) {
+                    fullTranscription += " ";
+                }
+                fullTranscription += std::string(text);
+                LOG_V("Segment " << i << ": " << text);
             }
         }
 
-     if (!fullTranscription.empty()) {
-            RTC_LOG(LS_VERBOSE) << "Full Transcription: " << fullTranscription << RTC_ENDL;
+        // Remove double spaces that might have been introduced
+        fullTranscription = std::regex_replace(fullTranscription, std::regex("\\s+"), " ");
+
+        _lastTranscriptionEnd = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                _lastTranscriptionEnd - _lastTranscriptionStart).count();
+        LOG_I("'" << fullTranscription << "' time taken: " << duration << " ms");
+
+        if (!fullTranscription.empty()) {
             // Remove text within brackets and the brackets themselves
-            lastTranscription = std::regex_replace(fullTranscription, 
+            std::string cleanTranscription = std::regex_replace(fullTranscription, 
                 std::regex("\\[.*?\\]|\\(.*?\\)|\\{.*?\\}"), "");
             
-            if(_speech_audio_device && !lastTranscription.empty()) {
-              if(_speech_audio_device->_llaming)
-                _speech_audio_device->askLlama(lastTranscription);
-              else {
-                _speech_audio_device->speakText(lastTranscription);
-              }
+            if(_speech_audio_device && !cleanTranscription.empty()) {
+                if(_speech_audio_device->_llaming)
+                    _speech_audio_device->askLlama(cleanTranscription);
+                else {
+                    _speech_audio_device->speakText(cleanTranscription);
+                }
             }
         }      
       
     } else {
-        RTC_LOG(LS_ERROR) << "Whisper transcription failed. Error code: " << result << RTC_ENDL;
+        LOG_E("Whisper transcription failed. Error code: " << result);
     }
 
     // Reset processing flag
@@ -195,7 +202,6 @@ bool WhisperTranscriber::RunProcessingThread() {
     std::vector<uint8_t> audioBuffer;
     
     while (_running && _audioBuffer.availableToRead() > 0) {
-        RTC_LOG(LS_INFO) << "Audio buffer availableToRead: " << _audioBuffer.availableToRead();
 
         // Ensure audioBuffer is sized correctly to receive data
         audioBuffer.resize(_audioBuffer.availableToRead());
@@ -207,7 +213,7 @@ bool WhisperTranscriber::RunProcessingThread() {
                 // Perform Whisper transcription
                 if (_whisperContext && localAudioBuffer.size()) {
                     if (localAudioBuffer.size() % 2 != 0) {
-                        RTC_LOG(LS_WARNING) << "Audio buffer size is not even: " << localAudioBuffer.size();
+                        LOG_W("Audio buffer size is not even: " << localAudioBuffer.size());
                         return false; // or handle this case appropriately
                     }
 
@@ -223,7 +229,7 @@ bool WhisperTranscriber::RunProcessingThread() {
                     localAudioBuffer.clear();
 
                     // Add this before transcription
-                    RTC_LOG(LS_INFO) << "Audio input details:"
+                    LOG_V("Audio input details:"
                                     << " First sample: " << pcmf32[0]
                                     << " Last sample: " << pcmf32.back()
                                     << " Sample range: [" 
@@ -231,8 +237,7 @@ bool WhisperTranscriber::RunProcessingThread() {
                                     << ", " 
                                     << *std::max_element(pcmf32.begin(), pcmf32.end()) 
                                     << "]"
-                                    << RTC_ENDL
-                                    ;
+                                    );
                     
                     // Use non-blocking transcription
                     TranscribeAudioNonBlocking(pcmf32);
@@ -254,7 +259,7 @@ bool WhisperTranscriber::ValidateWhisperModel(const std::string& modelPath) {
     // Check file existence
     std::ifstream file(modelPath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
-        RTC_LOG(LS_ERROR) << "Cannot open model file: " << modelPath << RTC_ENDL;
+        LOG_E("Cannot open model file: " << modelPath);
         return false;
     }
 
@@ -267,7 +272,7 @@ bool WhisperTranscriber::ValidateWhisperModel(const std::string& modelPath) {
     const int64_t maxModelSize = static_cast<int64_t>(2) * 1024 * 1024 * 1024;
 
     if (fileSize < minModelSize || fileSize > maxModelSize) {
-        RTC_LOG(LS_ERROR) << "Unexpected model file size: " << fileSize << " bytes" << RTC_ENDL;
+        LOG_E("Unexpected model file size: " << fileSize << " bytes");
         return false;
     }
 
@@ -278,7 +283,7 @@ bool WhisperTranscriber::InitializeWhisperModel(const std::string& modelPath) {
     // Open the file in binary mode
     FILE* file = fopen(modelPath.c_str(), "rb");
     if (!file) {
-        RTC_LOG(LS_ERROR) << "Cannot open model file: " << modelPath << RTC_ENDL;
+        LOG_E("Cannot open model file: " << modelPath);
         return false;
     }
 
@@ -288,10 +293,9 @@ bool WhisperTranscriber::InitializeWhisperModel(const std::string& modelPath) {
     fseek(file, 0, SEEK_SET);
 
     // Log detailed file information
-    RTC_LOG(LS_INFO) << "Model file path: " << modelPath
+    LOG_I("Model file path: " << modelPath
                     << "Model file size: " << fileSize << " bytes"
-                    << RTC_ENDL
-                    ;
+                    );
 
     // Read first few bytes to check file signature
     unsigned char header[16];
@@ -299,7 +303,7 @@ bool WhisperTranscriber::InitializeWhisperModel(const std::string& modelPath) {
     fclose(file);
 
     if (bytesRead < sizeof(header)) {
-        RTC_LOG(LS_ERROR) << "Failed to read model file header";
+        LOG_E("Failed to read model file header");
         return false;
     }
 
@@ -310,7 +314,7 @@ bool WhisperTranscriber::InitializeWhisperModel(const std::string& modelPath) {
         headerHex << std::hex << std::setw(2) << std::setfill('0') 
                 << static_cast<int>(header[i]) << " ";
     }
-    RTC_LOG(LS_INFO) << headerHex.str() << RTC_ENDL;
+    LOG_V(headerHex.str());
 
     // Attempt model initialization with verbose error checking
     whisper_context_params context_params = whisper_context_default_params();
@@ -322,10 +326,9 @@ bool WhisperTranscriber::InitializeWhisperModel(const std::string& modelPath) {
         context_params.use_gpu = useGpu;
         
         // Detailed logging before model initialization attempt
-        RTC_LOG(LS_INFO) << "Attempting to load model with GPU " 
+        LOG_I("Attempting to load model with GPU " 
                         << (useGpu ? "Enabled" : "Disabled")
-                        << RTC_ENDL
-                        ;
+                        );
 
         // Try to initialize the model
         whisper_context* localContext = whisper_init_from_file_with_params(
@@ -335,14 +338,14 @@ bool WhisperTranscriber::InitializeWhisperModel(const std::string& modelPath) {
 
         if (localContext) {
             _whisperContext = localContext;
-            RTC_LOG(LS_INFO) << "Model loaded successfully (GPU: " << (useGpu ? "Enabled" : "Disabled") << ")" << RTC_ENDL;
+            LOG_I("Model loaded successfully (GPU: " << (useGpu ? "Enabled" : "Disabled") << ")");
             return true;
         }
 
-        RTC_LOG(LS_WARNING) << "Model load failed with GPU " << (useGpu ? "Enabled" : "Disabled") << RTC_ENDL;
+        LOG_W("Model load failed with GPU " << (useGpu ? "Enabled" : "Disabled"));
     }
 
-    RTC_LOG(LS_ERROR) << "Failed to load Whisper model from: " << modelPath << RTC_ENDL;
+    LOG_E("Failed to load Whisper model from: " << modelPath);
     return false;
 }
 
@@ -361,6 +364,21 @@ whisper_context* WhisperTranscriber::TryAlternativeInitMethods(const std::string
 }
 
 void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSize) {
+    // Handle end-of-stream marker
+    if (playoutBuffer == nullptr && kPlayoutBufferSize == (size_t)-1) {
+        // Process any remaining accumulated buffer
+        if (!_accumulatedByteBuffer.empty()) {
+            if (!_audioBuffer.write(_accumulatedByteBuffer.data(), _accumulatedByteBuffer.size())) {
+                handleOverflow();
+            }
+            _accumulatedByteBuffer.clear();
+            _samplesSinceVoiceStart = 0;
+        }
+        return;
+    }
+
+    _lastTranscriptionStart = std::chrono::steady_clock::now();
+
     // Pre-allocate and reuse processing buffer
     if (_processingBuffer.capacity() < (kPlayoutBufferSize / 2)) {
         _processingBuffer.reserve(kPlayoutBufferSize / 2);
@@ -437,27 +455,17 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
         
         _samplesSinceVoiceStart += kPlayoutBufferSize;
         
-        // Check if we've reached target samples
-        // RTC_LOG(LS_INFO) << "ProcessAudioBuffer (5) acc size " << _accumulatedByteBuffer.size() << ", kTargetSamples " << kTargetSamples << RTC_ENDL;
-        if (_accumulatedByteBuffer.size() >= kTargetSamples) {
-            size_t bytesToWrite = std::min(_accumulatedByteBuffer.size(), kTargetSamples);
+        // Check if we've reached target samples or have enough data to process
+        if (_accumulatedByteBuffer.size() >= kTargetSamples || 
+            (_accumulatedByteBuffer.size() >= kSampleRate * 2 && !voicePresent)) {  // Process if we have at least 2 seconds and no voice
+            size_t bytesToWrite = _accumulatedByteBuffer.size();  // Use all accumulated data
            
             if (!_audioBuffer.write(_accumulatedByteBuffer.data(), bytesToWrite)) {
                 handleOverflow();
             }
             
-            // Keep remaining data if any
-            if (_accumulatedByteBuffer.size() > bytesToWrite) {
-                size_t remainingSize = _accumulatedByteBuffer.size() - bytesToWrite;
-                std::memmove(_accumulatedByteBuffer.data(), 
-                            _accumulatedByteBuffer.data() + bytesToWrite,
-                            remainingSize);
-                _accumulatedByteBuffer.resize(remainingSize);
-                _samplesSinceVoiceStart = remainingSize;
-            } else {
-                _accumulatedByteBuffer.clear();
-                _samplesSinceVoiceStart = 0;
-            }
+            _accumulatedByteBuffer.clear();
+            _samplesSinceVoiceStart = 0;
         }
     } else {
         _silentSamplesCount += kPlayoutBufferSize;
@@ -465,14 +473,11 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
         if (_inVoiceSegment && _silentSamplesCount >= kSilenceSamples) {
             _inVoiceSegment = false;
 
-            // Process accumulated buffer if large enough
-            if (_accumulatedByteBuffer.size() >= kSampleRate * 2) {
-                size_t bytesToWrite = std::min(_accumulatedByteBuffer.size(), kTargetSamples);
-                
-                if (!_audioBuffer.write(_accumulatedByteBuffer.data(), bytesToWrite)) {
+            // Process any accumulated buffer immediately when voice segment ends
+            if (!_accumulatedByteBuffer.empty()) {
+                if (!_audioBuffer.write(_accumulatedByteBuffer.data(), _accumulatedByteBuffer.size())) {
                     handleOverflow();
                 }
-                
                 _accumulatedByteBuffer.clear();
                 _samplesSinceVoiceStart = 0;
             }
@@ -484,7 +489,7 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
 void WhisperTranscriber::handleOverflow() {
     _overflowCount++;
     if(_overflowCount > 10) {
-        RTC_LOG(LS_INFO) << "Frequent buffer overflows, increasing buffer size" << RTC_ENDL;
+        LOG_I("Frequent buffer overflows, increasing buffer size");
         _audioBuffer.increaseWith(kRingBufferSizeIncrement);
         _overflowCount = 0;
     }
