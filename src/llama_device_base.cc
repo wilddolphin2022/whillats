@@ -338,10 +338,13 @@ bool LlamaDeviceBase::RunProcessingThread() {
     }
 
     if (shouldAsk) {       
+      _lastResponseStart = std::chrono::steady_clock::now();
       std::string response = _llama_chat->generate(textToAsk);
       textToAsk.clear();
-
-      LOG_I("Llama answered '" << response << "'");
+      _lastResponseEnd = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                _lastResponseEnd - _lastResponseStart).count();
+      LOG_I("Llama answered '" << response << "' in " << duration << " ms");
 
       if(_speech_audio_device) {
         _speech_audio_device->speakText(response); // send to text queue in audio device      
