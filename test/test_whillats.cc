@@ -50,10 +50,8 @@ int main(int argc, char *argv[])
 
   if (opts.whisper) {
     // Test WhisperTranscription
-    const char *whisper_model = "models/ggml-base.bin";
-
     bool whisper_done = false;
-    WhisperTranscriber whisper(whisper_model,
+    WhisperTranscriber whisper(opts.whisper_model,
         WhillatsSetResponseCallback([&whisper_done](bool success, const std::string &response) {
           std::cout << "Whisper response via callback: " << response << std::endl;
           whisper_done = true; }
@@ -102,7 +100,7 @@ int main(int argc, char *argv[])
     const char *model_path = "models/chat.gguf";
 
     bool llama_done = false;
-    LlamaDeviceBase llama(model_path,
+    LlamaDeviceBase llama(opts.llama_model,
       WhillatsSetResponseCallback([&llama_done](bool success, const std::string &response) {
       std::cout << "LLama response via callback: " << response << std::endl; 
       llama_done = true; }

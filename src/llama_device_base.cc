@@ -83,7 +83,6 @@ bool LlamaSimpleChat::LoadModel()
 
 bool LlamaSimpleChat::InitializeContext()
 {
-
   if (ctx_)
   {
     FreeContext();
@@ -397,6 +396,9 @@ bool LlamaDeviceBase::Start()
     if (_llama_chat && _llama_chat->Initialize())
     {
       LOG_I("Llama chat initialized!");
+    } else {
+      LOG_E("Failed to initialize Llama chat");
+      return false;
     }
 
     _running = true;
