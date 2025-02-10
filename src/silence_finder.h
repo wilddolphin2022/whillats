@@ -1,7 +1,7 @@
 /*
  *  (c) 2025, wilddolphin2022 
  *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2022/ringrtc
+ *  https://github.com/wilddolphin2022
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -21,7 +21,7 @@
 template<typename T>
 class SilenceFinder {
 public:
-    SilenceFinder(T * data, uint size, uint samples) : 
+    SilenceFinder(T * data, size_t size, size_t samples) : 
         d(data), 
         sBegin(0), 
         s(size), 
@@ -32,7 +32,7 @@ public:
         avgAmplitude = calculateAverageAmplitude(data, size);
     }
 
-    std::vector<std::pair<uint, uint>> find(const float relativeThreshold, const uint window) {
+    std::vector<std::pair<size_t, size_t>> find(const float relativeThreshold, const size_t window) { 
         const T threshold = static_cast<T>(avgAmplitude * relativeThreshold);
         auto r = findSilence(d, s, threshold, window);
         regionsToTime(r);
@@ -43,40 +43,40 @@ public:
         Silent, Loud, Undefined
     };
 
-    void toggleSilence(Status st, uint pos, std::vector<std::pair<uint, uint>> & res) {
+    void toggleSilence(Status st, size_t pos, std::vector<std::pair<size_t, size_t>> & res) { 
         if (st == Silent) {
             if (status != Silent) sBegin = pos;  // Start of silence
             status = Silent;
         } else {
             if (status == Silent) {  // End of silence detected
-                res.push_back(std::pair<uint, uint>(sBegin, pos));
+                res.push_back(std::pair<size_t, size_t>(sBegin, pos));
                 status = Loud;
             }
         }
     }
 
-    void end(Status st, uint pos, std::vector<std::pair<uint, uint>> & res) {
+    void end(Status st, size_t pos, std::vector<std::pair<size_t, size_t>> & res) { 
         if (status == Silent) {  // If we're in silence at the end
-            res.push_back(std::pair<uint, uint>(sBegin, pos));
+            res.push_back(std::pair<size_t, size_t>(sBegin, pos));
         }
     }
 
-    T calculateAverageAmplitude(T* data, uint size) {
+    T calculateAverageAmplitude(T* data, size_t size) { 
         // Use RMS (Root Mean Square) instead of arithmetic mean
         double sum_squares = 0.0;
-        for (uint i = 0; i < size; ++i) {
+        for (size_t i = 0; i < size; ++i) {
             double sample = static_cast<double>(data[i]);
             sum_squares += sample * sample;
         }
         return static_cast<T>(std::sqrt(sum_squares / size));
     }
 
-    static T delta(T * data, const uint window) {
+    static T delta(T * data, const size_t window) { 
         // Improve noise immunity by using RMS of window
         double sum_squares = 0.0;
         T max_amplitude = 0;
         
-        for (uint i = 0; i < window; ++i) {
+        for (size_t i = 0; i < window; ++i) { 
             double sample = static_cast<double>(std::abs(data[i]));
             sum_squares += sample * sample;
             max_amplitude = std::max(max_amplitude, static_cast<T>(sample));
@@ -86,19 +86,19 @@ public:
         return std::max(rms, static_cast<T>(max_amplitude / 4));  // Consider both RMS and peak
     }
 
-    std::vector<std::pair<uint, uint>> findSilence(T * data, const uint size, const T threshold, const uint win) {
-        std::vector<std::pair<uint, uint>> regions;
+    std::vector<std::pair<size_t, size_t>> findSilence(T * data, const size_t size, const T threshold, const size_t win) { 
+        std::vector<std::pair<size_t, size_t>> regions;
         if (size == 0 || win == 0) {
             return regions; // Return empty vector for invalid input
         }
 
-        uint window = win;
-        uint pos = 0;
+        size_t window = win;
+        size_t pos = 0;
         Status s = Undefined;
 
         while (pos < size) {  // Changed from <= to <
             // Use the minimum of window size or remaining data size
-            uint checkSize = std::min(window, size - pos);
+            size_t checkSize = std::min(window, size - pos); 
             if (delta(data + pos, checkSize) < threshold) {
                 s = Silent;
             } else {
@@ -121,7 +121,7 @@ public:
         return regions;
     }
 
-    void regionsToTime(std::vector<std::pair<uint, uint>> & regions) {
+    void regionsToTime(std::vector<std::pair<size_t, size_t>> & regions) { 
         for (auto & r : regions) {
             r.first /= samp;
             r.second /= samp;
@@ -129,7 +129,7 @@ public:
     }
 
     T * d;
-    uint sBegin, s, samp;
+    size_t sBegin, s, samp; 
     Status status;
 
 public:    

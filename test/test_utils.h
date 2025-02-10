@@ -4,6 +4,7 @@
 // Command line options
 struct Options {
     bool help = false;
+    bool tts = false;
     bool whisper = false;
     bool llama = false;
     std::string help_string;

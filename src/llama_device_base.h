@@ -28,6 +28,8 @@ struct llama_sampler;
 struct llama_vocab;
 typedef int32_t llama_token;
 
+#include "whillats.h"
+
 class LlamaSimpleChat {
 public:
   LlamaSimpleChat();

@@ -24,7 +24,7 @@ WhisperTranscriber::WhisperTranscriber(
     : _model_path(model_path),
       _responseCallback(callback),
       _whisperContext(nullptr),
-      _audioBuffer(kRingBufferSizeIncrement),
+      _audioBuffer(new AudioRingBuffer(kRingBufferSizeIncrement)),
       _running(false),
       _processingActive(false),
       _overflowCount(0),
@@ -60,6 +60,7 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
     // Validate context
     if (!_whisperContext) {
         LOG_E("Whisper context is null during transcription");
+        _responseCallback.OnResponseComplete(false, "Whisper context is null");
         _processingActive = false;
         return false;
     }
@@ -67,6 +68,7 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
     // Validate input
     if (pcmf32.empty()) {
         LOG_E("Empty audio buffer for transcription");
+        _responseCallback.OnResponseComplete(false, "Empty audio buffer");
         _processingActive = false;
         return false;
     }
@@ -181,11 +183,13 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
             
             if(!cleanTranscription.empty()) {
                 _responseCallback.OnResponseComplete(true, cleanTranscription);
+            } else {
+                _responseCallback.OnResponseComplete(false, "No text transcribed");
             }
         }      
-      
     } else {
         LOG_E("Whisper transcription failed. Error code: " << result);
+        _responseCallback.OnResponseComplete(false, "Transcription failed with error: " + std::to_string(result));
     }
 
     // Reset processing flag
@@ -197,56 +201,25 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
 bool WhisperTranscriber::RunProcessingThread() {
     std::vector<uint8_t> audioBuffer;
     
-    while (_running && _audioBuffer.availableToRead() > 0) {
+    while (_running && _audioBuffer->availableToRead() > 0) {
 
         // Ensure audioBuffer is sized correctly to receive data
-        audioBuffer.resize(_audioBuffer.availableToRead());
-        if (_audioBuffer.read(audioBuffer.data(), audioBuffer.size())) {
-            // Create a local copy for the lambda
-            std::vector<uint8_t> localAudioBuffer = audioBuffer;
-            // Task queue pool equivalent is not implemented yet 
-            // _task_queue_pool->enqueue([this, localAudioBuffer = std::move(localAudioBuffer)]() mutable {
-                // Perform Whisper transcription
-                if (_whisperContext && localAudioBuffer.size()) {
-                    if (localAudioBuffer.size() % 2 != 0) {
-                        LOG_W("Audio buffer size is not even: " << localAudioBuffer.size());
-                        return false; // or handle this case appropriately
-                    }
+        audioBuffer.resize(_audioBuffer->availableToRead());
+        if (_audioBuffer->read(audioBuffer.data(), audioBuffer.size())) {
+            // Convert audio data to float PCM
+            std::vector<float> pcmf32(audioBuffer.size() / 2);
+            const int16_t* samples = reinterpret_cast<const int16_t*>(audioBuffer.data());
+            for (size_t i = 0; i < pcmf32.size(); i++) {
+                pcmf32[i] = static_cast<float>(samples[i]) / 32768.0f;
+            }
 
-                    // Convert PCM16 buffer to float
-                    std::vector<float> pcmf32;
-                    pcmf32.reserve(localAudioBuffer.size() / 2);
-
-                    for (size_t i = 0; i < localAudioBuffer.size(); i += 2) {
-                        // For little-endian PCM16
-                        int16_t sample = (int16_t)(localAudioBuffer[i]) | ((int16_t)(localAudioBuffer[i + 1]) << 8);
-                        pcmf32.push_back(sample / 32768.0f);
-                    }
-                    localAudioBuffer.clear();
-
-                    // Add this before transcription
-                    LOG_V("Audio input details:"
-                                    << " First sample: " << pcmf32[0]
-                                    << " Last sample: " << pcmf32.back()
-                                    << " Sample range: [" 
-                                    << *std::min_element(pcmf32.begin(), pcmf32.end()) 
-                                    << ", " 
-                                    << *std::max_element(pcmf32.begin(), pcmf32.end()) 
-                                    << "]"
-                                    );
-                    
-                    // Use non-blocking transcription
-                    TranscribeAudioNonBlocking(pcmf32);
-                }
-            //}); // _task_queue_pool->enqueue
-
-            // Small sleep to prevent tight looping
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }            
-
-        // Sleep if no data available to read to prevent busy-waiting
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    } 
+            // Transcribe the audio
+            if (!TranscribeAudioNonBlocking(pcmf32)) {
+                LOG_E("Failed to transcribe audio");
+                return false;
+            }
+        }
+    }
 
     return true;
 }
@@ -360,11 +333,18 @@ whisper_context* WhisperTranscriber::TryAlternativeInitMethods(const std::string
 }
 
 void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSize) {
+    if(_whisperContext == nullptr) {
+        LOG_E("Whisper context is not initialized");
+        return;
+    }
+
     // Handle end-of-stream marker
     if (playoutBuffer == nullptr && kPlayoutBufferSize == (size_t)-1) {
+        LOG_V("End of stream marker received");
         // Process any remaining accumulated buffer
         if (!_accumulatedByteBuffer.empty()) {
-            if (!_audioBuffer.write(_accumulatedByteBuffer.data(), _accumulatedByteBuffer.size())) {
+            LOG_V("Processing remaining " << _accumulatedByteBuffer.size() << " bytes");
+            if (!_audioBuffer->write(_accumulatedByteBuffer.data(), _accumulatedByteBuffer.size())) {
                 handleOverflow();
             }
             _accumulatedByteBuffer.clear();
@@ -373,42 +353,35 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
         return;
     }
 
-    _lastTranscriptionStart = std::chrono::steady_clock::now();
-
-    // Pre-allocate and reuse processing buffer
-    if (_processingBuffer.capacity() < (kPlayoutBufferSize / 2)) {
-        _processingBuffer.reserve(kPlayoutBufferSize / 2);
-    }
-    _processingBuffer.resize(kPlayoutBufferSize / 2);
-
-    // Optimized buffer conversion
-    for (size_t i = 0; i < kPlayoutBufferSize; i += 2) {
-        _processingBuffer[i/2] = static_cast<int16_t>(
-            (static_cast<uint16_t>(playoutBuffer[i+1]) << 8) | 
-            static_cast<uint16_t>(playoutBuffer[i])
-        );
+    // Convert bytes to samples for processing
+    size_t numSamples = kPlayoutBufferSize / sizeof(int16_t);
+    if (numSamples == 0) {
+        LOG_V("Empty audio buffer received");
+        return;
     }
 
-    // Create silence finder with pre-allocated buffer
-    SilenceFinder<int16_t> silenceFinder(_processingBuffer.data(), _processingBuffer.size(), kSampleRate);
-    
-    // Voice detection logic from Step 1 (using _processingBuffer instead of int16Buffer)
+    // Process the audio data
+    _processingBuffer.resize(numSamples);
+    std::memcpy(_processingBuffer.data(), playoutBuffer, kPlayoutBufferSize);
+
+    // Voice detection logic
     bool voicePresent = false;
     const uint windowSize = kSampleRate / 8;
     
-    if (silenceFinder.avgAmplitude > 0) {
-        float thresholdRatio = static_cast<float>(silenceFinder.delta(
+    if (_silenceFinder && _silenceFinder->avgAmplitude > 0) {
+        float thresholdRatio = static_cast<float>(_silenceFinder->delta(
             _processingBuffer.data(), 
             std::min(windowSize, static_cast<uint>(_processingBuffer.size()))
-        )) / silenceFinder.avgAmplitude;
+        )) / _silenceFinder->avgAmplitude;
 
-        // Voice detection state machine (same as Step 1)...
+        // Voice detection state machine
         if (!_inVoiceSegment) {
             if (thresholdRatio > voiceStartThreshold) {
                 _voiceState.consecutiveVoiceFrames++;
                 _voiceState.consecutiveSilenceFrames = 0;
                 
                 if (_voiceState.consecutiveVoiceFrames >= kMinVoiceFrames) {
+                    LOG_V("Voice segment started");
                     voicePresent = true;
                     _inVoiceSegment = true;
                 }
@@ -421,6 +394,7 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
                 _voiceState.consecutiveVoiceFrames = 0;
                 
                 if (_voiceState.consecutiveSilenceFrames >= kMinSilenceFrames) {
+                    LOG_V("Voice segment ended");
                     _inVoiceSegment = false;
                 }
             } else {
@@ -430,54 +404,29 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
         }
     }
 
-    // Optimized buffer accumulation
-    if (voicePresent) {
+    // Buffer accumulation logic
+    if (voicePresent || _inVoiceSegment) {
         if (!_inVoiceSegment) {
             _inVoiceSegment = true;
             _samplesSinceVoiceStart = 0;
+            LOG_V("Starting new voice segment");
         }
-        _silentSamplesCount = 0;
 
-        // Check if we need to grow the accumulated buffer
-        size_t newSize = _accumulatedByteBuffer.size() + kPlayoutBufferSize;
-        if (_accumulatedByteBuffer.capacity() < newSize) {
-            _accumulatedByteBuffer.reserve(newSize + kPlayoutBufferSize); // Add extra space to reduce reallocations
-        }
-        
-        // Use memcpy for faster copying
+        // Add data to accumulated buffer
         size_t currentSize = _accumulatedByteBuffer.size();
-        _accumulatedByteBuffer.resize(newSize);
+        _accumulatedByteBuffer.resize(currentSize + kPlayoutBufferSize);
         std::memcpy(_accumulatedByteBuffer.data() + currentSize, playoutBuffer, kPlayoutBufferSize);
         
-        _samplesSinceVoiceStart += kPlayoutBufferSize;
+        _samplesSinceVoiceStart += numSamples;
         
-        // Check if we've reached target samples or have enough data to process
-        if (_accumulatedByteBuffer.size() >= kTargetSamples || 
-            (_accumulatedByteBuffer.size() >= kSampleRate * 2 && !voicePresent)) {  // Process if we have at least 2 seconds and no voice
-            size_t bytesToWrite = _accumulatedByteBuffer.size();  // Use all accumulated data
-           
-            if (!_audioBuffer.write(_accumulatedByteBuffer.data(), bytesToWrite)) {
+        // Check if we have enough data to process
+        if (_accumulatedByteBuffer.size() >= kTargetSamples * sizeof(int16_t)) {
+            LOG_V("Processing accumulated buffer of size: " << _accumulatedByteBuffer.size());
+            if (!_audioBuffer->write(_accumulatedByteBuffer.data(), _accumulatedByteBuffer.size())) {
                 handleOverflow();
             }
-            
             _accumulatedByteBuffer.clear();
             _samplesSinceVoiceStart = 0;
-        }
-    } else {
-        _silentSamplesCount += kPlayoutBufferSize;
-
-        if (_inVoiceSegment && _silentSamplesCount >= kSilenceSamples) {
-            _inVoiceSegment = false;
-
-            // Process any accumulated buffer immediately when voice segment ends
-            if (!_accumulatedByteBuffer.empty()) {
-                if (!_audioBuffer.write(_accumulatedByteBuffer.data(), _accumulatedByteBuffer.size())) {
-                    handleOverflow();
-                }
-                _accumulatedByteBuffer.clear();
-                _samplesSinceVoiceStart = 0;
-            }
-            _silentSamplesCount = 0;
         }
     }
 }
@@ -486,11 +435,17 @@ void WhisperTranscriber::handleOverflow() {
     _overflowCount++;
     if(_overflowCount > 10) {
         LOG_I("Frequent buffer overflows, increasing buffer size");
-        _audioBuffer.increaseWith(kRingBufferSizeIncrement);
+        _audioBuffer->increaseWith(kRingBufferSizeIncrement); 
         _overflowCount = 0;
     }
 }
 bool WhisperTranscriber::Start() {
+
+    if(_whisperContext == nullptr) {
+        LOG_E("Whisper context is not initialized");
+        return false;
+    }
+
     if (!_running) {
         _running = true;
         _processingThread = std::thread([this] {
@@ -503,6 +458,7 @@ bool WhisperTranscriber::Start() {
 }
 
 void WhisperTranscriber::Stop() {
+
     if (_running) {
         _running = false;
         

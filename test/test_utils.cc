@@ -16,6 +16,7 @@ Options parseOptions(int argc, char *argv[])
   opts.help_string = "Usage:\n"
                      "test_whillats [options]\n\n"
                      "Options:\n"
+                     "  --tts, --no-tts                    Enable/disable tts (default: disabled)\n"
                      "  --whisper, --no-whisper            Enable/disable whisper (default: disabled)\n"
                      "  --llama, --no-llama                Enable/disable llama (default: disabled)\n"
                      "  --whisper_model=<path>             Path to whisper model\n"
@@ -30,30 +31,17 @@ Options parseOptions(int argc, char *argv[])
     std::string arg = argv[i];
 
     // Handle parameters with values
-    if (arg == "--whisper")
-    {
-      opts.whisper = true;
-    }
-    else if (arg == "--llama")
-    {
-      opts.llama = true;
-    }
-    else if (arg.find("--whisper_model=") == 0)
-    {
-      opts.whisper_model = arg.substr(16); // Length of "-whisper_model="
-      LOG_I("Whisper model path: " << opts.whisper_model);
-      if (!opts.whisper)
-        opts.whisper = true;
-    }
-    else if (arg.find("--llama_model=") == 0)
-    {
-      opts.llama_model = arg.substr(14); // Length of "-llama_model="
-      LOG_I("Llama model path: " << opts.llama_model);
-    }
-    // Handle flags
-    else if (arg == "--help")
+    if (arg == "--help")
     {
       opts.help = true;
+    }
+    else if (arg == "--tts")
+    {
+      opts.tts = true;
+    }
+    else if (arg == "--no-tts")
+    {
+      opts.tts = false;
     }
     else if (arg == "--whisper")
     {
@@ -70,6 +58,18 @@ Options parseOptions(int argc, char *argv[])
     else if (arg == "--no-llama")
     {
       opts.llama = false;
+    }
+    else if (arg.find("--whisper_model=") == 0)
+    {
+      opts.whisper_model = arg.substr(16); // Length of "-whisper_model="
+      LOG_I("Whisper model path: " << opts.whisper_model);
+      if (!opts.whisper)
+        opts.whisper = true;
+    }
+    else if (arg.find("--llama_model=") == 0)
+    {
+      opts.llama_model = arg.substr(14); // Length of "-llama_model="
+      LOG_I("Llama model path: " << opts.llama_model);
     }
   }
 
