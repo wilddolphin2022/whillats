@@ -181,14 +181,14 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
                 std::regex("\\[.*?\\]|\\(.*?\\)|\\{.*?\\}"), "");
             
             if(!cleanTranscription.empty()) {
-                _responseCallback.OnResponseComplete(true, cleanTranscription);
+                _responseCallback.OnResponseComplete(true, cleanTranscription.c_str());
             } else {
                 _responseCallback.OnResponseComplete(false, "No text transcribed");
             }
         }      
     } else {
         LOG_E("Whisper transcription failed. Error code: " << result);
-        _responseCallback.OnResponseComplete(false, "Transcription failed with error: " + std::to_string(result));
+        _responseCallback.OnResponseComplete(false, "Transcription failed with error");
     }
 
     // Reset processing flag

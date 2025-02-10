@@ -21,14 +21,14 @@
 class WHILLATS_API WhillatsSetResponseCallback {
     public:
     explicit WhillatsSetResponseCallback(
-        std::function<void(bool, const std::string&)> on_complete)
+        std::function<void(bool, const char*)> on_complete)
         : on_complete_(on_complete) {}
-    void OnResponseComplete(bool success, const std::string& response) {
+    void OnResponseComplete(bool success, const char* response) {
         on_complete_(success, response);
     }
 
     private:
-    std::function<void(bool, const std::string&)> on_complete_;
+    std::function<void(bool, const char*)> on_complete_;
 };
 
 class WHILLATS_API WhillatsSetAudioCallback {

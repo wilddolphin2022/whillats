@@ -298,7 +298,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     {
       if (!current_phrase.empty())
       {
-        callback.OnResponseComplete(true, current_phrase);
+        callback.OnResponseComplete(true, current_phrase.c_str());
       }
       response += current_phrase;
       current_phrase.clear();
@@ -322,7 +322,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
   // Handle any remaining text
   if (!current_phrase.empty())
   {
-    callback.OnResponseComplete(true, current_phrase);
+    callback.OnResponseComplete(true, current_phrase.c_str());
     response += current_phrase;
   }
 
