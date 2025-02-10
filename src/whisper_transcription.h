@@ -94,6 +94,6 @@ class WhisperTranscriber {
 
   void ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSize);
 
-  bool Start();
-  void Stop();
+  bool start();
+  void stop();
 };

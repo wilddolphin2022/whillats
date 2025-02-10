@@ -44,7 +44,7 @@ WhisperTranscriber::WhisperTranscriber(
 }
 
 WhisperTranscriber::~WhisperTranscriber() {
-    Stop();
+    stop();
     if (_whisperContext) {
         whisper_free(_whisperContext);
     }
@@ -439,7 +439,7 @@ void WhisperTranscriber::handleOverflow() {
         _overflowCount = 0;
     }
 }
-bool WhisperTranscriber::Start() {
+bool WhisperTranscriber::start() {
 
     if(_whisperContext == nullptr) {
         LOG_E("Whisper context is not initialized");
@@ -457,7 +457,7 @@ bool WhisperTranscriber::Start() {
     return _running;
 }
 
-void WhisperTranscriber::Stop() {
+void WhisperTranscriber::stop() {
 
     if (_running) {
         _running = false;

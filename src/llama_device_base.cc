@@ -387,7 +387,7 @@ bool LlamaDeviceBase::RunProcessingThread()
   return true;
 }
 
-bool LlamaDeviceBase::Start()
+bool LlamaDeviceBase::start()
 {
   if (!_running)
   {
@@ -411,7 +411,7 @@ bool LlamaDeviceBase::Start()
   return _running;
 }
 
-void LlamaDeviceBase::Stop()
+void LlamaDeviceBase::stop()
 {
   if (_running)
   {

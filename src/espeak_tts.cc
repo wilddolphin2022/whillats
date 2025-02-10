@@ -1,6 +1,19 @@
+/*
+ *  (c) 2025, wilddolphin2022 
+ *  For WebRTCsays.ai project
+ *  https://github.com/wilddolphin2022
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
 #include <thread>
 
 #include "whillats.h"
+#include "espeak_tts.h"
 
 static constexpr int kSampleRate = 16000;       // 16 kHz
 static constexpr int kChannels = 1;             // Mono
@@ -112,7 +125,7 @@ const int ESpeakTTS::getSampleRate() {
     return kSampleRate;
 }
 
-bool ESpeakTTS::Start() {
+bool ESpeakTTS::start() {
     if (!_running) {
         _running = true;
         _processingThread = std::thread([this] {
@@ -124,7 +137,7 @@ bool ESpeakTTS::Start() {
     return false;
 }
 
-void ESpeakTTS::Stop() {
+void ESpeakTTS::stop() {
     if (_running) {
         _running = false;
         _queueCondition.notify_all();
@@ -177,6 +190,6 @@ bool ESpeakTTS::RunProcessingThread() {
 }
 
 ESpeakTTS::~ESpeakTTS() {
-    Stop();
+    stop();
     espeak_Terminate();
 }

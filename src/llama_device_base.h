@@ -1,7 +1,7 @@
 /*
  *  (c) 2025, wilddolphin2022 
  *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2022/ringrtc
+ *  https://github.com/wilddolphin2022
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -70,8 +70,8 @@ public:
   LlamaDeviceBase(const std::string& model_path, WhillatsSetResponseCallback callback);
   virtual ~LlamaDeviceBase();
 
-  bool Start();
-  void Stop();
+  bool start();
+  void stop();
   void askLlama(const std::string& prompt);
   
   // Add callback setters

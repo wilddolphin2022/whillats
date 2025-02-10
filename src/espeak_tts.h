@@ -1,6 +1,17 @@
+/*
+ *  (c) 2025, wilddolphin2022 
+ *  For WebRTCsays.ai project
+ *  https://github.com/wilddolphin2022
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
 #pragma once
 
-#include <espeak-ng/speak_lib.h>
 #include <vector>
 #include <chrono>
 #include <thread>
@@ -9,6 +20,8 @@
 #include <condition_variable>
 
 #include "whillats.h"
+#include <espeak-ng/speak_lib.h>
+
 
 class AudioRingBuffer;
 class ESpeakTTS {
@@ -16,10 +29,9 @@ public:
     ESpeakTTS(WhillatsSetAudioCallback callback);
     ~ESpeakTTS();
 
-    
     // Add new methods
-    bool Start();
-    void Stop();
+    bool start();
+    void stop();
     void queueText(const std::string& text);
 
     static const int getSampleRate();
