@@ -55,7 +55,7 @@ class WhillatsTTS {
     void stop();
     void queueText(const std::string& text);
 
-    static const int getSampleRate();
+    static int getSampleRate();
 
     private:
     WhillatsSetAudioCallback _callback;
