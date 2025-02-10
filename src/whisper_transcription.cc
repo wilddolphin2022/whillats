@@ -19,9 +19,10 @@
 #include "whisper_helpers.h"
 
 WhisperTranscriber::WhisperTranscriber(
-    SpeechAudioDevice* speech_audio_device,
-      const std::string& inputFilename) 
-    : _speech_audio_device(speech_audio_device),
+    const std::string& model_path,
+    WhillatsSetResponseCallback callback) 
+    : _model_path(model_path),
+      _responseCallback(callback),
       _whisperContext(nullptr),
       _audioBuffer(kRingBufferSizeIncrement),
       _running(false),
@@ -31,12 +32,11 @@ WhisperTranscriber::WhisperTranscriber(
 {
     // Reserve space for audio buffer
     _accumulatedByteBuffer.reserve(kSampleRate * kTargetDurationSeconds * 2); // 16-bit samples
-    _modelFilename = inputFilename;
-
+ 
     // Initialize Whisper context
-    if (!InitializeWhisperModel(_modelFilename) || !_whisperContext) {
+    if (!InitializeWhisperModel(_model_path) || !_whisperContext) {
         LOG_E("Failed to initialize Whisper model");
-        _whisperContext = TryAlternativeInitMethods(_modelFilename);
+        _whisperContext = TryAlternativeInitMethods(_model_path);
         if (!_whisperContext) {
             LOG_E("Failed to initialize Whisper model alternative ways");
         }
@@ -179,12 +179,8 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
             std::string cleanTranscription = std::regex_replace(fullTranscription, 
                 std::regex("\\[.*?\\]|\\(.*?\\)|\\{.*?\\}"), "");
             
-            if(_speech_audio_device && !cleanTranscription.empty()) {
-                if(_speech_audio_device->_llaming)
-                    _speech_audio_device->askLlama(cleanTranscription);
-                else {
-                    _speech_audio_device->speakText(cleanTranscription);
-                }
+            if(!cleanTranscription.empty()) {
+                _responseCallback.OnResponseComplete(true, cleanTranscription);
             }
         }      
       

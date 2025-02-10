@@ -18,14 +18,15 @@
 #include <vector>
 #include <atomic>
 #include <queue>
+#include <thread>
+#include <functional>
+#include "whisper_helpers.h"
 
 struct llama_model;
 struct llama_context;
 struct llama_sampler;
 struct llama_vocab;
 typedef int32_t llama_token;
-
-class SpeechAudioDevice;
 
 class LlamaSimpleChat {
 public:
@@ -37,8 +38,8 @@ public:
   bool SetContextSize(int size);
   void StopGeneration();
 
-  bool Initialize(SpeechAudioDevice* speech_audio_device);
-  std::string generate(const std::string& request);
+  bool Initialize();
+  std::string generate(const std::string& request, WhillatsSetResponseCallback callback);
 
   bool InitializeContext();
   void FreeContext();
@@ -57,33 +58,32 @@ public:
   llama_sampler* smpl_ = nullptr;
   
   std::atomic<bool> continue_ = true;
-  SpeechAudioDevice* _speech_audio_device = nullptr;
 
   bool isRepetitive(const std::string& text, size_t minPatternLength = 4);
   bool hasConfirmationPattern(const std::string& text);
-
 };
 
 class LlamaDeviceBase {
 public:
-  LlamaDeviceBase( 
-    SpeechAudioDevice* speech_audio_device,
-    const std::string& llamaModelFilename);
+  LlamaDeviceBase(const std::string& model_path, WhillatsSetResponseCallback callback);
   virtual ~LlamaDeviceBase();
 
-  // Send text to recording queue
-  virtual void askLlama(const std::string& text);
-  
   bool Start();
   void Stop();
-
+  void askLlama(const std::string& prompt);
+  
+  // Add callback setters
 private:
+  bool _running;
   std::thread _processingThread;
-  std::atomic<bool> _running;
+  std::string _model_path;
+
+  WhillatsSetResponseCallback _responseCallback;  // Add callback member
+  
+  void processPrompts();
+  bool initialize();
   bool RunProcessingThread();
 
-  SpeechAudioDevice* _speech_audio_device = nullptr;
-  std::string _llamaModelFilename;
   std::unique_ptr<LlamaSimpleChat> _llama_chat;
 
   // Incoming ask text queue
@@ -100,5 +100,4 @@ private:
 
   std::chrono::steady_clock::time_point _lastResponseStart;
   std::chrono::steady_clock::time_point _lastResponseEnd;
-
 };

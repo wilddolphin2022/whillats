@@ -32,9 +32,7 @@ class SpeechAudioDevice;
 
 class WhisperTranscriber {
  private:
-  SpeechAudioDevice* _speech_audio_device  = nullptr;
-
-  std::string _modelFilename;
+  std::string _model_path;
   whisper_context* _whisperContext;
   AudioRingBuffer _audioBuffer; 
 
@@ -88,10 +86,12 @@ class WhisperTranscriber {
   std::chrono::steady_clock::time_point _lastTranscriptionStart;
   std::chrono::steady_clock::time_point _lastTranscriptionEnd;
 
+  WhillatsSetResponseCallback _responseCallback;
  public:
+
   WhisperTranscriber(
-      SpeechAudioDevice* _speech_audio_device = nullptr,
-      const std::string& inputFilename = "");
+      const std::string& model_path,
+      WhillatsSetResponseCallback callback);
   
   ~WhisperTranscriber();
 

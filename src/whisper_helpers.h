@@ -84,16 +84,17 @@ private:
     #define LOG_E(...) ((void)0)
 #endif
 
-class SpeechAudioDevice {
- public:
+class WhillatsSetResponseCallback {
+    public:
+    explicit WhillatsSetResponseCallback(
+        std::function<void(bool, const std::string&)> on_complete)
+        : on_complete_(on_complete) {}
+    void OnResponseComplete(bool success, const std::string& response) {
+        on_complete_(success, response);
+    }
 
-  virtual void speakText(const std::string& text) = 0;
-  virtual void askLlama(const std::string& text) = 0;
-
-  bool _whispering = false;
-  bool _llaming = false;
-
-  virtual ~SpeechAudioDevice() {}
+    private:
+    std::function<void(bool, const std::string&)> on_complete_;
 };
 
 class AudioRingBuffer {
