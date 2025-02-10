@@ -33,7 +33,7 @@ void WhillatsTTS::stop() {
     _espeak_tts->stop();
 }
 
-const int WhillatsTTS::getSampleRate() {
+int WhillatsTTS::getSampleRate() {
     return ESpeakTTS::getSampleRate();
 }
 
