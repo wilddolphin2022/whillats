@@ -15,6 +15,7 @@
 #include "whillats.h"
 
 #include "test_utils.h"
+#include "whisper_helpers.h"
 
 // Set log level
 void setLogLevel(LogLevel level)

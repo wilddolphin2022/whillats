@@ -23,6 +23,7 @@
 #include <fstream>
 
 #include "whillats.h"
+#include "silence_finder.h"
 
 struct whisper_context;
 class AudioRingBuffer;
@@ -65,7 +66,7 @@ class WhisperTranscriber {
   void handleOverflow();
 
   std::vector<int16_t> _processingBuffer;
-  std::unique_ptr<SilenceFinder<int16_t> > _silenceFinder;
+  std::unique_ptr<SilenceFinder<int16_t>> _silenceFinder;
   
     // Add new members for voice detection state
     struct VoiceDetectionState {

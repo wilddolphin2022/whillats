@@ -15,7 +15,6 @@
 
 #include <whisper.h>
 #include "whisper_transcription.h"
-#include "silence_finder.h"  // Silence finder code
 #include "whisper_helpers.h"
 
 WhisperTranscriber::WhisperTranscriber(

@@ -10,9 +10,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#ifndef WHILLATS_H
+#define WHILLATS_H
+
+#include "whillats_export.h"
+
 #pragma once
 
-class WhillatsSetResponseCallback {
+
+class WHILLATS_API WhillatsSetResponseCallback {
     public:
     explicit WhillatsSetResponseCallback(
         std::function<void(bool, const std::string&)> on_complete)
@@ -25,7 +31,7 @@ class WhillatsSetResponseCallback {
     std::function<void(bool, const std::string&)> on_complete_;
 };
 
-class WhillatsSetAudioCallback {
+class WHILLATS_API WhillatsSetAudioCallback {
     public:
     explicit WhillatsSetAudioCallback(
         std::function<void(bool, const std::vector<uint16_t>&)> on_complete)
@@ -38,16 +44,12 @@ class WhillatsSetAudioCallback {
     std::function<void(bool, const std::vector<uint16_t>& buffer)> on_complete_;
 };
 
-#include "silence_finder.h"
-#include "whisper_transcription.h"
-#include "llama_device_base.h"
-
 class ESpeakTTS;
 class WhisperTranscriber;
 class LlamaDeviceBase;
 
-class WhillatsTTS {
-    public:
+class WHILLATS_API WhillatsTTS {
+  public:
     WhillatsTTS(WhillatsSetAudioCallback callback);
     ~WhillatsTTS();
 
@@ -57,13 +59,13 @@ class WhillatsTTS {
 
     static int getSampleRate();
 
-    private:
+  private:
     WhillatsSetAudioCallback _callback;
     std::unique_ptr<ESpeakTTS> _espeak_tts; 
 };
 
-class WhillatsTranscriber {
-    public:
+class WHILLATS_API WhillatsTranscriber {
+  public:
     WhillatsTranscriber(const std::string& model_path, WhillatsSetResponseCallback callback);
     ~WhillatsTranscriber();
 
@@ -71,20 +73,22 @@ class WhillatsTranscriber {
     void stop();
     void processAudioBuffer(uint8_t* playoutBuffer, const size_t playoutBufferSize);
 
-    private:
-      WhillatsSetResponseCallback _callback; 
-      std::unique_ptr<WhisperTranscriber> _whisper_transcriber; 
+  private:
+    WhillatsSetResponseCallback _callback; 
+    std::unique_ptr<WhisperTranscriber> _whisper_transcriber; 
 };
 
-class WhillatsLlama {
-    public:
+class WHILLATS_API WhillatsLlama {
+  public:
     WhillatsLlama(const std::string& model_path, WhillatsSetResponseCallback callback);
     ~WhillatsLlama();
 
     bool start();
     void stop();
     void askLlama(const std::string& prompt);
-    private:
-      WhillatsSetResponseCallback _callback;
-      std::unique_ptr<LlamaDeviceBase> _llama_device;
+  private:
+    WhillatsSetResponseCallback _callback;
+    std::unique_ptr<LlamaDeviceBase> _llama_device;
 };
+
+#endif // WHILLATS_H

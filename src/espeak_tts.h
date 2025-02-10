@@ -21,7 +21,7 @@
 
 #include "whillats.h"
 #include <espeak-ng/speak_lib.h>
-
+#include "whisper_helpers.h"
 
 class AudioRingBuffer;
 class ESpeakTTS {
