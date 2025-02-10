@@ -133,6 +133,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Add test executable
 add_executable(test_whillats
     test/test_whillats.cc
+    test/test_utils.cc
 )
 
 target_link_libraries(test_whillats
