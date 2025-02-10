@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
   if (opts.whisper) {
     // Test WhisperTranscription
     bool whisper_done = false;
-    WhillatsTranscriber whisper(opts.whisper_model,
+    WhillatsTranscriber whisper(opts.whisper_model.c_str(),
         WhillatsSetResponseCallback([&whisper_done](bool success, const std::string &response) {
           std::cout << "Whisper response via callback: " << response << std::endl;
           whisper_done = true; }
@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
   if (opts.llama) {
     //  Test LlamaDeviceBase
     bool llama_done = false;
-    WhillatsLlama llama(opts.llama_model,
+    WhillatsLlama llama(opts.llama_model.c_str(),
       WhillatsSetResponseCallback([&llama_done](bool success, const std::string &response) {
       std::cout << "LLama response via callback: " << response << std::endl; 
       llama_done = true; }
@@ -150,7 +150,7 @@ int main(int argc, char *argv[])
 
       std::string prompt = "What will be 2+2?";
       LOG_I("Testing Llama with prompt: " << prompt);
-      llama.askLlama(prompt);
+      llama.askLlama(prompt.c_str());
 
       while (!llama_done)
       {

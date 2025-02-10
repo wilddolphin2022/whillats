@@ -88,7 +88,7 @@ class WhisperTranscriber {
  public:
 
   WhisperTranscriber(
-      const std::string& model_path,
+      const char* model_path,
       WhillatsSetResponseCallback callback);
   
   ~WhisperTranscriber();

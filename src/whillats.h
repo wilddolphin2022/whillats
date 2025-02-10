@@ -66,7 +66,7 @@ class WHILLATS_API WhillatsTTS {
 
 class WHILLATS_API WhillatsTranscriber {
   public:
-    WhillatsTranscriber(const std::string& model_path, WhillatsSetResponseCallback callback);
+    WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback);
     ~WhillatsTranscriber();
 
     bool start();
@@ -80,12 +80,12 @@ class WHILLATS_API WhillatsTranscriber {
 
 class WHILLATS_API WhillatsLlama {
   public:
-    WhillatsLlama(const std::string& model_path, WhillatsSetResponseCallback callback);
+    WhillatsLlama(const char*model_path, WhillatsSetResponseCallback callback);
     ~WhillatsLlama();
 
     bool start();
     void stop();
-    void askLlama(const std::string& prompt);
+    void askLlama(const char* prompt);
   private:
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;

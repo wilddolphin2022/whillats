@@ -11,11 +11,14 @@
  */
 
 #include <memory>
+#include <string>
 
 #include "silence_finder.h"
 #include "whisper_transcription.h"
 #include "llama_device_base.h"
 #include "espeak_tts.h"
+#include "whillats.h"
+
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback),
@@ -39,7 +42,7 @@ int WhillatsTTS::getSampleRate() {
     return ESpeakTTS::getSampleRate();
 }
 
-WhillatsTranscriber::WhillatsTranscriber(const std::string& model_path, WhillatsSetResponseCallback callback) 
+WhillatsTranscriber::WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback) 
     : _callback(callback),
       _whisper_transcriber(std::make_unique<WhisperTranscriber>(model_path, callback)) {}
 
@@ -57,7 +60,7 @@ void WhillatsTranscriber::stop() {
     _whisper_transcriber->stop();
 } 
 
-WhillatsLlama::WhillatsLlama(const std::string& model_path, WhillatsSetResponseCallback callback) 
+WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback callback) 
     : _callback(callback),
       _llama_device(std::make_unique<LlamaDeviceBase>(model_path, callback)) {}
 
@@ -71,6 +74,6 @@ void WhillatsLlama::stop() {
     _llama_device->stop();
 } 
 
-void WhillatsLlama::askLlama(const std::string& prompt) {
+void WhillatsLlama::askLlama(const char* prompt) {
     _llama_device->askLlama(prompt);
 }

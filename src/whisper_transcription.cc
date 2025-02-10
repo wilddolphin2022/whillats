@@ -18,7 +18,7 @@
 #include "whisper_helpers.h"
 
 WhisperTranscriber::WhisperTranscriber(
-    const std::string& model_path,
+    const char* model_path,
     WhillatsSetResponseCallback callback) 
     : _model_path(model_path),
       _responseCallback(callback),

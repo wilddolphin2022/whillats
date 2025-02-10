@@ -334,7 +334,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
 //
 
 LlamaDeviceBase::LlamaDeviceBase(
-    const std::string &model_path,
+    const char*model_path,
     WhillatsSetResponseCallback callback)
     : _model_path(model_path),
       _responseCallback(callback)
@@ -343,13 +343,13 @@ LlamaDeviceBase::LlamaDeviceBase(
 
 LlamaDeviceBase::~LlamaDeviceBase() {}
 
-void LlamaDeviceBase::askLlama(const std::string &prompt)
+void LlamaDeviceBase::askLlama(const char* prompt)
 {
   {
     std::unique_lock<std::mutex> lock(_queueMutex);
-    if (!prompt.empty())
+    if (prompt && *prompt)
     {
-      _textQueue.push(prompt);
+      _textQueue.push(std::string(prompt));
     }
   }
 }

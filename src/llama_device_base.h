@@ -67,12 +67,12 @@ public:
 
 class LlamaDeviceBase {
 public:
-  LlamaDeviceBase(const std::string& model_path, WhillatsSetResponseCallback callback);
+  LlamaDeviceBase(const char* model_path, WhillatsSetResponseCallback callback);
   virtual ~LlamaDeviceBase();
 
   bool start();
   void stop();
-  void askLlama(const std::string& prompt);
+  void askLlama(const char* prompt);
   
   // Add callback setters
 private:
