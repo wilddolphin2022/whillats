@@ -1,7 +1,7 @@
 /*
  *  (c) 2025, wilddolphin2022 
  *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2022/ringrtc
+ *  https://github.com/wilddolphin2022
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -28,6 +28,8 @@ struct llama_sampler;
 struct llama_vocab;
 typedef int32_t llama_token;
 
+#include "whillats.h"
+
 class LlamaSimpleChat {
 public:
   LlamaSimpleChat();
@@ -44,7 +46,6 @@ public:
   bool InitializeContext();
   void FreeContext();
 
-  private:
   bool LoadModel();
 
   std::string model_path_;
@@ -61,16 +62,19 @@ public:
 
   bool isRepetitive(const std::string& text, size_t minPatternLength = 4);
   bool hasConfirmationPattern(const std::string& text);
+
+  std::chrono::steady_clock::time_point _lastResponseStart;
+  std::chrono::steady_clock::time_point _lastResponseEnd;
 };
 
 class LlamaDeviceBase {
 public:
-  LlamaDeviceBase(const std::string& model_path, WhillatsSetResponseCallback callback);
+  LlamaDeviceBase(const char* model_path, WhillatsSetResponseCallback callback);
   virtual ~LlamaDeviceBase();
 
-  bool Start();
-  void Stop();
-  void askLlama(const std::string& prompt);
+  bool start();
+  void stop();
+  void askLlama(const char* prompt);
   
   // Add callback setters
 private:
@@ -97,7 +101,4 @@ private:
   
   bool TrimContext();
   bool AppendToContext(const std::vector<llama_token>& new_tokens);
-
-  std::chrono::steady_clock::time_point _lastResponseStart;
-  std::chrono::steady_clock::time_point _lastResponseEnd;
 };

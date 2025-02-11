@@ -22,19 +22,17 @@
 #include <chrono>
 #include <fstream>
 
-#include "llama_device_base.h"
-#include "whisper_helpers.h"
+#include "whillats.h"
 #include "silence_finder.h"
 
 struct whisper_context;
-
-class SpeechAudioDevice;
+class AudioRingBuffer;
 
 class WhisperTranscriber {
  private:
   std::string _model_path;
   whisper_context* _whisperContext;
-  AudioRingBuffer _audioBuffer; 
+  std::unique_ptr<AudioRingBuffer> _audioBuffer; 
 
   std::thread _processingThread;
   std::atomic<bool> _running;
@@ -68,7 +66,6 @@ class WhisperTranscriber {
   void handleOverflow();
 
   std::vector<int16_t> _processingBuffer;
-  std::unique_ptr<SilenceFinder<int16_t>> _silenceFinder;
   
     // Add new members for voice detection state
     struct VoiceDetectionState {
@@ -90,13 +87,13 @@ class WhisperTranscriber {
  public:
 
   WhisperTranscriber(
-      const std::string& model_path,
+      const char* model_path,
       WhillatsSetResponseCallback callback);
   
   ~WhisperTranscriber();
 
   void ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSize);
 
-  bool Start();
-  void Stop();
+  bool start();
+  void stop();
 };

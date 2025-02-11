@@ -84,19 +84,6 @@ private:
     #define LOG_E(...) ((void)0)
 #endif
 
-class WhillatsSetResponseCallback {
-    public:
-    explicit WhillatsSetResponseCallback(
-        std::function<void(bool, const std::string&)> on_complete)
-        : on_complete_(on_complete) {}
-    void OnResponseComplete(bool success, const std::string& response) {
-        on_complete_(success, response);
-    }
-
-    private:
-    std::function<void(bool, const std::string&)> on_complete_;
-};
-
 class AudioRingBuffer {
 private:
     std::vector<uint8_t> buffer;
