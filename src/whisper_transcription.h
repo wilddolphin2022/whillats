@@ -66,7 +66,6 @@ class WhisperTranscriber {
   void handleOverflow();
 
   std::vector<int16_t> _processingBuffer;
-  std::unique_ptr<SilenceFinder<int16_t>> _silenceFinder;
   
     // Add new members for voice detection state
     struct VoiceDetectionState {

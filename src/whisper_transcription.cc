@@ -365,17 +365,17 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
     _processingBuffer.resize(numSamples);
     std::memcpy(_processingBuffer.data(), playoutBuffer, kPlayoutBufferSize);
 
-    _silenceFinder.reset(new SilenceFinder<int16_t>(_processingBuffer.data(), _processingBuffer.size(), kSampleRate));
+    SilenceFinder<int16_t> silenceFinder(_processingBuffer.data(), _processingBuffer.size(), kSampleRate);
 
     // Voice detection logic
     bool voicePresent = false;
     const uint windowSize = kSampleRate / 8;
     
-    if (_silenceFinder && _silenceFinder->avgAmplitude > 0) {
-        float thresholdRatio = static_cast<float>(_silenceFinder->delta(
+    if (silenceFinder.avgAmplitude > 0) {
+        float thresholdRatio = static_cast<float>(silenceFinder.delta(
             _processingBuffer.data(), 
             std::min(windowSize, static_cast<uint>(_processingBuffer.size()))
-        )) / _silenceFinder->avgAmplitude;
+        )) / silenceFinder.avgAmplitude;
 
         // Voice detection state machine
         if (!_inVoiceSegment) {
@@ -384,7 +384,7 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
                 _voiceState.consecutiveSilenceFrames = 0;
                 
                 if (_voiceState.consecutiveVoiceFrames >= kMinVoiceFrames) {
-                    LOG_V("Voice segment started");
+                    LOG_I("Voice segment started");
                     voicePresent = true;
                     _inVoiceSegment = true;
                 }
@@ -397,7 +397,7 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
                 _voiceState.consecutiveVoiceFrames = 0;
                 
                 if (_voiceState.consecutiveSilenceFrames >= kMinSilenceFrames) {
-                    LOG_V("Voice segment ended");
+                    LOG_I("Voice segment ended");
                     _inVoiceSegment = false;
                 }
             } else {
