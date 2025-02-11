@@ -303,7 +303,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         _lastResponseEnd = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
                 _lastResponseEnd - _lastResponseStart).count();
-        LOG_V("'" << current_phrase << "' time taken: " << duration << " ms");
+        std::cout << "Llama says: '" << current_phrase << "' in " << duration << " ms";
 
       }
       response += current_phrase;
@@ -334,7 +334,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     _lastResponseEnd = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             _lastResponseEnd - _lastResponseStart).count();
-    LOG_V("'" << current_phrase << "' time taken: " << duration << " ms");
+    std::cout << "Llama says: '" << current_phrase << "' in " << duration << " ms";
   }
 
   return response;
