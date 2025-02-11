@@ -26,8 +26,8 @@ WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
 
 WhillatsTTS::~WhillatsTTS() {}
 
-void WhillatsTTS::queueText(const std::string& text) {
-    _espeak_tts->queueText(text);
+void WhillatsTTS::queueText(const char* text) {
+    _espeak_tts->queueText(std::string(text));
 }
 
 bool WhillatsTTS::start() {

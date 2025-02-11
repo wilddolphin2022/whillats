@@ -38,17 +38,10 @@ set_target_properties(ucd PROPERTIES
 
 # Add pcaudio
 add_library(pcaudio STATIC IMPORTED)
-if(APPLE)
-    set_target_properties(pcaudio PROPERTIES
-        IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/libpcaudio.dylib
-        INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/include
-    )
-else()
-    set_target_properties(pcaudio PROPERTIES
-        IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/.libs/libpcaudio.a
-        INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/include
-    )
-endif()
+set_target_properties(pcaudio PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/.libs/libpcaudio.a
+    INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/include
+)
 
 # Create library target
 add_library(${PROJECT_NAME} SHARED
@@ -118,6 +111,7 @@ if(APPLE)
         "-framework Metal"
         "-framework MetalKit"
         "-framework CoreAudio"
+        "-framework AudioToolbox"
     )
     target_link_options(${PROJECT_NAME} PRIVATE
         "-Wl,-rpath,@loader_path/third_party/whisper.cpp/build/src"
