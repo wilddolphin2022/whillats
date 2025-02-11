@@ -21,14 +21,18 @@
 template<typename T>
 class SilenceFinder {
 public:
-    SilenceFinder(T * data, size_t size, size_t samples) : 
-        d(data), 
-        sBegin(0), 
-        s(size), 
-        samp(samples), 
-        status(Undefined) 
-    {
-        // Calculate average amplitude here for relative threshold
+    SilenceFinder(T* data, size_t size, size_t samples) {
+        reset(data, size, samples);
+    }
+
+    // Add reset method to reuse the instance with new buffer
+    void reset(T* data, size_t size, size_t samples) {
+        d = data;
+        sBegin = 0;
+        s = size;
+        samp = samples;
+        status = Undefined;
+        // Recalculate average amplitude for the new buffer
         avgAmplitude = calculateAverageAmplitude(data, size);
     }
 
@@ -128,7 +132,7 @@ public:
         }
     }
 
-    T * d;
+    T* d;
     size_t sBegin, s, samp; 
     Status status;
 
@@ -141,3 +145,11 @@ public:
 // const float relativeThreshold = 0.05f; // 5% of average amplitude
 // const uint windowSize = kSampleRate / 10; // 100ms window
 // auto silenceRegions = silenceFinder.find(relativeThreshold, windowSize);
+
+// Example usage:
+// SilenceFinder<int16_t> silenceFinder(buffer1, size1, sampleRate);
+// auto regions1 = silenceFinder.find(0.05f, sampleRate/10);
+// 
+// // Later, with new buffer:
+// silenceFinder.reset(buffer2, size2, sampleRate);
+// auto regions2 = silenceFinder.find(0.05f, sampleRate/10);

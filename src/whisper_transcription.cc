@@ -139,6 +139,8 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
         return false;
     }
 
+    _lastTranscriptionStart = std::chrono::steady_clock::now();
+
     int result = 0;
     // Attempt transcription
     result = whisper_full(
@@ -339,7 +341,6 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
 
     // Handle end-of-stream marker
     if (playoutBuffer == nullptr && kPlayoutBufferSize == (size_t)-1) {
-        LOG_V("End of stream marker received");
         // Process any remaining accumulated buffer
         if (!_accumulatedByteBuffer.empty()) {
             LOG_V("Processing remaining " << _accumulatedByteBuffer.size() << " bytes");
@@ -349,19 +350,22 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
             _accumulatedByteBuffer.clear();
             _samplesSinceVoiceStart = 0;
         }
+        _responseCallback.OnResponseComplete(false, "End of stream marker received");
         return;
     }
 
     // Convert bytes to samples for processing
     size_t numSamples = kPlayoutBufferSize / sizeof(int16_t);
     if (numSamples == 0) {
-        LOG_V("Empty audio buffer received");
+        _responseCallback.OnResponseComplete(false, "Empty audio buffer received");
         return;
     }
 
     // Process the audio data
     _processingBuffer.resize(numSamples);
     std::memcpy(_processingBuffer.data(), playoutBuffer, kPlayoutBufferSize);
+
+    _silenceFinder.reset(new SilenceFinder<int16_t>(_processingBuffer.data(), _processingBuffer.size(), kSampleRate));
 
     // Voice detection logic
     bool voicePresent = false;
@@ -421,6 +425,7 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
         // Check if we have enough data to process
         if (_accumulatedByteBuffer.size() >= kTargetSamples * sizeof(int16_t)) {
             LOG_V("Processing accumulated buffer of size: " << _accumulatedByteBuffer.size());
+
             if (!_audioBuffer->write(_accumulatedByteBuffer.data(), _accumulatedByteBuffer.size())) {
                 handleOverflow();
             }

@@ -23,6 +23,33 @@ void setLogLevel(LogLevel level)
   g_currentLogLevel = level;
 }
 
+std::vector<uint16_t> audio_buffer;
+bool tts_done = false;
+bool whisper_done = false;
+bool llama_done = false;
+
+void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data) {
+    // Handle audio buffer here
+    LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
+    audio_buffer = std::vector<uint16_t>(buffer, buffer + buffer_size);
+    tts_done = true; 
+    if(success) {
+      writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
+    }
+}
+
+void whisperResponseCallback(bool success, const char* response, void* user_data) {
+    // Handle response here
+    std::cout << "Whisper response via callback: " << response << std::endl;
+    whisper_done = true; 
+}
+
+void llamaResponseCallback(bool success, const char* response, void* user_data) {
+    // Handle response here
+    std::cout << "Llama response via callback: " << response << std::endl;
+    llama_done = true;   
+}
+
 int main(int argc, char *argv[])
 {
   Options opts = parseOptions(argc, argv);
@@ -38,19 +65,9 @@ int main(int argc, char *argv[])
 
   setLogLevel(LogLevel::VERBOSE);
 
-  std::vector<uint16_t> audio_buffer;
-  
   if (opts.tts) {
-    bool tts_done = false;
-    WhillatsTTS tts(
-      WhillatsSetAudioCallback([&tts_done, &audio_buffer](bool success, const std::vector<uint16_t>& buffer) {
-          LOG_I("Generated " << buffer.size() << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
-          audio_buffer = buffer;
-          tts_done = true; 
-          if(success) {
-            writeWavFile("synthesized_audio.wav", buffer, WhillatsTTS::getSampleRate());
-          }
-      }));
+    WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
+    WhillatsTTS tts(callback); 
       
     if(tts.start()) {
 
@@ -84,12 +101,8 @@ int main(int argc, char *argv[])
 
   if (opts.whisper) {
     // Test WhisperTranscription
-    bool whisper_done = false;
-    WhillatsTranscriber whisper(opts.whisper_model.c_str(),
-        WhillatsSetResponseCallback([&whisper_done](bool success, const std::string &response) {
-          std::cout << "Whisper response via callback: " << response << std::endl;
-          whisper_done = true; }
-        ));
+    WhillatsSetResponseCallback callback(whisperResponseCallback, nullptr);
+    WhillatsTranscriber whisper(opts.whisper_model.c_str(), callback);
 
     // Start the transcriber before processing audio
     if (!whisper.start()) 
@@ -103,14 +116,17 @@ int main(int argc, char *argv[])
       size_t samples_per_chunk = (WhillatsTTS::getSampleRate() * 10) / 1000;
       std::cout << "Processing audio in " << samples_per_chunk << " sample chunks" << std::endl;
 
-      // Process short audio
-      std::cout << "\nProcessing short audio..." << std::endl;
+      // Process audio
+      LOG_V("Processing audio buffer size: " << audio_buffer.size() << "..." << std::endl);
       for (size_t i = 0; i < audio_buffer.size(); i += samples_per_chunk)
       {
         size_t chunk_size = std::min(samples_per_chunk, audio_buffer.size() - i);
         whisper.processAudioBuffer((uint8_t *)(audio_buffer.data() + i), chunk_size * sizeof(uint16_t));
       }
+
+      LOG_V("Short cutting audio buffer size: " << audio_buffer.size() << "..." << std::endl);
       whisper.processAudioBuffer(nullptr, -1);
+
       while (!whisper_done)
       {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -137,12 +153,8 @@ int main(int argc, char *argv[])
 
   if (opts.llama) {
     //  Test LlamaDeviceBase
-    bool llama_done = false;
-    WhillatsLlama llama(opts.llama_model.c_str(),
-      WhillatsSetResponseCallback([&llama_done](bool success, const std::string &response) {
-      std::cout << "LLama response via callback: " << response << std::endl; 
-      llama_done = true; }
-      ));
+    WhillatsSetResponseCallback callback(llamaResponseCallback, nullptr);
+    WhillatsLlama llama(opts.llama_model.c_str(), callback);
 
     LOG_I("Initializing Llama with model: " << opts.llama_model);
     if (llama.start()) 

@@ -46,7 +46,6 @@ public:
   bool InitializeContext();
   void FreeContext();
 
-  private:
   bool LoadModel();
 
   std::string model_path_;
@@ -63,6 +62,9 @@ public:
 
   bool isRepetitive(const std::string& text, size_t minPatternLength = 4);
   bool hasConfirmationPattern(const std::string& text);
+
+  std::chrono::steady_clock::time_point _lastResponseStart;
+  std::chrono::steady_clock::time_point _lastResponseEnd;
 };
 
 class LlamaDeviceBase {
@@ -99,7 +101,4 @@ private:
   
   bool TrimContext();
   bool AppendToContext(const std::vector<llama_token>& new_tokens);
-
-  std::chrono::steady_clock::time_point _lastResponseStart;
-  std::chrono::steady_clock::time_point _lastResponseEnd;
 };

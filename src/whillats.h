@@ -14,34 +14,42 @@
 #define WHILLATS_H
 
 #include "whillats_export.h"
+#include <cstdint>
 
-#pragma once
-
+// Change to C-style function pointer callbacks
+typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);
+typedef void (*AudioCallback)(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data);
 
 class WHILLATS_API WhillatsSetResponseCallback {
-    public:
-    explicit WhillatsSetResponseCallback(
-        std::function<void(bool, const char*)> on_complete)
-        : on_complete_(on_complete) {}
+public:
+    WhillatsSetResponseCallback(ResponseCallback callback, void* user_data)
+        : callback_(callback), user_data_(user_data) {}
+    
     void OnResponseComplete(bool success, const char* response) {
-        on_complete_(success, response);
+        if (callback_) {
+            callback_(success, response, user_data_);
+        }
     }
 
-    private:
-    std::function<void(bool, const char*)> on_complete_;
+private:
+    ResponseCallback callback_;
+    void* user_data_;
 };
 
 class WHILLATS_API WhillatsSetAudioCallback {
-    public:
-    explicit WhillatsSetAudioCallback(
-        std::function<void(bool, const std::vector<uint16_t>&)> on_complete)
-        : on_complete_(on_complete) {}
+public:
+    WhillatsSetAudioCallback(AudioCallback callback, void* user_data)
+        : callback_(callback), user_data_(user_data) {}
+    
     void OnBufferComplete(bool success, const std::vector<uint16_t>& buffer) {
-        on_complete_(success, buffer);
+        if (callback_) {
+            callback_(success, buffer.data(), buffer.size(), user_data_);
+        }
     }
 
-    private:
-    std::function<void(bool, const std::vector<uint16_t>& buffer)> on_complete_;
+private:
+    AudioCallback callback_;
+    void* user_data_;
 };
 
 class ESpeakTTS;

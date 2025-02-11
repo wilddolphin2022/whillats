@@ -299,6 +299,12 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
       if (!current_phrase.empty())
       {
         callback.OnResponseComplete(true, current_phrase.c_str());
+
+        _lastResponseEnd = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                _lastResponseEnd - _lastResponseStart).count();
+        LOG_V("'" << current_phrase << "' time taken: " << duration << " ms");
+
       }
       response += current_phrase;
       current_phrase.clear();
@@ -324,6 +330,11 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
   {
     callback.OnResponseComplete(true, current_phrase.c_str());
     response += current_phrase;
+
+    _lastResponseEnd = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            _lastResponseEnd - _lastResponseStart).count();
+    LOG_V("'" << current_phrase << "' time taken: " << duration << " ms");
   }
 
   return response;
@@ -375,7 +386,7 @@ bool LlamaDeviceBase::RunProcessingThread()
 
     if (shouldAsk)
     {
-      _lastResponseStart = std::chrono::steady_clock::now();
+      _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
       _llama_chat->generate(textToAsk, _responseCallback);
       textToAsk.clear();
     }
