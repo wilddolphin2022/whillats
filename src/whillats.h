@@ -15,6 +15,8 @@
 
 #include "whillats_export.h"
 #include <cstdint>
+#include <memory>
+#include <vector>
 
 // Change to C-style function pointer callbacks
 typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);

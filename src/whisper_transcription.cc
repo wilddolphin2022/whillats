@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <regex>
+#include <cstring>
 
 #include <whisper.h>
 #include "whisper_transcription.h"

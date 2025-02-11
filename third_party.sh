@@ -159,22 +159,22 @@ done
         cmake --build build --config Debug  
     fi
 
-    if [ "${HOST_PLATFORM}" = "linux" ]
-    then
-        echo "installing espeak-ng"
-        sudo make install
-    fi
+    #if [ "${HOST_PLATFORM}" = "linux" ]
+    #then
+    #    echo "installing espeak-ng"
+    #    sudo make install
+    #fi
 
     echo "building pcaudio"
 
     cd ${THIRD_PARTY}/pcaudiolib
 
+    echo "building pcaudiolib"
+    ./autogen.sh
+    ./configure --with-pic
+    make
     if [ "${HOST_PLATFORM}" = "mac" ]
     then
-        echo "building pcaudiolib"
-        ./autogen.sh
-        ./configure
-        make
         ./libtool --mode=install cp src/libpcaudio.la  ${THIRD_PARTY}/pcaudiolib/src/libpcaudio.dylib
     fi
 
