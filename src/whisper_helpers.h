@@ -84,119 +84,111 @@ private:
     #define LOG_E(...) ((void)0)
 #endif
 
+template<typename T>
 class AudioRingBuffer {
-private:
-    std::vector<uint8_t> buffer;
-    std::atomic<size_t> bufferSize;
-    std::atomic<size_t> writeIndex;
-    std::atomic<size_t> readIndex;
+public:
+    AudioRingBuffer(size_t size) 
+        : _buffer(size)
+        , _writePos(0)
+        , _readPos(0)
+        , _available(0) {}
 
-    void resizeBuffer(size_t newSize) {
-        std::vector<uint8_t> newBuffer(newSize);
+    bool write(const T* data, size_t size) {
+        std::lock_guard<std::mutex> lock(_mutex);
         
-        // Copy existing data to new buffer, considering wrap-around
-        size_t available = availableToRead();
-        if (available > 0) {
-            size_t readFrom = readIndex % bufferSize.load();
-            size_t firstPart = std::min(available, bufferSize.load() - readFrom);
-            
-            std::copy(buffer.begin() + readFrom, buffer.begin() + readFrom + firstPart, newBuffer.begin());
-            if (firstPart < available) {
-                std::copy(buffer.begin(), buffer.begin() + (available - firstPart), newBuffer.begin() + firstPart);
+        // If buffer is too small, resize it
+        if (size > (_buffer.size() - _available)) {
+            size_t newSize = _buffer.size() * 2;  // Double the size
+            while (size > (newSize - _available)) {
+                newSize *= 2;  // Keep doubling until we have enough space
             }
+            
+            LOG_V("Resizing ring buffer from " << _buffer.size() << " to " << newSize << " samples");
+            
+            // Create new buffer with larger size
+            std::vector<T> newBuffer(newSize);
+            
+            // Copy existing data to new buffer
+            if (_available > 0) {
+                if (_writePos > _readPos) {
+                    // Data is contiguous
+                    std::memcpy(newBuffer.data(), &_buffer[_readPos], _available * sizeof(T));
+                } else {
+                    // Data is wrapped
+                    size_t firstPart = _buffer.size() - _readPos;
+                    std::memcpy(newBuffer.data(), &_buffer[_readPos], firstPart * sizeof(T));
+                    std::memcpy(newBuffer.data() + firstPart, &_buffer[0], _writePos * sizeof(T));
+                }
+            }
+            
+            // Update buffer and positions
+            _buffer = std::move(newBuffer);
+            _readPos = 0;
+            _writePos = _available;
         }
-        
-        // Swap buffers
-        buffer.swap(newBuffer);
-        
-        // Reset indices in case of size change
-        size_t oldSize = bufferSize.load();
-        if (newSize > oldSize) {
-            writeIndex = available;
-        } else {
-            writeIndex = std::min(writeIndex.load(), newSize);
+
+        // Now write the new data
+        size_t firstWrite = std::min(size, _buffer.size() - _writePos);
+        std::memcpy(&_buffer[_writePos], data, firstWrite * sizeof(T));
+
+        if (firstWrite < size) {
+            // Wrap around
+            std::memcpy(&_buffer[0], data + firstWrite, (size - firstWrite) * sizeof(T));
         }
-        readIndex = 0;
-        bufferSize = newSize;
+
+        _writePos = (_writePos + size) % _buffer.size();
+        _available += size;
+        return true;
     }
 
-public:
-    AudioRingBuffer(size_t initialSize) : buffer(initialSize), bufferSize(initialSize), writeIndex(0), readIndex(0) {}
+    bool read(T* data, size_t size) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        
+        if (size > _available) {
+            return false;  // Not enough data
+        }
+
+        size_t firstRead = std::min(size, _buffer.size() - _readPos);
+        std::memcpy(data, &_buffer[_readPos], firstRead * sizeof(T));
+
+        if (firstRead < size) {
+            // Wrap around
+            std::memcpy(data + firstRead, &_buffer[0], (size - firstRead) * sizeof(T));
+        }
+
+        _readPos = (_readPos + size) % _buffer.size();
+        _available -= size;
+        return true;
+    }
 
     size_t availableToRead() const {
-        size_t result = writeIndex - readIndex;
-        if (result > bufferSize.load()) return 0; // wrap around
-        return result;
+        std::lock_guard<std::mutex> lock(_mutex);
+        return _available;
     }
 
-    size_t spaceAvailable() const {
-        return bufferSize.load() - availableToRead();
+    void increaseWith(size_t additionalSize) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _buffer.resize(_buffer.size() + additionalSize);
     }
 
-    bool write(const uint8_t* data, size_t size) {
-        if (size > spaceAvailable()) {
-            // Attempt to resize if there's not enough space
-            size_t newSize = bufferSize.load() * 2; // Double the size as an example strategy
-            if (newSize < size + availableToRead()) {
-                newSize = size + availableToRead() + (bufferSize.load() / 2); // Ensure enough space for current write + some extra
-            }
-            resizeBuffer(newSize);
-        }
-
-        size_t writeTo = writeIndex % bufferSize.load();
-        size_t canWrite = std::min(size, bufferSize.load() - writeTo);
-
-        std::copy(data, data + canWrite, buffer.data() + writeTo);
-        if (canWrite < size) {
-            std::copy(data + canWrite, data + size, buffer.data());
-        }
-        
-        writeIndex.fetch_add(size, std::memory_order_relaxed);
-        if (writeIndex >= bufferSize.load() * 2) { // Check for wrap around
-            writeIndex -= bufferSize.load();
-            readIndex -= bufferSize.load(); // Adjust readIndex if needed
-        }
-        
-        return true;
+    size_t getAvailableSpace() const {
+        std::lock_guard<std::mutex> lock(_mutex);
+        return _buffer.size() - _available;
     }
 
-    bool read(uint8_t* data, size_t size) {
-        if (size > availableToRead()) return false; // Not enough data
-
-        size_t readFrom = readIndex % bufferSize.load();
-        size_t canRead = std::min(size, bufferSize.load() - readFrom);
-
-        std::copy(buffer.data() + readFrom, buffer.data() + readFrom + canRead, data);
-        if (canRead < size) {
-            std::copy(buffer.data(), buffer.data() + (size - canRead), data + canRead);
-        }
-
-        readIndex.fetch_add(size, std::memory_order_relaxed);
-        if (readIndex >= bufferSize.load() * 2) { // Check for wrap around
-            readIndex -= bufferSize.load();
-            writeIndex -= bufferSize.load(); // Adjust writeIndex if needed
-        }
-
-        return true;
+    void clear() {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _readPos = 0;
+        _writePos = 0;
+        _available = 0;
     }
 
-    // New method for shrinking the buffer if desired
-    void shrinkToFit(size_t minSize) {
-        size_t currentSize = bufferSize.load();
-        size_t newSize = std::max(minSize, availableToRead());
-        
-        if (newSize < currentSize) {
-            resizeBuffer(newSize * 2); // Keep some extra capacity to avoid frequent resizing
-        }
-    }
-
-    // New method to increase buffer if desired
-    void increaseWith(size_t incSize) {
-        size_t currentSize = bufferSize.load();
-        resizeBuffer(currentSize + incSize);
-    }
-
-    size_t bufSize() const { return bufferSize.load(); }
+private:
+    std::vector<T> _buffer;
+    size_t _writePos;
+    size_t _readPos;
+    size_t _available;
+    mutable std::mutex _mutex;
 };
 
 class HexPrinter {

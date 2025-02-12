@@ -18,12 +18,12 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <memory>
 
 #include "whillats.h"
 #include <espeak-ng/speak_lib.h>
 #include "whisper_helpers.h"
 
-class AudioRingBuffer;
 class ESpeakTTS {
 public:
     ESpeakTTS(WhillatsSetAudioCallback callback);
@@ -42,10 +42,10 @@ private:
     bool RunProcessingThread();
     
     std::chrono::steady_clock::time_point last_read_time_;
-    std::unique_ptr<AudioRingBuffer> ring_buffer_;
     static const int SAMPLE_RATE = 16000;
     WhillatsSetAudioCallback _callback;
 
+    std::unique_ptr<AudioRingBuffer<uint16_t>> _audioBuffer;
     std::vector<uint16_t> _buffer;
 
     // Add thread management

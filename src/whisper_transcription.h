@@ -21,18 +21,24 @@
 #include <vector>
 #include <chrono>
 #include <fstream>
+#include <complex>
+#include <cmath>
+
+// Add M_PI if not defined
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #include "whillats.h"
 #include "silence_finder.h"
+#include "whisper_helpers.h"
 
 struct whisper_context;
-class AudioRingBuffer;
 
 class WhisperTranscriber {
  private:
   std::string _model_path;
   whisper_context* _whisperContext;
-  std::unique_ptr<AudioRingBuffer> _audioBuffer; 
 
   std::thread _processingThread;
   std::atomic<bool> _running;
@@ -43,21 +49,14 @@ class WhisperTranscriber {
   static constexpr int kChannels = 1;             // Mono
   static constexpr int kBufferDurationMs = 10;    // 10ms buffer
   static constexpr int kTargetDurationSeconds = 3; // 3-second segments for Whisper
-  static constexpr int kRingBufferSizeIncrement = kSampleRate * kTargetDurationSeconds * 2 * 10; // 10-seconds increment for ring buffer size
+  static constexpr int kRingBufferSizeIncrement = kSampleRate * kTargetDurationSeconds * 10; // in samples
 
-  static constexpr size_t kTargetSamples = kSampleRate * 12 * 2; // 12 seconds of audio
+  static constexpr size_t kTargetSamples = kSampleRate * 12;  // 12 seconds (in samples)
   static constexpr size_t kSilenceSamples = 16000; // 1 second of silence at 16kHz
 
-  // Accumulated buffer for Whisper processing
-  std::vector<uint8_t> _accumulatedByteBuffer;
-  std::atomic<size_t> _overflowCount;
-  std::atomic<size_t> _ringBufferSize; // 10 segments buffer size
-
-  bool TranscribeAudioNonBlocking(const std::vector<float>& pcmf32);
-  bool RunProcessingThread();
-  bool ValidateWhisperModel(const std::string& modelPath);
-  bool InitializeWhisperModel(const std::string& modelPath);
-  whisper_context* TryAlternativeInitMethods(const std::string& modelPath);
+  // Replace vector of chunks with ring buffer
+  std::unique_ptr<AudioRingBuffer<float>> _audioBuffer;
+  std::mutex _audioMutex;
 
   // State to keep track if we're in a voice segment
   bool _inVoiceSegment = false;
@@ -67,23 +66,37 @@ class WhisperTranscriber {
 
   std::vector<int16_t> _processingBuffer;
   
-    // Add new members for voice detection state
-    struct VoiceDetectionState {
-      float lastThreshold = 0.0f;
-      size_t consecutiveVoiceFrames = 0;
-      size_t consecutiveSilenceFrames = 0;
-  } _voiceState;
-
   // Updated constants
   static constexpr float voiceStartThreshold = 0.12f;  // Higher threshold to start voice
   static constexpr float voiceEndThreshold = 0.08f;    // Lower threshold to end voice
   static constexpr size_t kMinVoiceFrames = 3;
-  static constexpr size_t kMinSilenceFrames = 5;
+  static constexpr size_t kMinSilenceFrames = 50;
 
   std::chrono::steady_clock::time_point _lastTranscriptionStart;
   std::chrono::steady_clock::time_point _lastTranscriptionEnd;
 
   WhillatsSetResponseCallback _responseCallback;
+
+  static constexpr size_t kPrerollBufferSize = 1600;  // 100ms at 16kHz (in samples)
+  std::vector<float> _prerollBuffer;              // Changed from uint8_t to float
+
+  // Add FFT helper function declaration
+  static void fft_forward(std::vector<std::complex<float>>& data, int n);
+
+  // Existing VAD helper function declaration
+  static bool vad_simple(const std::vector<float>& pcmf32,
+                        int sample_rate,
+                        int last_ms,
+                        float vad_thold,
+                        float freq_thold,
+                        bool verbose);
+
+  bool InitializeWhisperModel(const std::string& modelPath);
+  whisper_context* TryAlternativeInitMethods(const std::string& modelPath);
+  bool ValidateWhisperModel(const std::string& modelPath);
+  bool TranscribeAudioNonBlocking(const std::vector<float>& pcmf32);
+  bool RunProcessingThread();
+
  public:
 
   WhisperTranscriber(
