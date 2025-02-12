@@ -19,7 +19,7 @@ static constexpr int kSampleRate = 16000;       // 16 kHz
 static constexpr int kChannels = 1;             // Mono
 static constexpr int kBufferDurationMs = 10;    // 10ms buffer
 static constexpr int kTargetDurationSeconds = 3; // 3-second segments for Whisper
-static constexpr int kRingBufferSizeIncrement = kSampleRate * kTargetDurationSeconds * 2; // 3-seconds of 16-bit samples
+static constexpr int kRingBufferSizeIncrement = kSampleRate * kTargetDurationSeconds * 2 * 10; // 3-seconds of 16-bit samples
 
 ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
     : _callback(callback),
