@@ -442,17 +442,17 @@ bool WhisperTranscriber::RunProcessingThread() {
         
         if (shouldProcess) {
             // More sensitive VAD parameters for microphone input
-            const float vad_thold = 0.0001f;    // Lowered from 0.01f
+            const float vad_thold = 0.0003f;    // Lowered from 0.01f
             const float freq_thold = 10.0f;     // Lowered from 20.0f
             const int last_ms = 1000;           // Increased window
 
             bool voicePresent = vad_simple(audioBuffer, WHISPER_SAMPLE_RATE, last_ms, vad_thold, freq_thold, true);
-            LOG_I("VAD check: voice present = " << (voicePresent ? "true" : "false") 
+            LOG_V("VAD check: voice present = " << (voicePresent ? "true" : "false") 
                   << ", buffer size = " << audioBuffer.size() 
                   << ", threshold = " << vad_thold);
 
             if (voicePresent) {
-                LOG_I("Voice detected, starting transcription with " << audioBuffer.size() << " samples");
+                LOG_V("Voice detected, starting transcription with " << audioBuffer.size() << " samples");
                 TranscribeAudioNonBlocking(audioBuffer);
             } else {
                 LOG_V("No voice detected in buffer");
