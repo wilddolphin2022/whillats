@@ -20,6 +20,8 @@
 #include <queue>
 #include <thread>
 #include <functional>
+#include <condition_variable>
+
 #include "whisper_helpers.h"
 
 struct llama_model;
