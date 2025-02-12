@@ -358,7 +358,7 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
         }
 
         if (!full_text.empty()) {
-            LOG_I("Transcribed text: " << full_text);
+            std::cout << "Transcribed: " << full_text << std::endl;
             _responseCallback.OnResponseComplete(true, full_text.c_str());
             return true;
         }

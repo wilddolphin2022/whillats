@@ -100,7 +100,7 @@ void ESpeakTTS::synthesize(const char* text) {
         _buffer.insert(_buffer.end(), temp_buffer.begin(), temp_buffer.begin() + samples_to_read);
     }
 
-    LOG_I("Total synthesized samples: " << _buffer.size());
+    LOG_V("Total synthesized samples: " << _buffer.size());
 }
 
 int ESpeakTTS::internalSynthCallback(short* wav, int numsamples, espeak_EVENT* events) {
