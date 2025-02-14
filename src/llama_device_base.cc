@@ -303,7 +303,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         _lastResponseEnd = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
                 _lastResponseEnd - _lastResponseStart).count();
-        LOG_V("'" << current_phrase << "' time taken: " << duration << " ms");
+        std::cout << "Llama says: '" << current_phrase << "' in " << duration << " ms";
 
       }
       response += current_phrase;
@@ -334,7 +334,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     _lastResponseEnd = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             _lastResponseEnd - _lastResponseStart).count();
-    LOG_V("'" << current_phrase << "' time taken: " << duration << " ms");
+    std::cout << "Llama says: '" << current_phrase << "' in " << duration << " ms" << std::endl;
   }
 
   return response;
@@ -380,7 +380,7 @@ bool LlamaDeviceBase::RunProcessingThread()
         textToAsk = _textQueue.front();
         _textQueue.pop();
         shouldAsk = true;
-        LOG_I("Llama was asked '" << textToAsk << "'");
+        std::cout << "Asked: '" << textToAsk << "'" << std::endl;
       }
     }
 
@@ -406,7 +406,7 @@ bool LlamaDeviceBase::start()
     _llama_chat->SetModelPath(_model_path);
     if (_llama_chat && _llama_chat->Initialize())
     {
-      LOG_I("Llama chat initialized!");
+      LOG_V("Llama chat initialized!");
     } else {
       LOG_E("Failed to initialize Llama chat");
       return false;

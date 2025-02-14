@@ -20,12 +20,12 @@ static constexpr int kSampleRate = 16000;       // 16 kHz
 static constexpr int kChannels = 1;             // Mono
 static constexpr int kBufferDurationMs = 10;    // 10ms buffer
 static constexpr int kTargetDurationSeconds = 3; // 3-second segments for Whisper
-static constexpr int kRingBufferSizeIncrement = kSampleRate * kTargetDurationSeconds * 2; // 3-seconds of 16-bit samples
+static constexpr int kRingBufferSizeIncrement = kSampleRate * kTargetDurationSeconds * 2 * 5; // 3-seconds of 16-bit samples
 
 ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
     : _callback(callback),
       last_read_time_(std::chrono::steady_clock::now()),
-      ring_buffer_(new AudioRingBuffer(kRingBufferSizeIncrement)) {  // Size in bytes for 16-bit samples 
+      _audioBuffer(new AudioRingBuffer<uint16_t>(kRingBufferSizeIncrement)) {   
     espeak_AUDIO_OUTPUT output = AUDIO_OUTPUT_SYNCHRONOUS;
     int Buflength = 500;
     const char* path = NULL;
@@ -59,19 +59,14 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
 void ESpeakTTS::synthesize(const char* text) {
     if (!text) return;
     
-    // Clear output buffer
+    // Clear output buffer and ring buffer
     _buffer.clear();
-
-    // Pre-allocate buffer with estimated size
-    size_t estimated_samples = strlen(text) * 200;  // More generous estimate
-    _buffer.reserve(estimated_samples);
-
-    unsigned int position = 0, end_position = 0, flags = espeakCHARS_AUTO;
+    _audioBuffer->clear();  // Clear ring buffer before new synthesis
 
     // Process entire text at once
     espeak_ERROR result = espeak_Synth(text, strlen(text) + 1,
-                                     position, POS_CHARACTER, 
-                                     end_position, flags, NULL, 
+                                     0, POS_CHARACTER, 
+                                     0, espeakCHARS_AUTO, NULL, 
                                      reinterpret_cast<void*>(this));
     
     if (result != EE_OK) {
@@ -85,40 +80,54 @@ void ESpeakTTS::synthesize(const char* text) {
         return;
     }
 
-    // Read all available samples from the ring buffer
-    size_t bytes_available = ring_buffer_->availableToRead();
-    if (bytes_available > 0) {
-        // Convert bytes to samples (2 bytes per sample)
-        size_t samples_available = bytes_available / sizeof(uint16_t);
-        _buffer.resize(samples_available);
-        
-        // Read the data
-        if (!ring_buffer_->read(reinterpret_cast<uint8_t*>(_buffer.data()), bytes_available)) {
-            LOG_E("Failed to read from ring buffer");
-            _buffer.clear();
-            return;
+    // Read all available samples from the ring buffer in order
+    const size_t chunk_size = kSampleRate / 10;  // 100ms chunks
+    std::vector<uint16_t> temp_buffer(chunk_size);
+
+    while (true) {
+        size_t samples_available = _audioBuffer->availableToRead();
+        if (samples_available == 0) {
+            break;  // No more data to read
         }
-        LOG_V("Read " << samples_available << " samples from ring buffer");
+
+        // Read in small chunks to maintain order
+        size_t samples_to_read = std::min(samples_available, chunk_size);
+        if (!_audioBuffer->read(temp_buffer.data(), samples_to_read)) {
+            LOG_E("Failed to read from ring buffer");
+            break;
+        }
+
+        // Append to main buffer
+        _buffer.insert(_buffer.end(), temp_buffer.begin(), temp_buffer.begin() + samples_to_read);
     }
+
+    LOG_V("Total synthesized samples: " << _buffer.size());
 }
 
 int ESpeakTTS::internalSynthCallback(short* wav, int numsamples, espeak_EVENT* events) {
-    if (wav == nullptr || numsamples <= 0) {
-        return 1;  // Signal error
+    if (!events || !events->user_data) {
+        LOG_W("Invalid event data in callback");
+        return 1;
     }
 
     ESpeakTTS* context = static_cast<ESpeakTTS*>(events->user_data);
-    if (!context) return 1;  // Signal error
 
-    // Calculate size in bytes
-    size_t bytes_to_write = numsamples * sizeof(short);
+    // Handle end of synthesis
+    if (wav == nullptr || numsamples <= 0) {
+        LOG_V("End of synthesis marker received");
+        return 0;  // Success - this is normal end of synthesis
+    }
+
+    // Cast short* to uint16_t* since they're the same size and represent the same data
+    const uint16_t* samples = reinterpret_cast<const uint16_t*>(wav);
     
-    // Write samples to ring buffer
-    if (!context->ring_buffer_->write(reinterpret_cast<uint8_t*>(wav), bytes_to_write)) {
+    // Write samples directly to ring buffer
+    if (!context->_audioBuffer->write(samples, numsamples)) {
         LOG_E("Failed to write to ring buffer");
         return 1;  // Signal error
     }
     
+    LOG_V("Successfully wrote " << numsamples << " samples to ring buffer");
     return 0;  // Success
 }
 
@@ -179,11 +188,18 @@ bool ESpeakTTS::RunProcessingThread() {
     }
 
     if (shouldSynth) {
-        std::vector<uint16_t> buffer;
+        // Clear any previous data
+        _buffer.clear();
+        
+        // Synthesize the text
         synthesize(textToSynth.c_str());
         
+        // Only send callback if we have data
         if (!_buffer.empty()) {
+            LOG_V("Sending " << _buffer.size() << " samples to callback");
             _callback.OnBufferComplete(true, _buffer);
+        } else {
+            LOG_W("No audio data generated for text: " << textToSynth);
         }
     }
 

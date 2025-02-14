@@ -32,10 +32,10 @@ void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, 
     // Handle audio buffer here
     LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
     audio_buffer = std::vector<uint16_t>(buffer, buffer + buffer_size);
-    tts_done = true; 
     if(success) {
       writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
     }
+    tts_done = true; 
 }
 
 void whisperResponseCallback(bool success, const char* response, void* user_data) {
@@ -140,6 +140,7 @@ int main(int argc, char *argv[])
         size_t chunk_size = std::min(samples_per_chunk, audio_buffer.size() - i);
         whisper.processAudioBuffer((uint8_t *)(audio_buffer.data() + i), chunk_size * sizeof(uint16_t));
       }
+      
       whisper.processAudioBuffer(nullptr, -1);
       while (!whisper_done)
       {
