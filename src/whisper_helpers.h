@@ -19,14 +19,11 @@
 #include <locale>
 #include <string>
 #include <sstream>
-
-#include <chrono>
-#include <iostream>
-
 #include <chrono>
 #include <iostream>
 #include <sstream>
 #include <thread>
+#include <atomic>
 
 // Define log levels
 enum class LogLevel {

@@ -11,6 +11,7 @@
  */
 
 #include <thread>
+#include <cstring>
 
 #include "whillats.h"
 #include "espeak_tts.h"
