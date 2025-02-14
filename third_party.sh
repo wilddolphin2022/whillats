@@ -173,7 +173,7 @@ done
     then
         echo "building pcaudiolib"
         ./autogen.sh
-        ./configure
+        ./configure --with-pic
         make
         ./libtool --mode=install cp src/libpcaudio.la  ${THIRD_PARTY}/pcaudiolib/src/libpcaudio.dylib
     fi
