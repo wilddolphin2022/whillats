@@ -189,7 +189,7 @@ bool ESpeakTTS::RunProcessingThread() {
 
     if (shouldSynth) {
         // Clear any previous data
-        _buffer.clear();
+        //_buffer.clear();
         
         // Synthesize the text
         synthesize(textToSynth.c_str());

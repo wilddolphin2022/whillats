@@ -286,6 +286,20 @@ bool WhisperTranscriber::ValidateWhisperModel(const std::string& modelPath) {
     return true;
 }
 
+std::string removeTextInBrackets(const std::string& str) {
+    // Regular expression to match text inside square brackets
+    std::regex pattern(R"(\[[^\]]*\])");
+    
+    // Replace all matches with an empty string
+    std::string result = std::regex_replace(str, pattern, "");
+    
+    // Check if the resulting string contains only whitespace
+    if (std::all_of(result.begin(), result.end(), [](char c){ return std::isspace(c); }))
+        result.clear();
+
+    return result;
+}
+
 // Transcribe audio non-blocking 
 bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pcmf32) {
     if (!_whisperContext) {
@@ -357,14 +371,17 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& pc
             }
         }
 
+        // Remove text in brackets
+        full_text = removeTextInBrackets(full_text);
+
         if (!full_text.empty()) {
-            std::cout << "Transcribed: " << full_text << std::endl;
+            std::cout << "You: " << full_text << std::endl;
             _responseCallback.OnResponseComplete(true, full_text.c_str());
             return true;
         }
     }
 
-    LOG_W("No transcription result produced");
+    LOG_V("No transcription result produced");
     return false;
 }
 
