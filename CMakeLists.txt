@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
 project(whillats VERSION 1.0.0 LANGUAGES CXX)
 
+# Ensure Debug build type for whillats and subdirectories (llama, whisper)
+set(CMAKE_BUILD_TYPE Debug)
+
 # Set output directories - all to bin (MOVE THIS TO THE TOP)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
