@@ -16,9 +16,10 @@
 #include "silence_finder.h"
 #include "whisper_transcription.h"
 #include "llama_device_base.h"
-#include "espeak_tts.h"
 #include "whillats.h"
 
+#ifndef WEBRTC_IOS
+#include "espeak_tts.h"
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback),
@@ -41,6 +42,16 @@ void WhillatsTTS::stop() {
 int WhillatsTTS::getSampleRate() {
     return ESpeakTTS::getSampleRate();
 }
+#else
+WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
+    : _callback(callback) { LOG_I("WhillatsTTS constructor not supported on iOS"); }
+
+WhillatsTTS::~WhillatsTTS() { LOG_I("WhillatsTTS destructor not supported on iOS"); }
+void WhillatsTTS::queueText(const char* text) { LOG_I("WhillatsTTS queueText not supported on iOS"); }
+bool WhillatsTTS::start() { LOG_I("WhillatsTTS start not supported on iOS"); return true; }
+void WhillatsTTS::stop() { LOG_I("WhillatsTTS stop not supported on iOS"); }
+int WhillatsTTS::getSampleRate() { LOG_I("WhillatsTTS getSampleRate not supported on iOS"); return 0; }
+#endif // !WEBRTC_IOS
 
 WhillatsTranscriber::WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback) 
     : _callback(callback),

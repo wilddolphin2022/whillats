@@ -24,6 +24,7 @@
 #include <sstream>
 #include <thread>
 #include <atomic>
+#include <cstring>
 
 // Define log levels
 enum class LogLevel {

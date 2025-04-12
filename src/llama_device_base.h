@@ -22,6 +22,7 @@
 #include <functional>
 #include <condition_variable>
 
+#include "whillats.h"
 #include "whisper_helpers.h"
 
 struct llama_model;
@@ -30,55 +31,17 @@ struct llama_sampler;
 struct llama_vocab;
 typedef int32_t llama_token;
 
-#include "whillats.h"
-
-class LlamaSimpleChat {
-public:
-  LlamaSimpleChat();
-  ~LlamaSimpleChat();
-
-  bool SetModelPath(const std::string& path);
-  bool SetNGL(int layers);
-  bool SetContextSize(int size);
-  void StopGeneration();
-
-  bool Initialize();
-  std::string generate(const std::string& request, WhillatsSetResponseCallback callback);
-
-  bool InitializeContext();
-  void FreeContext();
-
-  bool LoadModel();
-
-  std::string model_path_;
-  int ngl_ = 99; // Number of GPU layers to offload
-  int n_predict_ = 2048; // Number of tokens to predict
-  std::string prompt_;
-
-  llama_model* model_ = nullptr;
-  const llama_vocab* vocab_ = nullptr;
-  llama_context* ctx_ = nullptr;
-  llama_sampler* smpl_ = nullptr;
-  
-  std::atomic<bool> continue_ = true;
-
-  bool isRepetitive(const std::string& text, size_t minPatternLength = 4);
-  bool hasConfirmationPattern(const std::string& text);
-
-  std::chrono::steady_clock::time_point _lastResponseStart;
-  std::chrono::steady_clock::time_point _lastResponseEnd;
-};
+class LlamaSimpleChat;
 
 class LlamaDeviceBase {
 public:
   LlamaDeviceBase(const char* model_path, WhillatsSetResponseCallback callback);
   virtual ~LlamaDeviceBase();
 
+  void askLlama(const char *prompt);
   bool start();
   void stop();
-  void askLlama(const char* prompt);
-  
-  // Add callback setters
+
 private:
   bool _running;
   std::thread _processingThread;

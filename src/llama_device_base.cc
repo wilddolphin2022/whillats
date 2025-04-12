@@ -1,349 +1,370 @@
-/*
- *  (c) 2025, wilddolphin2022
- *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2022
- *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
- */
-
 #include <thread>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <chrono>
+#include <mutex>
+#include <queue>
+#include <regex>
 
-#include <llama.h>
+#include "llama.h"
+
+// Assuming these are defined elsewhere
 #include "llama_device_base.h"
 #include "whisper_helpers.h"
 
+class LlamaSimpleChat {
+public:
+    LlamaSimpleChat();
+    ~LlamaSimpleChat();
+    bool SetModelPath(const std::string &path);
+    bool SetNGL(int layers);
+    bool SetContextSize(int size);
+    void StopGeneration();
+    bool Initialize();
+    std::string generate(const std::string &prompt, WhillatsSetResponseCallback callback);
+
+    bool LoadModel();
+    bool InitializeContext();
+    void FreeContext();
+    bool isRepetitive(const std::string &text, size_t minPatternLength = 10);
+    bool isCompleteSentence(const std::string &text);
+
+    std::string model_path_;
+    int ngl_ = 0;
+    int n_predict_ = 512; // Default context size
+    std::string prompt_ = "You are a helpful assistant."; // Initial system prompt
+    bool continue_ = false;
+
+    llama_model *model_ = nullptr;
+    llama_context *ctx_ = nullptr;
+    llama_sampler *smpl_ = nullptr;
+    const llama_vocab *vocab_ = nullptr;
+    std::vector<llama_token> context_tokens_; // Persistent context
+    int n_past_ = 0; // Track processed tokens
+
+    std::chrono::steady_clock::time_point _lastResponseStart;
+    std::chrono::steady_clock::time_point _lastResponseEnd;
+};
+
 LlamaSimpleChat::LlamaSimpleChat() = default;
 
-LlamaSimpleChat::~LlamaSimpleChat()
-{
-  if (smpl_)
-  {
-    llama_sampler_free(smpl_);
-  }
-
-  FreeContext();
-  if (model_)
-  {
-    llama_model_free(model_);
-  }
-}
-
-bool LlamaSimpleChat::SetModelPath(const std::string &path)
-{
-  model_path_ = path;
-  return true;
-}
-
-bool LlamaSimpleChat::SetNGL(int layers)
-{
-  ngl_ = layers;
-  return true;
-}
-
-bool LlamaSimpleChat::SetContextSize(int size)
-{
-  n_predict_ = size;
-  return true;
-}
-
-void LlamaSimpleChat::StopGeneration()
-{
-  continue_ = false;
-}
-
-bool LlamaSimpleChat::Initialize()
-{
-  ggml_backend_load_all();
-  return LoadModel() && InitializeContext();
-}
-
-bool LlamaSimpleChat::LoadModel()
-{
-  if (model_path_.empty())
-  {
-    LOG_E("Model path not set.");
-    return false;
-  }
-
-  llama_model_params model_params = llama_model_default_params();
-  model_params.n_gpu_layers = ngl_;
-  model_ = llama_model_load_from_file(model_path_.c_str(), model_params);
-  if (!model_)
-  {
-    LOG_E("Unable to load model.");
-    return false;
-  }
-  vocab_ = llama_model_get_vocab(model_);
-  return true;
-}
-
-bool LlamaSimpleChat::InitializeContext()
-{
-  if (ctx_)
-  {
+LlamaSimpleChat::~LlamaSimpleChat() {
+    if (smpl_) {
+        llama_sampler_free(smpl_);
+    }
     FreeContext();
-  }
-
-  if (!model_ || !vocab_)
-  {
-    LOG_E("Model or vocab not loaded.");
-    return false;
-  }
-
-  // Tokenize the prompt
-  const int n_prompt = -llama_tokenize(vocab_, prompt_.c_str(), prompt_.size(), NULL, 0, true, true);
-  std::vector<llama_token> prompt_tokens(n_prompt);
-  if (llama_tokenize(vocab_, prompt_.c_str(), prompt_.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0)
-  {
-    LOG_E("Failed to tokenize the prompt.");
-    return false;
-  }
-
-  // Setup context parameters
-  llama_context_params ctx_params = llama_context_default_params();
-  ctx_params.n_ctx = n_prompt + n_predict_ - 1;
-  ctx_params.n_batch = n_prompt;
-  ctx_params.no_perf = false;
-
-  ctx_ = llama_init_from_model(model_, ctx_params);
-  if (!ctx_)
-  {
-    LOG_E("Failed to create the llama_context.");
-    return false;
-  }
-
-  // Initialize sampler
-  smpl_ = llama_sampler_chain_init(llama_sampler_chain_default_params());
-  llama_sampler_chain_add(smpl_, llama_sampler_init_min_p(0.05f, 1));
-  llama_sampler_chain_add(smpl_, llama_sampler_init_temp(0.8f));
-  llama_sampler_chain_add(smpl_, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-
-  return true;
-}
-
-void LlamaSimpleChat::FreeContext()
-{
-  if (ctx_)
-  {
-    llama_free(ctx_);
-    ctx_ = nullptr;
-  }
-}
-
-// Add helper function to detect repetition
-bool LlamaSimpleChat::isRepetitive(const std::string &text, size_t minPatternLength)
-{
-  if (text.length() < minPatternLength * 2)
-  {
-    return false;
-  }
-
-  // Check for immediate repetition of phrases
-  for (size_t len = minPatternLength; len <= text.length() / 2; ++len)
-  {
-    std::string last = text.substr(text.length() - len);
-    size_t pos = text.rfind(last, text.length() - len - 1);
-    if (pos != std::string::npos)
-    {
-      return true;
+    if (model_) {
+        llama_model_free(model_);
     }
-  }
-  return false;
 }
 
-// Add helper to check for confirmation patterns
-bool LlamaSimpleChat::hasConfirmationPattern(const std::string &text)
-{
-  static const std::vector<std::string> patterns = {
-      "yeah", "okay", "so", "right", "think",
-      "that's", "correct", "makes sense"};
+bool LlamaSimpleChat::SetModelPath(const std::string &path) {
+    model_path_ = path;
+    return true;
+}
 
-  size_t matches = 0;
-  std::string lower = text;
-  std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+bool LlamaSimpleChat::SetNGL(int layers) {
+    ngl_ = layers;
+    return true;
+}
 
-  for (const auto &pattern : patterns)
-  {
-    if (lower.find(pattern) != std::string::npos)
-    {
-      matches++;
-      if (matches >= 3)
-      { // If we see multiple confirmation words
-        return true;
-      }
+bool LlamaSimpleChat::SetContextSize(int size) {
+    n_predict_ = size;
+    return true;
+}
+
+void LlamaSimpleChat::StopGeneration() {
+    continue_ = false;
+}
+
+bool LlamaSimpleChat::Initialize() {
+    ggml_backend_load_all();
+    if (!LoadModel()) {
+        LOG_E("Failed to load model.");
+        return false;
     }
-  }
-  return false;
-}
-
-std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResponseCallback callback)
-{
-  // Tokenize the prompt
-  const struct llama_vocab *vocab = llama_model_get_vocab(model_);
-
-  const int n_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), nullptr, 0, true, false);
-  if (n_tokens < 0)
-  {
-    LOG_E("Failed to count prompt tokens");
-    return "";
-  }
-
-  std::vector<llama_token> tokens(n_tokens);
-  if (llama_tokenize(vocab, prompt.c_str(), prompt.size(), tokens.data(), tokens.size(), true, false) < 0)
-  {
-    LOG_E("Failed to tokenize prompt");
-    return "";
-  }
-
-  // Create batch for prompt processing
-  llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
-
-  if (llama_decode(ctx_, batch))
-  {
-    LOG_E("Failed to process prompt");
-    return "";
-  }
-
-  // Initialize generation
-  std::string response;
-  std::string current_phrase;
-  std::string recent_text; // For pattern detection
-  continue_ = true;
-
-  const int max_response_tokens = 256;
-  const int max_repetition_window = 50; // Characters to check for repetition
-  int generated_tokens = 0;
-  int unchanged_count = 0;    // Counter for unchanged text
-  int confirmation_count = 0; // Counter for confirmation patterns
-
-  // Initialize sampler chain if needed
-  if (!smpl_)
-  {
-    auto params = llama_sampler_chain_default_params();
-    smpl_ = llama_sampler_chain_init(params);
-    llama_sampler_chain_add(smpl_, llama_sampler_init_top_k(40));
-    llama_sampler_chain_add(smpl_, llama_sampler_init_top_p(0.95f, 1));
-    llama_sampler_chain_add(smpl_, llama_sampler_init_temp(0.8f));
+    if (!InitializeContext()) {
+        LOG_E("Failed to initialize context.");
+        return false;
+    }
+    if (smpl_) {
+        llama_sampler_free(smpl_);
+    }
+    smpl_ = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    if (!smpl_) {
+        LOG_E("Failed to initialize sampler.");
+        return false;
+    }
+    llama_sampler_chain_add(smpl_, llama_sampler_init_top_k(50));
+    llama_sampler_chain_add(smpl_, llama_sampler_init_top_p(0.9f, 1));
+    llama_sampler_chain_add(smpl_, llama_sampler_init_temp(0.7f));
     llama_sampler_chain_add(smpl_, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-  }
+    return true;
+}
 
-  // Generation loop
-  while (continue_ && generated_tokens < max_response_tokens)
-  {
-    if (!continue_)
-    {
-      break; // Immediate interrupt check
+bool LlamaSimpleChat::LoadModel() {
+    if (model_path_.empty()) {
+        LOG_E("Model path not set.");
+        return false;
     }
 
-    // Sample next token
-    llama_token new_token_id = llama_sampler_sample(smpl_, ctx_, -1);
+    llama_model_params model_params = llama_model_default_params();
+    model_params.n_gpu_layers = ngl_;
+    model_ = llama_model_load_from_file(model_path_.c_str(), model_params);
+    if (!model_) {
+        LOG_E("Unable to load model.");
+        return false;
+    }
+    vocab_ = llama_model_get_vocab(model_);
+    return true;
+}
 
-    if (new_token_id == llama_vocab_eos(vocab))
-    {
-      break;
+bool LlamaSimpleChat::InitializeContext() {
+    if (ctx_) {
+        FreeContext();
     }
 
-    // Convert token to text
-    char token_text[8];
-    int token_text_len = llama_token_to_piece(vocab, new_token_id, token_text, sizeof(token_text), 0, true);
-    if (token_text_len < 0)
-    {
-      break;
+    if (!model_ || !vocab_) {
+        LOG_E("Model or vocab not loaded.");
+        return false;
     }
 
-    // Process the generated piece
-    std::string piece(token_text, token_text_len);
-    current_phrase += piece;
-    recent_text += piece;
-
-    // Keep recent_text to a manageable size
-    if (recent_text.length() > max_repetition_window)
-    {
-      recent_text = recent_text.substr(recent_text.length() - max_repetition_window);
+    // Tokenize initial system prompt only on first initialization
+    if (context_tokens_.empty()) {
+        const int n_prompt = -llama_tokenize(vocab_, prompt_.c_str(), prompt_.size(), nullptr, 0, true, true);
+        if (n_prompt < 0) {
+            LOG_E("Failed to count prompt tokens.");
+            return false;
+        }
+        std::vector<llama_token> prompt_tokens(n_prompt);
+        if (llama_tokenize(vocab_, prompt_.c_str(), prompt_.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0) {
+            LOG_E("Failed to tokenize the prompt.");
+            return false;
+        }
+        context_tokens_ = prompt_tokens;
+        n_past_ = 0;
     }
 
-    // Check for natural response end conditions
-    bool should_end = false;
+    llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.n_ctx = n_predict_;
+    ctx_params.n_batch = 512;
+    ctx_params.no_perf = false;
 
-    // 1. Check for repetitive patterns
-    if (isRepetitive(recent_text))
-    {
-      unchanged_count++;
-      if (unchanged_count > 3)
-      { // Allow some repetition before breaking
-        should_end = true;
-      }
-    }
-    else
-    {
-      unchanged_count = 0;
+    ctx_ = llama_init_from_model(model_, ctx_params);
+    if (!ctx_) {
+        LOG_E("Failed to create the llama_context.");
+        return false;
     }
 
-    // 2. Check for excessive confirmation patterns
-    if (hasConfirmationPattern(current_phrase))
-    {
-      confirmation_count++;
-      if (confirmation_count > 2)
-      { // Break if too many confirmation patterns
-        should_end = true;
-      }
+    // Process initial context tokens
+    if (!context_tokens_.empty() && n_past_ == 0) {
+        int n_eval = context_tokens_.size();
+        int n_batch = ctx_params.n_batch;
+        for (int i = 0; i < n_eval; i += n_batch) {
+            int n_tokens = std::min(n_batch, n_eval - i);
+            struct llama_batch batch = llama_batch_get_one(&context_tokens_[i], n_tokens);
+            if (llama_decode(ctx_, batch)) {
+                LOG_E("Failed to decode initial context tokens.");
+                FreeContext();
+                return false;
+            }
+            n_past_ += n_tokens;
+        }
+        if (smpl_) {
+            llama_sampler_reset(smpl_);
+        }
     }
 
-    // Process completed phrases
-    if (piece.find_first_of(".!?") != std::string::npos || should_end)
-    {
-      if (!current_phrase.empty())
-      {
+    return true;
+}
+
+void LlamaSimpleChat::FreeContext() {
+    if (ctx_) {
+        llama_free(ctx_);
+        ctx_ = nullptr;
+    }
+}
+
+bool LlamaSimpleChat::isRepetitive(const std::string &text, size_t minPatternLength) {
+    if (text.length() < minPatternLength * 2) return false;
+    for (size_t len = minPatternLength; len <= text.length() / 2; ++len) {
+        std::string last = text.substr(text.length() - len);
+        if (text.rfind(last, text.length() - len - 1) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool LlamaSimpleChat::isCompleteSentence(const std::string &text) {
+    if (text.empty()) return false;
+    char last_char = text.back();
+    return (last_char == '.' || last_char == '!' || last_char == '?') &&
+           !std::all_of(text.begin(), text.end(), isspace);
+}
+
+std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResponseCallback callback) {
+    if (!ctx_ || !vocab_ || !smpl_) {
+        LOG_E("Context, vocab, or sampler not initialized.");
+        return "";
+    }
+
+    // Tokenize the new prompt
+    const int n_tokens = -llama_tokenize(vocab_, prompt.c_str(), prompt.size(), nullptr, 0, false, false);
+    if (n_tokens < 0) {
+        LOG_E("Failed to count prompt tokens.");
+        return "";
+    }
+
+    std::vector<llama_token> prompt_tokens(n_tokens);
+    if (llama_tokenize(vocab_, prompt.c_str(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), false, false) < 0) {
+        LOG_E("Failed to tokenize prompt.");
+        return "";
+    }
+
+    // Append new tokens to context
+    context_tokens_.insert(context_tokens_.end(), prompt_tokens.begin(), prompt_tokens.end());
+
+    // Trim context if it exceeds the limit
+    if (context_tokens_.size() > (size_t) n_predict_) {
+        int excess = context_tokens_.size() - n_predict_;
+        context_tokens_.erase(context_tokens_.begin(), context_tokens_.begin() + excess);
+        n_past_ = std::max(0, n_past_ - excess);
+        if (!InitializeContext()) {
+            LOG_E("Failed to reinitialize context after trimming.");
+            return "";
+        }
+    }
+
+    // Process new tokens
+    int n_new = prompt_tokens.size();
+    if (n_new > 0) {
+        struct llama_batch batch = llama_batch_get_one(prompt_tokens.data(), n_new);
+        if (llama_decode(ctx_, batch)) {
+            LOG_E("Failed to decode new prompt tokens.");
+            return "";
+        }
+        n_past_ += n_new;
+    }
+
+    // Generation loop
+    std::string response;
+    std::string current_phrase;
+    std::string recent_text;
+    continue_ = true;
+
+    const int max_response_tokens = 256;
+    int generated_tokens = 0;
+    int repetition_count = 0;
+
+    _lastResponseStart = std::chrono::steady_clock::now();
+
+    while (continue_ && generated_tokens < max_response_tokens) {
+        if (!smpl_ || !ctx_) {
+            LOG_E("Sampler or context became null during generation.");
+            break;
+        }
+
+        // Sample from the last token's logits
+        float *logits = llama_get_logits_ith(ctx_, -1);
+        if (!logits) {
+            LOG_E("Failed to get logits for sampling.");
+            break;
+        }
+
+        int n_vocab = llama_vocab_n_tokens(vocab_);
+        std::vector<llama_token_data> candidates(n_vocab);
+        for (int i = 0; i < n_vocab; ++i) {
+            candidates[i] = {i, logits[i], 0.0f};
+        }
+        llama_token_data_array cur_p = {candidates.data(), candidates.size(), -1, false};
+        llama_sampler_apply(smpl_, &cur_p);
+
+        if (cur_p.size == 0 || cur_p.selected < 0 || cur_p.selected >= (int64_t)cur_p.size) {
+            LOG_E("Invalid sampling result: empty array or out-of-bounds selection.");
+            break;
+        }
+
+        llama_token new_token_id = cur_p.data[cur_p.selected].id;
+        if (new_token_id == llama_vocab_eos(vocab_)) {
+            LOG_V("Reached EOS token.");
+            break;
+        }
+
+        // Validate token ID
+        if (new_token_id < 0 || new_token_id >= n_vocab) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Invalid token ID sampled: %d (vocab size: %d)", new_token_id, n_vocab);
+            LOG_E(msg);
+            break;
+        }
+
+        // Convert token to text with a larger buffer
+        char token_text[64]; // Increased from 8 to 64
+        int token_text_len = llama_token_to_piece(vocab_, new_token_id, token_text, sizeof(token_text), 0, true);
+        if (token_text_len < 0) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Failed to convert token %d to piece.", new_token_id);
+            LOG_E(msg);
+            break;
+        }
+
+        std::string piece(token_text, token_text_len);
+        current_phrase += piece;
+        recent_text += piece;
+
+        if (recent_text.length() > 50) {
+            recent_text = recent_text.substr(recent_text.length() - 50);
+        }
+
+        context_tokens_.push_back(new_token_id);
+        llama_sampler_accept(smpl_, new_token_id);
+
+        if (isRepetitive(recent_text)) {
+            repetition_count++;
+            if (repetition_count > 3) {
+                LOG_V("Stopping due to repetitive output.");
+                break;
+            }
+        } else {
+            repetition_count = 0;
+        }
+
+        if (isCompleteSentence(current_phrase)) {
+            callback.OnResponseComplete(true, current_phrase.c_str());
+            LOG_I("Llama says: '" << current_phrase << "' in "
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - _lastResponseStart).count()
+                      << " ms");
+            response += current_phrase;
+            current_phrase.clear();
+        }
+
+        struct llama_batch batch = llama_batch_get_one(&new_token_id, 1);
+        if (llama_decode(ctx_, batch)) {
+            LOG_E("Failed to decode new token.");
+            break;
+        }
+        n_past_++;
+
+        generated_tokens++;
+    }
+
+    if (!current_phrase.empty() && isCompleteSentence(current_phrase)) {
         callback.OnResponseComplete(true, current_phrase.c_str());
-
-        _lastResponseEnd = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                _lastResponseEnd - _lastResponseStart).count();
-        std::cout << "Llama: '" << current_phrase << "' in " << duration << " ms" << std::endl;
-
-      }
-      response += current_phrase;
-      current_phrase.clear();
-
-      if (should_end)
-      {
-        break;
-      }
+        response += current_phrase;
+        LOG_I("Llama says: '" << current_phrase << "' in "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now() - _lastResponseStart).count()
+                  << " ms");
     }
 
-    // Prepare next token
-    batch = llama_batch_get_one(&new_token_id, 1);
-    if (llama_decode(ctx_, batch))
-    {
-      break;
-    }
-
-    generated_tokens++;
-  }
-
-  // Handle any remaining text
-  if (!current_phrase.empty())
-  {
-    callback.OnResponseComplete(true, current_phrase.c_str());
-    response += current_phrase;
-
-    _lastResponseEnd = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-            _lastResponseEnd - _lastResponseStart).count();
-    std::cout << "Llama: '" << current_phrase << "' in " << duration << " ms" << std::endl;
-  }
-
-  return response;
+    return response;
 }
 
 //
 // Llama device base
-//
-
 LlamaDeviceBase::LlamaDeviceBase(
     const char*model_path,
     WhillatsSetResponseCallback callback)
@@ -352,9 +373,9 @@ LlamaDeviceBase::LlamaDeviceBase(
 {
 }
 
-LlamaDeviceBase::~LlamaDeviceBase() {}
+LlamaDeviceBase::~LlamaDeviceBase() { stop(); }
 
-void LlamaDeviceBase::askLlama(const char* prompt)
+void LlamaDeviceBase::askLlama(const char *prompt)
 {
   {
     std::unique_lock<std::mutex> lock(_queueMutex);
@@ -365,14 +386,51 @@ void LlamaDeviceBase::askLlama(const char* prompt)
   }
 }
 
+bool LlamaDeviceBase::start()
+{
+  if (!_running)
+  {
+    _llama_chat.reset(new LlamaSimpleChat());
+    _llama_chat->SetModelPath(_model_path);
+    if (_llama_chat && _llama_chat->Initialize())
+    {
+      LOG_V("Llama chat initialized!");
+    }
+    else
+    {
+      LOG_E("Failed to initialize Llama chat");
+      return false;
+    }
+
+    _running = true;
+    _processingThread = std::thread([this]
+                                    {
+  while (_running && RunProcessingThread()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  } });
+  }
+  return _running;
+}
+void LlamaDeviceBase::stop()
+{
+  if (_running)
+  {
+    _running = false;
+
+    if (_processingThread.joinable())
+    {
+      _processingThread.join();
+    }
+  }
+}
+
+// LlamaDeviceBase remains mostly unchanged, but ensure TrimContext and AppendToContext are used correctly
 bool LlamaDeviceBase::RunProcessingThread()
 {
-
   while (_running)
   {
     std::string textToAsk;
     bool shouldAsk = false;
-
     {
       std::unique_lock<std::mutex> lock(_queueMutex);
       if (!_textQueue.empty())
@@ -390,66 +448,7 @@ bool LlamaDeviceBase::RunProcessingThread()
       textToAsk.clear();
     }
 
-    // Sleep if no data available to read to prevent busy-waiting
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-
   return true;
-}
-
-bool LlamaDeviceBase::start()
-{
-  if (!_running)
-  {
-    _llama_chat.reset(new LlamaSimpleChat());
-    _llama_chat->SetModelPath(_model_path);
-    if (_llama_chat && _llama_chat->Initialize())
-    {
-      LOG_V("Llama chat initialized!");
-    } else {
-      LOG_E("Failed to initialize Llama chat");
-      return false;
-    }
-
-    _running = true;
-    _processingThread = std::thread([this] {
-      while (_running && RunProcessingThread()) {
-      } 
-    });
-  }
-
-  return _running;
-}
-
-void LlamaDeviceBase::stop()
-{
-  if (_running)
-  {
-    _running = false;
-
-    if (_processingThread.joinable())
-    {
-      _processingThread.join();
-    }
-  }
-}
-
-bool LlamaDeviceBase::TrimContext()
-{
-  if (context_tokens_.size() > max_context_tokens_)
-  {
-    // Keep the most recent tokens within the limit
-    size_t excess = context_tokens_.size() - max_context_tokens_;
-    context_tokens_.erase(context_tokens_.begin(), context_tokens_.begin() + excess);
-
-    // Reinitialize context with trimmed tokens
-    return _llama_chat->InitializeContext();
-  }
-  return true;
-}
-
-bool LlamaDeviceBase::AppendToContext(const std::vector<llama_token> &new_tokens)
-{
-  context_tokens_.insert(context_tokens_.end(), new_tokens.begin(), new_tokens.end());
-  return TrimContext();
 }

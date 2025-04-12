@@ -72,7 +72,9 @@ class WHILLATS_API WhillatsTTS {
 
   private:
     WhillatsSetAudioCallback _callback;
+#ifndef WEBRTC_IOS
     std::unique_ptr<ESpeakTTS> _espeak_tts; 
+#endif // !WEBRTC_IOS
 };
 
 class WHILLATS_API WhillatsTranscriber {
