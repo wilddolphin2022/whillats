@@ -53,7 +53,7 @@ case "$(uname -s | tr '[:upper:]' '[:lower:]')" in
         ;;
 esac
 
-BUILD_TYPE=debug
+BUILD_TYPE=
 
 while [ "$1" != "" ]; do
     case $1 in
@@ -79,6 +79,9 @@ while [ "$1" != "" ]; do
 done
 
     echo "HOST_PLATFORM is ${HOST_PLATFORM}, BUILD_TYPE is ${BUILD_TYPE}, THIRD_PARTY is ${THIRD_PARTY}"
+    if [ ! -d ${THIRD_PARTY} ]; then
+        mkdir ${THIRD_PARTY}
+    fi
 
     cd ${THIRD_PARTY}
     if [ ! -f ${THIRD_PARTY}/whisper.cpp/CMakeLists.txt ]; then
@@ -109,72 +112,72 @@ done
         sed -i 's/Wunreachable-code-return/Wunreachable-code/g' ggml/src/CMakeLists.txt
     fi
 
-    echo "building whisper.cpp"
-    cmake -B build
-
-    if [ "${BUILD_TYPE}" = "release" ]
-        cmake --build build --config Release  
+    if [ -z ${BUILD_TYPE} ]
     then
-        cmake --build build --config Debug  
-    fi
+        echo "building skipped, no build type"
+    else
 
-    if [ "${HOST_PLATFORM}" = "linux" ]
-    then
-        echo "installing whisper.cpp"
-        cd build; sudo make install; cd ..
-    fi
+        echo "building whisper.cpp"
+        cmake -B build
 
-    cd ${THIRD_PARTY}/llama.cpp
+        if [ "${BUILD_TYPE}" = "release" ]
+            cmake --build build --config Release  
+        then
+            cmake --build build --config Debug  
+        fi
 
-    if [ "${HOST_PLATFORM}" = "linux" ]
-    then
-        sed -i 's/Wunreachable-code-break/Wunreachable-code/g' ggml/src/CMakeLists.txt 
-        sed -i 's/Wunreachable-code-return/Wunreachable-code/g' ggml/src/CMakeLists.txt
-    fi
+        if [ "${HOST_PLATFORM}" = "linux" ]
+        then
+            echo "installing whisper.cpp"
+            cd build; sudo make install; cd ..
+        fi
 
-    echo "building llama.cpp"
-    cmake -B build
+        cd ${THIRD_PARTY}/llama.cpp
 
-    if [ "${BUILD_TYPE}" = "release" ]
-        cmake --build build --config Release  
-    then
-        cmake --build build --config Debug  
-    fi
+        if [ "${HOST_PLATFORM}" = "linux" ]
+        then
+            sed -i 's/Wunreachable-code-break/Wunreachable-code/g' ggml/src/CMakeLists.txt 
+            sed -i 's/Wunreachable-code-return/Wunreachable-code/g' ggml/src/CMakeLists.txt
+        fi
 
-    if [ "${HOST_PLATFORM}" = "linux" ]
-    then
-        echo "installing llama.cpp"
-        cd build; sudo make install; cd ..
-    fi
+        echo "building llama.cpp"
+        cmake -B build
 
-    cd ${THIRD_PARTY}/espeak-ng
+        if [ "${BUILD_TYPE}" = "release" ]
+            cmake --build build --config Release  
+        then
+            cmake --build build --config Debug  
+        fi
 
-    echo "building espeak-ng"
+        if [ "${HOST_PLATFORM}" = "linux" ]
+        then
+            echo "installing llama.cpp"
+            cd build; sudo make install; cd ..
+        fi
 
-    cmake -B build
+        cd ${THIRD_PARTY}/espeak-ng
 
-    if [ "${BUILD_TYPE}" = "release" ]
-        cmake --build build --config Release  
-    then
-        cmake --build build --config Debug  
-    fi
+        echo "building espeak-ng"
 
-    #if [ "${HOST_PLATFORM}" = "linux" ]
-    #then
-    #    echo "installing espeak-ng"
-    #    sudo make install
-    #fi
+        cmake -B build
 
-    echo "building pcaudio"
+        if [ "${BUILD_TYPE}" = "release" ]
+            cmake --build build --config Release  
+        then
+            cmake --build build --config Debug  
+        fi
 
-    cd ${THIRD_PARTY}/pcaudiolib
+        echo "building pcaudio"
 
-    echo "building pcaudiolib"
-    ./autogen.sh
-    ./configure --with-pic
-    make
-    if [ "${HOST_PLATFORM}" = "mac" ]
-    then
-        ./libtool --mode=install cp src/libpcaudio.la  ${THIRD_PARTY}/pcaudiolib/src/libpcaudio.dylib
+        cd ${THIRD_PARTY}/pcaudiolib
+
+        echo "building pcaudiolib"
+        ./autogen.sh
+        ./configure --with-pic
+        make
+        if [ "${HOST_PLATFORM}" = "mac" ]
+        then
+            ./libtool --mode=install cp src/libpcaudio.la  ${THIRD_PARTY}/pcaudiolib/src/libpcaudio.dylib
+        fi
     fi
 
