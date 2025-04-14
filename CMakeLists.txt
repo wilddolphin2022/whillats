@@ -47,14 +47,16 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE # Faster clone
 )
 
-# Declare Agora SDK
-FetchContent_Declare(
-    agora_sdk
-    URL https://download.agora.io/rtsasdk/release/Agora-RTC-x86_64-linux-gnu-v4.4.30-20241024_101940-398537.tgz
-    # Specify the subdirectory inside the archive that contains the SDK
-    SOURCE_SUBDIR Agora-RTC-x86_64-linux-gnu-v4.4.30-20241024_101940-398537 
-    # CMake should automatically handle extraction for .tgz
-)
+# Declare Agora SDK (Only for Linux)
+if(UNIX AND NOT APPLE)
+    FetchContent_Declare(
+        agora_sdk
+        URL https://download.agora.io/rtsasdk/release/Agora-RTC-x86_64-linux-gnu-v4.4.30-20241024_101940-398537.tgz
+        # Specify the subdirectory inside the archive that contains the SDK
+        SOURCE_SUBDIR Agora-RTC-x86_64-linux-gnu-v4.4.30-20241024_101940-398537 
+        # CMake should automatically handle extraction for .tgz
+    )
+endif()
 
 # --- Populate and Build Dependencies ---
 
@@ -120,7 +122,7 @@ ExternalProject_Add(pcaudiolib_external
     SOURCE_DIR ${pcaudiolib-proj_SOURCE_DIR}
     BINARY_DIR ${PCAUDIOLIB_BUILD_DIR}
     # CONFIGURE_COMMAND runs ./configure from the source dir in the build dir
-    CONFIGURE_COMMAND <SOURCE_DIR>/configure --with-pic --prefix=${PCAUDIOLIB_INSTALL_DIR} CFLAGS=-fPIC CXXFLAGS=-fPIC # Added -fPIC flags
+    CONFIGURE_COMMAND bash -c "export CFLAGS='-fPIC -I${pcaudiolib-proj_SOURCE_DIR}/src/include' && export CXXFLAGS='-fPIC -I${pcaudiolib-proj_SOURCE_DIR}/src/include' && exec <SOURCE_DIR>/configure --with-pic --prefix='${PCAUDIOLIB_INSTALL_DIR}'"
     BUILD_COMMAND $(MAKE) # Use CMake's make variable
     INSTALL_COMMAND "" # Don't install system-wide
     BUILD_BYPRODUCTS ${PCAUDIOLIB_LIB_PATH} # Tell CMake about the output file
@@ -292,9 +294,32 @@ target_include_directories(test_whillats
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# Make Agora SDK available (downloads and extracts)
-FetchContent_MakeAvailable(agora_sdk)
-message(STATUS "Agora SDK source dir: ${agora_sdk_SOURCE_DIR}")
+# Make Agora SDK available (downloads and extracts) (Only for Linux)
+if(UNIX AND NOT APPLE)
+    FetchContent_MakeAvailable(agora_sdk)
+    message(STATUS "Agora SDK source dir: ${agora_sdk_SOURCE_DIR}")
+endif()
 
-# Ensure examples are processed after main library and dependencies
-add_subdirectory(example/agora-whillats-bot)
+# Ensure examples are processed after main library and dependencies (Only for Linux)
+if(UNIX AND NOT APPLE)
+    add_subdirectory(example/agora-whillats-bot)
+endif()
+
+# --- Add patch for espeak-ng compat header ---
+FetchContent_GetProperties(espeak-ng-proj)
+if(NOT espeak-ng-proj_POPULATED)
+    message(STATUS "Populating espeak-ng-proj to allow patching...")
+    FetchContent_Populate(espeak-ng-proj)
+endif()
+set(ESPEAK_WCTYPE_H_PATH ${espeak-ng-proj_SOURCE_DIR}/src/include/compat/wctype.h)
+if(EXISTS ${ESPEAK_WCTYPE_H_PATH})
+    message(STATUS "Patching ${ESPEAK_WCTYPE_H_PATH} to prevent C++ macro pollution...")
+    file(READ ${ESPEAK_WCTYPE_H_PATH} ESPEAK_WCTYPE_H_CONTENT)
+    # Wrap the conflicting defines in #ifndef __cplusplus
+    string(REPLACE "#define tolower ucd_tolower" "#ifndef __cplusplus\n#define tolower ucd_tolower\n#endif" ESPEAK_WCTYPE_H_CONTENT_PATCHED "${ESPEAK_WCTYPE_H_CONTENT}")
+    string(REPLACE "#define toupper udc_toupper" "#ifndef __cplusplus\n#define toupper udc_toupper\n#endif" ESPEAK_WCTYPE_H_CONTENT_PATCHED "${ESPEAK_WCTYPE_H_CONTENT_PATCHED}")
+    file(WRITE ${ESPEAK_WCTYPE_H_PATH} "${ESPEAK_WCTYPE_H_CONTENT_PATCHED}")
+    message(STATUS "Patching wctype.h done.")
+else()
+    message(WARNING "Could not find ${ESPEAK_WCTYPE_H_PATH} to patch.")
+endif()

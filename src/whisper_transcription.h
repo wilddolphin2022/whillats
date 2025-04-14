@@ -2,14 +2,17 @@
 #define WHISPER_TRANSCRIPTION_H
 
 #include <vector>
-#include <memory>
-#include <functional>
+#include <string>
 #include <thread>
 #include <mutex>
 #include <complex>
+#include <atomic>
+#include <memory>
+
 #include <whisper.h>
 #include "whisper_helpers.h"
 #include "whillats.h"
+
 class WhisperTranscriber {
 public:
     WhisperTranscriber(const char* modelPath, WhillatsSetResponseCallback callback);

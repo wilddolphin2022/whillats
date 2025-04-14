@@ -2,7 +2,11 @@
 
 This project provides the Whillats library, integrating speech-to-text (Whisper.cpp), Language model processing (Llama.cpp) and text-to-speech (eSpeak-NG)
 
-It includes an example demonstrating integration with the Agora RTC SDK.
+It includes an example demonstrating integration with the Agora RTC SDK (Linux only due to Agora constraints). 
+
+Platforms tested - Mac x86, Mac Silicon, iOS arm64 and Linux x64. 
+Macs use Metal so Silicon with M4 chip will be fast. 
+Linux use NVIDIA CUDA drivers for HW acceleration.
 
 ## Building
 
