@@ -1,3 +1,20 @@
+/*
+ *  (c) 2025, wilddolphin2022 
+ *  For WebRTCsays.ai project
+ *  https://github.com/wilddolphin2022
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
+//  Based on Agora RTC/MEDIA SDK samples
+//
+//  Copyright (c) 2020 Agora.io. All rights reserved.
+//
+
 #include <csignal>
 #include <cstring>
 #include <sstream>
@@ -571,11 +588,7 @@ void TransceiverYuvPcm::release()
 
 SampleLocalUserObserver::~SampleLocalUserObserver()
 {
-  // Unregistration is handled in TransceiverYuvPcm::release on the local_user_
-  // Remove this call to prevent potential use-after-free if local_user_ is invalid here
-  // if (local_user_) {
-  //     local_user_->unregisterLocalUserObserver(this);
-  // }
+
 }
 
 void SampleLocalUserObserver::setLocalUser(agora::rtc::ILocalUser *user)
@@ -759,6 +772,11 @@ int main(int argc, char *argv[])
   {
     std::ostringstream strStream;
     optParser.print_usage(argv[0], strStream);
+    strStream << "Example:\n"
+      << "./build/bin/transceiver_yuv_pcm\n";
+      strStream << " --useWhisper 1 --whisperModelPath models/ggml-base.bin\n";
+      strStream << " --useLlama 1 --llamaModelPath models/DeepSeek-R1-Distill-Llama-8B-F16.gguf\n";
+      strStream << " --channelId <you channel id> --appId <you app id> --token <your agora token>\n";
     std::cout << strStream.str() << std::endl;
     return -1;
   }

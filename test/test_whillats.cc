@@ -62,6 +62,7 @@ int main(int argc, char *argv[])
   }
 
   LOG_I(getUsage(opts));
+  opts.tts = true;
 
   setLogLevel(LogLevel::VERBOSE);
 
@@ -125,7 +126,7 @@ int main(int argc, char *argv[])
       }
 
       LOG_V("Short cutting audio buffer size: " << audio_buffer.size() << "..." << std::endl);
-      whisper.processAudioBuffer(nullptr, -1);
+      whisper.processAudioBuffer(nullptr, 0);
 
       while (!whisper_done)
       {
@@ -141,7 +142,7 @@ int main(int argc, char *argv[])
         whisper.processAudioBuffer((uint8_t *)(audio_buffer.data() + i), chunk_size * sizeof(uint16_t));
       }
       
-      whisper.processAudioBuffer(nullptr, -1);
+      whisper.processAudioBuffer(nullptr, 0);
       while (!whisper_done)
       {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
