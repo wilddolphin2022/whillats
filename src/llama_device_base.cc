@@ -256,7 +256,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
 
     const int max_response_tokens = 256;
     int generated_tokens = 0;
-    int repetition_count = 0;
+    //int repetition_count = 0;
 
     _lastResponseStart = std::chrono::steady_clock::now();
 
@@ -321,15 +321,15 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         context_tokens_.push_back(new_token_id);
         llama_sampler_accept(smpl_, new_token_id);
 
-        if (isRepetitive(recent_text)) {
-            repetition_count++;
-            if (repetition_count > 3) {
-                LOG_V("Stopping due to repetitive output.");
-                break;
-            }
-        } else {
-            repetition_count = 0;
-        }
+        // if (isRepetitive(recent_text)) {
+        //     repetition_count++;
+        //     if (repetition_count > 5) {
+        //         LOG_V("Stopping due to repetitive output.");
+        //         break;
+        //     }
+        // } else {
+        //     repetition_count = 0;
+        // }
 
         if (isCompleteSentence(current_phrase)) {
             callback.OnResponseComplete(true, current_phrase.c_str());
@@ -381,6 +381,7 @@ void LlamaDeviceBase::askLlama(const char *prompt)
     std::unique_lock<std::mutex> lock(_queueMutex);
     if (prompt && *prompt)
     {
+      LOG_I("Asking llama: " << prompt);
       _textQueue.push(std::string(prompt));
     }
   }
