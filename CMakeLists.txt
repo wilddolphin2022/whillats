@@ -233,7 +233,7 @@ else() # APPLE
         FRAMEWORK_VERSION A # Standard practice
         MACOSX_FRAMEWORK_IDENTIFIER ai.webrtcsays.whillats
         # Define PUBLIC_HEADER to list headers exposed by the framework
-        PUBLIC_HEADER "src/whillats.h;src/whillats_ios.h"
+        # PUBLIC_HEADER "src/whillats.h;src/whillats_ios.h"
         # Remove headers from RESOURCES
         # RESOURCE "src/whillats.h;src/whillats_ios.h"
         XCODE_ATTRIBUTE_DEFINES_MODULE YES # Enable module map generation
@@ -258,9 +258,9 @@ else() # APPLE
         COMMAND ${CMAKE_COMMAND} -E echo "POST_BUILD: Copying ${CMAKE_CURRENT_SOURCE_DIR}/src/whillats.h to ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/whillats.h" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
             COMMENT "Copying whillats.h to Release framework (direct)"
-        COMMAND ${CMAKE_COMMAND} -E echo "POST_BUILD: Copying ${CMAKE_CURRENT_SOURCE_DIR}/src/whillats_ios.h to ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/whillats_ios.h" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
-            COMMENT "Copying whillats_ios.h to Release framework (direct)"
+        #COMMAND ${CMAKE_COMMAND} -E echo "POST_BUILD: Copying ${CMAKE_CURRENT_SOURCE_DIR}/src/whillats_ios.h to ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
+        #COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/whillats_ios.h" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
+        #    COMMENT "Copying whillats_ios.h to Release framework (direct)"
         VERBATIM
     )
 
