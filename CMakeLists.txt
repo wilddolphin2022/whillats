@@ -226,7 +226,6 @@ else() # APPLE
         src/whisper_transcription.cc
         src/llama_device_base.cc
         src/whillats.cc
-        src/whillats_ios.mm # Include ObjC++ file
     )
 
     set_target_properties(${PROJECT_NAME} PROPERTIES

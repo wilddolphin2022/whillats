@@ -99,9 +99,9 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
     }
 
     // Ensure normalization is correct, clip if necessary (though ideally shouldn't be needed if input is proper 16-bit PCM)
-    // for (size_t i = 0; i < numSamples; ++i) {
-    //     samples[i] = std::max(-1.0f, std::min(1.0f, samples[i]));
-    // }
+    for (size_t i = 0; i < numSamples; ++i) {
+        samples[i] = std::max(-1.0f, std::min(1.0f, samples[i]));
+    }
 
     if (!_audioBuffer->write(samples.data(), samples.size())) {
         LOG_W("Failed to write " << samples.size() << " samples to audio buffer");
@@ -144,6 +144,8 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     wparams.temperature = 0.8f;
     wparams.no_speech_thold = 0.4f;
     wparams.logprob_thold = -1.0f;
+    wparams.language = _language.c_str();
+    wparams.detect_language = _detectLanguage;
 
     {
         std::lock_guard<std::mutex> lock(_state_mutex);
@@ -276,7 +278,7 @@ bool WhisperTranscriber::RunProcessingThread() {
         if (_audioBuffer->availableToRead() >= kMinPhraseSamples) {
             _audioBuffer->read(chunk.data(), kMinPhraseSamples);
             if (kDebug) {LOG_V("Read chunk size: " << kMinPhraseSamples << " samples. Buffer remaining: " << _audioBuffer->availableToRead());}
-            if (vad_simple(chunk, WHISPER_SAMPLE_RATE, 600, 0.75f, 50.0f, true)) {
+            if (vad_simple(chunk, WHISPER_SAMPLE_RATE, 600, kVADThreshold, 50.0f, true)) {
                 TranscribeAudioNonBlocking(chunk);
             }
         } else {

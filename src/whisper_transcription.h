@@ -26,6 +26,9 @@ public:
     void setDetectLanguage(bool detectLanguage) { _detectLanguage = detectLanguage; }
     std::string getLanguage() { return _language; }
 
+    void setVADThreshold(float threshold) { kVADThreshold = threshold; }
+    float getVADThreshold() { return kVADThreshold; }
+
 private:
     bool InitializeWhisperModel(const std::string& modelPath);
     bool TranscribeAudioNonBlocking(const std::vector<float>& samples);
@@ -47,8 +50,8 @@ private:
     std::string _fullTranscription; // Accumulate text for current segment
     bool _segmentComplete;          // Flag to reset transcription
     std::string _model_path;
-    std::string _language;
-    bool _detectLanguage;
+    std::string _language = "auto";
+    bool _detectLanguage = true;
 
     std::vector<whisper_token> _pastTokens;
     int _nPast = 0;
@@ -61,10 +64,13 @@ private:
         float noise_level = 0.001f;
     } noise_profile;
 
+    float kVADThreshold = 0.75;
+
     static const size_t kMinPhraseSamples = 32000;  // 200ms at 16kHz
     static const size_t kMaxPhraseSamples = 64000; // 1s at 16kHz
 
     static const size_t kRingBufferSizeIncrement = 60 * WHISPER_SAMPLE_RATE; 
+
 
     static const bool kDebug = false;
 };

@@ -42,14 +42,12 @@ int WhillatsTTS::getSampleRate() {
     return ESpeakTTS::getSampleRate();
 }
 #else
-#include "whillats_ios.h"
-
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback) : _callback(callback) { }
 WhillatsTTS::~WhillatsTTS() { }
-void WhillatsTTS::queueText(const char* text) { LOG_E("WhillatsTTS queueText not supported on iOS"); }
+void WhillatsTTS::queueText(const char* text) { LOG_E("WhillatsTTS start not supported on iOS"); }
 bool WhillatsTTS::start() { LOG_E("WhillatsTTS start not supported on iOS"); return true; }
 void WhillatsTTS::stop() { LOG_E("WhillatsTTS stop not supported on iOS"); }
-int WhillatsTTS::getSampleRate() { LOG_I("WhillatsTTS getSampleRate not supported on iOS"); return 0; }
+int WhillatsTTS::getSampleRate() { LOG_E("WhillatsTTS getSampleRate not supported on iOS"); return 0; }
 #endif // !WEBRTC_IOS
 
 WhillatsTranscriber::WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback) 
@@ -80,6 +78,14 @@ void WhillatsTranscriber::setDetectLanguage(bool detectLanguage) {
 
 std::string WhillatsTranscriber::getLanguage() { 
     return _whisper_transcriber->getLanguage(); 
+}
+
+void WhillatsTranscriber::setVADThreshold(float threshold) { 
+    _whisper_transcriber->setVADThreshold(threshold);
+}
+
+float WhillatsTranscriber::getVADThreshold() { 
+    return _whisper_transcriber->getVADThreshold();
 }
 
 WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback callback) 

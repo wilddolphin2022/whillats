@@ -89,6 +89,8 @@ class WHILLATS_API WhillatsTranscriber {
     void setLanguage(const std::string& language);
     void setDetectLanguage(bool detectLanguage);
     std::string getLanguage();
+    void setVADThreshold(float threshold);
+    float getVADThreshold();
 
   private:
     WhillatsSetResponseCallback _callback; 
