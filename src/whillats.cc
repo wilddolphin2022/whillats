@@ -46,9 +46,9 @@ int WhillatsTTS::getSampleRate() {
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback) : _callback(callback) { }
 WhillatsTTS::~WhillatsTTS() { }
-void WhillatsTTS::queueText(const char* text) { WhillatsPostNotificationWithText(text); }
-bool WhillatsTTS::start() { LOG_I("WhillatsTTS start not supported on iOS"); return true; }
-void WhillatsTTS::stop() { LOG_I("WhillatsTTS stop not supported on iOS"); }
+void WhillatsTTS::queueText(const char* text) { LOG_E("WhillatsTTS queueText not supported on iOS"); }
+bool WhillatsTTS::start() { LOG_E("WhillatsTTS start not supported on iOS"); return true; }
+void WhillatsTTS::stop() { LOG_E("WhillatsTTS stop not supported on iOS"); }
 int WhillatsTTS::getSampleRate() { LOG_I("WhillatsTTS getSampleRate not supported on iOS"); return 0; }
 #endif // !WEBRTC_IOS
 
@@ -69,6 +69,18 @@ bool WhillatsTranscriber::start() {
 void WhillatsTranscriber::stop() {
     _whisper_transcriber->stop();
 } 
+
+void WhillatsTranscriber::setLanguage(const std::string& language) { 
+    _whisper_transcriber->setLanguage(language); 
+}
+
+void WhillatsTranscriber::setDetectLanguage(bool detectLanguage) { 
+    _whisper_transcriber->setDetectLanguage(detectLanguage);
+}
+
+std::string WhillatsTranscriber::getLanguage() { 
+    return _whisper_transcriber->getLanguage(); 
+}
 
 WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback callback) 
     : _callback(callback),

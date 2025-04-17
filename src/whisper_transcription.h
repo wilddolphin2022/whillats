@@ -22,6 +22,10 @@ public:
     bool start();
     void stop();
 
+    void setLanguage(const std::string& language) { _language = language; }
+    void setDetectLanguage(bool detectLanguage) { _detectLanguage = detectLanguage; }
+    std::string getLanguage() { return _language; }
+
 private:
     bool InitializeWhisperModel(const std::string& modelPath);
     bool TranscribeAudioNonBlocking(const std::vector<float>& samples);
@@ -43,6 +47,8 @@ private:
     std::string _fullTranscription; // Accumulate text for current segment
     bool _segmentComplete;          // Flag to reset transcription
     std::string _model_path;
+    std::string _language;
+    bool _detectLanguage;
 
     std::vector<whisper_token> _pastTokens;
     int _nPast = 0;

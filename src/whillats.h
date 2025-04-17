@@ -86,6 +86,10 @@ class WHILLATS_API WhillatsTranscriber {
     void stop();
     void processAudioBuffer(uint8_t* playoutBuffer, const size_t playoutBufferSize);
 
+    void setLanguage(const std::string& language);
+    void setDetectLanguage(bool detectLanguage);
+    std::string getLanguage();
+
   private:
     WhillatsSetResponseCallback _callback; 
     std::unique_ptr<WhisperTranscriber> _whisper_transcriber; 

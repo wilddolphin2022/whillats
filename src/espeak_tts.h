@@ -21,9 +21,9 @@
 #include <memory>
 
 #include "whillats.h"
-#include <espeak-ng/speak_lib.h>
-
 #include "whisper_helpers.h"
+
+#include <espeak-ng/speak_lib.h>
 
 class ESpeakTTS {
 public:
