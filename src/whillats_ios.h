@@ -16,6 +16,7 @@ typedef void (*CompletionCallback)(void* user_data);
                     completionCallback:(CompletionCallback)completionCallback;
 - (void)synthesizeText:(NSString *)text;
 - (void)stop;
+
 @property (nonatomic, readonly) void *userData; // Add getter for userData
 
 @end
