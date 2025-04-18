@@ -25,13 +25,15 @@ file(MAKE_DIRECTORY ${THIRD_PARTY_DIR}) # Ensure third_party exists
 
 FetchContent_Declare(
     whisper
-    GIT_REPOSITORY https://github.com/ggerganov/whisper.cpp
+    GIT_REPOSITORY ${THIRD_PARTY_DIR}/local/whisper.cpp.git
+    #https://github.com/ggerganov/whisper.cpp
     SOURCE_DIR ${THIRD_PARTY_DIR}/whisper.cpp
     GIT_SHALLOW TRUE # Faster clone
 )
 FetchContent_Declare(
     llama
-    GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
+    GIT_REPOSITORY ${THIRD_PARTY_DIR}/local/llama.cpp.git
+    #https://github.com/ggerganov/llama.cpp
     SOURCE_DIR ${THIRD_PARTY_DIR}/llama.cpp
     GIT_SHALLOW TRUE # Faster clone
 )
@@ -40,13 +42,15 @@ FetchContent_Declare(
 if(NOT APPLE)
     FetchContent_Declare(
         espeak-ng-proj # Rename to avoid conflict with potential target name
-        GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng
+        GIT_REPOSITORY ${THIRD_PARTY_DIR}/local/espeak-ng.git
+        #https://github.com/espeak-ng/espeak-ng
         SOURCE_DIR ${THIRD_PARTY_DIR}/espeak-ng
         GIT_SHALLOW TRUE # Faster clone
     )
     FetchContent_Declare(
         pcaudiolib-proj # Rename to avoid conflict
-        GIT_REPOSITORY https://github.com/espeak-ng/pcaudiolib
+        GIT_REPOSITORY ${THIRD_PARTY_DIR}/local/pcaudiolib.git
+        #https://github.com/espeak-ng/pcaudiolib
         SOURCE_DIR ${THIRD_PARTY_DIR}/pcaudiolib
         GIT_SHALLOW TRUE # Faster clone
     )
