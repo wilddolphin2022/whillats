@@ -19,6 +19,12 @@
 #include <vector>
 #include <memory>
 
+#if TTS_PLATFORMS
+class ESpeakTTS;
+#else
+#include "whillats_synth.h"
+#endif // TTS_PLATFORMS
+
 // Change to C-style function pointer callbacks
 typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);
 typedef void (*AudioCallback)(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data);
@@ -55,9 +61,9 @@ private:
     void* user_data_;
 };
 
-class ESpeakTTS;
 class WhisperTranscriber;
 class LlamaDeviceBase;
+class WhillatsSpeechSynthesizerWrapper;
 
 class WHILLATS_API WhillatsTTS {
   public:
@@ -72,9 +78,11 @@ class WHILLATS_API WhillatsTTS {
 
   private:
     WhillatsSetAudioCallback _callback;
-#ifndef WEBRTC_IOS
-    std::unique_ptr<ESpeakTTS> _espeak_tts; 
-#endif // !WEBRTC_IOS
+#if TTS_PLATFORMS
+    std::unique_ptr<ESpeakTTS> _espeak_tts;
+#else    
+    std::unique_ptr<WhillatsSpeechSynthesizerWrapper> _speech_synthesizer;
+#endif
 };
 
 class WHILLATS_API WhillatsTranscriber {

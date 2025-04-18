@@ -226,6 +226,8 @@ else() # APPLE
         src/whisper_transcription.cc
         src/llama_device_base.cc
         src/whillats.cc
+        src/whillats_synth.mm
+        src/whillats_ios.mm
     )
 
     set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -292,7 +294,7 @@ else() # APPLE
             "-framework Metal"
             "-framework MetalKit" # Often needed with Metal
             # Add AVFoundation or AudioToolbox if audio processing is done within whillats itself
-            # "-framework AudioToolbox"
+            "-framework AVFoundation"
         )
     else()
         message(STATUS "Skipping XCFramework linking because paths not found (will retry on next configure)")

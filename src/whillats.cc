@@ -17,7 +17,7 @@
 #include "llama_device_base.h"
 #include "whillats.h"
 
-#ifndef WEBRTC_IOS
+#if TTS_PLATFORMS
 #include "espeak_tts.h"
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
@@ -41,14 +41,37 @@ void WhillatsTTS::stop() {
 int WhillatsTTS::getSampleRate() {
     return ESpeakTTS::getSampleRate();
 }
-#else
-WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback) : _callback(callback) { }
-WhillatsTTS::~WhillatsTTS() { }
-void WhillatsTTS::queueText(const char* text) { LOG_E("WhillatsTTS start not supported on iOS"); }
-bool WhillatsTTS::start() { LOG_E("WhillatsTTS start not supported on iOS"); return true; }
-void WhillatsTTS::stop() { LOG_E("WhillatsTTS stop not supported on iOS"); }
-int WhillatsTTS::getSampleRate() { LOG_E("WhillatsTTS getSampleRate not supported on iOS"); return 0; }
-#endif // !WEBRTC_IOS
+#else // !TTS_PLATFORMS
+
+#include "whillats_synth.h"
+
+WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback) : 
+    _callback(callback),
+    _speech_synthesizer(std::make_unique<WhillatsSpeechSynthesizerWrapper>()) { }
+
+WhillatsTTS::~WhillatsTTS() { 
+    _speech_synthesizer.reset();
+}
+
+bool WhillatsTTS::start() { 
+    _speech_synthesizer->initialize(&_callback, []() {
+        std::cout << "Synthesis completed!" << std::endl;
+    });
+
+    return true; 
+}
+void WhillatsTTS::stop() { 
+    _speech_synthesizer->stop();
+}
+int WhillatsTTS::getSampleRate() { 
+    return 16000; 
+}
+
+void WhillatsTTS::queueText(const char* text) { 
+    _speech_synthesizer->synthesize(text);
+}
+
+#endif // !TTS_PLATFORMS
 
 WhillatsTranscriber::WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback) 
     : _callback(callback),
