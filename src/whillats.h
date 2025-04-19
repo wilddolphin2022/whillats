@@ -72,7 +72,7 @@ class WHILLATS_API WhillatsTTS {
 
     bool start();
     void stop();
-    void queueText(const char* text);
+    void queueText(const char* text, const char* language);
 
     static int getSampleRate();
 

@@ -705,7 +705,7 @@ static void whisperResponseCallback(bool success, const char *whisper_response, 
     if (transceiver->_tts)
     {
       AG_LOG(INFO, "Queueing text to TTS: '%s'", text_to_speak);
-      transceiver->_tts->queueText(text_to_speak);
+      transceiver->_tts->queueText(text_to_speak, transceiver->_transcriber->getLanguage());
     }
     else
     {
@@ -731,7 +731,7 @@ static void llamaResponseCallback(bool success, const char *llama_response, void
   if (transceiver->_tts)
   {
     AG_LOG(INFO, "Queueing text to TTS: '%s'", text_to_speak);
-    transceiver->_tts->queueText(text_to_speak);    
+    transceiver->_tts->queueText(text_to_speak, transceiver->_transcriber->getLanguage());    
   }
   else
   {

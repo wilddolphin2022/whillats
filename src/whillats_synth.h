@@ -16,12 +16,15 @@ public:
     ~WhillatsSpeechSynthesizerWrapper();
 
     void initialize(WhillatsSetAudioCallback* audioCallback, CompletionCallback completionCallback);
-    void synthesize(const std::string& text);
+    void synthesize(const std::string& text, const std::string& language);
     void stop();
 
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;
+
+    std::string _lastLanguage; 
+    std::string _lastText;
 };
 
 #endif // WHILLATS_SYNTH_H

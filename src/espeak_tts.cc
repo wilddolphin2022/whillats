@@ -56,9 +56,10 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
     espeak_SetSynthCallback(&ESpeakTTS::internalSynthCallback);
 }
 
-void ESpeakTTS::synthesize(const char* text) {
+void ESpeakTTS::synthesize(const char* text, const char* language) {
     if (!text) return;
-    
+    espeak_SetVoiceByName(language == "en" ? "English" : ("ru" ? "Russian" : "English"));
+
     // Clear output buffer and ring buffer
     _buffer.clear();
     _audioBuffer->clear();  // Clear ring buffer before new synthesis
@@ -158,11 +159,11 @@ void ESpeakTTS::stop() {
     }
 }
 
-void ESpeakTTS::queueText(const std::string& text) {
+void ESpeakTTS::queueText(const std::string& text, const std::string& language) {
     if (!text.empty()) {
         {
             std::lock_guard<std::mutex> lock(_queueMutex);
-            _textQueue.push(text);
+            _textQueue.push(std::make_pair(text, language));
         }
         _queueCondition.notify_one();
     }
@@ -170,6 +171,7 @@ void ESpeakTTS::queueText(const std::string& text) {
 
 bool ESpeakTTS::RunProcessingThread() {
     std::string textToSynth;
+    std::string language;
     bool shouldSynth = false;
 
     {
@@ -180,7 +182,8 @@ bool ESpeakTTS::RunProcessingThread() {
             if (!_running) return false;
             
             if (!_textQueue.empty()) {
-                textToSynth = _textQueue.front();
+                textToSynth = _textQueue.front().first;
+                language = _textQueue.front().second;
                 _textQueue.pop();
                 shouldSynth = true;
             }
@@ -192,7 +195,7 @@ bool ESpeakTTS::RunProcessingThread() {
         _buffer.clear();
         
         // Synthesize the text
-        synthesize(textToSynth.c_str());
+        synthesize(textToSynth.c_str(), language.c_str());
         
         // Only send callback if we have data
         if (!_buffer.empty()) {

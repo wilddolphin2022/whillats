@@ -37,10 +37,13 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback audio
                                                              }];
 }
 
-void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text) {
+void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
     if (impl->processor) {
-        NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
-        [impl->processor synthesizeText:nsText];
+        _lastText = text;
+        _lastLanguage = language;
+        NSString* nsText = [NSString stringWithUTF8String:_lastText.c_str()];
+        NSString* nsLanguage = [NSString stringWithUTF8String:_lastLanguage.c_str()];
+        [impl->processor synthesizeText:nsText language:nsLanguage];
     }
 }
 

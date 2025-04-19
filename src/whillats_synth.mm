@@ -1,6 +1,7 @@
 #include "whillats_synth.h" // Include the header for WhillatsSpeechSynthesizerWrapper definition
 #include "whillats_ios.h"   // Include for SpeechSynthesizerProcessor, AudioCallback
 #include "whillats_export.h"   // Include for SpeechSynthesizerProcessor, AudioCallback
+#include "whisper_helpers.h"
 
 #import <Foundation/Foundation.h> // Needed for NSString, nil, etc.
 #include <vector>          // Needed for std::vector used in callbacks
@@ -65,8 +66,17 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
     impl->audioCallbackPtr = audioCallback;
 
     // Create the C++ completion function object
-    std::function<void()> cppCompletionCallback = completionCallback ? completionCallback : [](){ 
-        std::cout << "Default completion called." << std::endl; 
+    std::function<void()> cppCompletionCallback = completionCallback ? completionCallback : [this](){ 
+        dispatch_async(dispatch_get_main_queue(),^{
+            NSString* nsText = [NSString stringWithUTF8String:_lastText.c_str()];
+            NSString* nsLanguage = [NSString stringWithUTF8String:_lastLanguage.c_str()];
+            NSDictionary* userInfo = @{@"text": nsText, @"language": nsLanguage};
+
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
+                                                              object:nil
+                                                            userInfo:userInfo];
+            NSLog(@"Notification posted: WhillatsTranscriptionResponseAvailableNotification");
+        });
     };
 
     // Create and populate the shared context
@@ -80,18 +90,19 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
                                                                    completionCallback:CompletionCallbackBridge]; // Pass C function pointer
 
     if (!impl->processor) {
-        std::cerr << "WhillatsSpeechSynthesizerWrapper: Failed to create SpeechSynthesizerProcessor" << std::endl;
+        LOG_E("WhillatsSpeechSynthesizerWrapper: Failed to create SpeechSynthesizerProcessor");
         delete context; // Clean up context if processor creation failed
     }
 }
 
-void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text) {
+void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
     if (impl->processor) {
         NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
-        if (nsText) { // Check if conversion was successful
-            [impl->processor synthesizeText:nsText];
+        NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
+        if (nsText && nsLanguage) { // Check if conversion was successful
+            [impl->processor synthesizeText:nsText language:nsLanguage];
         } else {
-            std::cerr << "WhillatsSpeechSynthesizerWrapper: Failed to convert text to NSString" << std::endl;
+            LOG_E("WhillatsSpeechSynthesizerWrapper: Failed to convert text to NSString");
             // Optionally trigger an error state or callback
         }
     }
@@ -107,8 +118,6 @@ void WhillatsSpeechSynthesizerWrapper::stop() {
         }
         impl->processor = nil;
     }
-    // We don't own audioCallbackPtr, so don't reset it here unless the design changes
-    // impl->audioCallbackPtr = nullptr;
 }
 
 #endif // !TTS_PLATFORMS

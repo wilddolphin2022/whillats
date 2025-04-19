@@ -26,8 +26,8 @@ WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
 
 WhillatsTTS::~WhillatsTTS() {}
 
-void WhillatsTTS::queueText(const char* text) {
-    _espeak_tts->queueText(std::string(text));
+void WhillatsTTS::queueText(const char* text, const char* language) {
+    _espeak_tts->queueText(std::string(text), std::string(language));
 }
 
 bool WhillatsTTS::start() {
@@ -67,8 +67,8 @@ int WhillatsTTS::getSampleRate() {
     return 16000; 
 }
 
-void WhillatsTTS::queueText(const char* text) { 
-    _speech_synthesizer->synthesize(text);
+void WhillatsTTS::queueText(const char* text, const char* language) { 
+    _speech_synthesizer->synthesize(text, language);
 }
 
 #endif // !TTS_PLATFORMS

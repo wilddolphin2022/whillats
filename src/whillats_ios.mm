@@ -100,11 +100,11 @@
     }
 }
 
-- (void)synthesizeText:(NSString *)text {
+- (void)synthesizeText:(NSString *)text language:(NSString *)language {
     dispatch_queue_t synthesisQueue = dispatch_queue_create("com.speech.synthesis", DISPATCH_QUEUE_SERIAL);
     dispatch_async(synthesisQueue, ^{
         AVSpeechUtterance *utterance = [[AVSpeechUtterance alloc] initWithString:text];
-        utterance.voice = [AVSpeechSynthesisVoice voiceWithLanguage:@"en-US"];
+        utterance.voice = [AVSpeechSynthesisVoice voiceWithLanguage:language];
         utterance.rate = 0.5;
         
         AVAudioPCMBuffer *silenceBuffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:_engineFormat

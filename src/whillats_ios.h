@@ -14,7 +14,7 @@ typedef void (*CompletionCallback)(void* user_data);
 - (instancetype)initWithAudioCallback:(AudioCallback)audioCallback
                              userData:(void *)userData
                     completionCallback:(CompletionCallback)completionCallback;
-- (void)synthesizeText:(NSString *)text;
+- (void)synthesizeText:(NSString *)text language:(NSString *)language;
 - (void)stop;
 
 @property (nonatomic, readonly) void *userData; // Add getter for userData
