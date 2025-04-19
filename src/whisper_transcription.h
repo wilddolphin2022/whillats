@@ -51,7 +51,7 @@ private:
     bool _segmentComplete;          // Flag to reset transcription
     std::string _model_path;
     std::string _language = "auto";
-    bool _detectLanguage = true;
+    bool _detectLanguage = false;
 
     std::vector<whisper_token> _pastTokens;
     int _nPast = 0;
