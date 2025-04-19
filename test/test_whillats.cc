@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
       const char *test_text = "Hello, this is a test of text to speech synthesis.";
       std::cout << "Testing TTS with text: " << test_text << std::endl;
 
-      tts.queueText(test_text);
+      tts.queueText(test_text, "en");
       while (!tts_done)
       {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
                                   "The quick brown fox jumps over the lazy dog.";
       std::cout << "Testing TTS with text: " << long_test_text << std::endl;
       
-      tts.queueText(long_test_text);
+      tts.queueText(long_test_text, "en");
 
       while (!tts_done)
       {
