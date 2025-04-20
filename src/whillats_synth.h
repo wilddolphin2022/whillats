@@ -19,6 +19,9 @@ public:
     void synthesize(const std::string& text, const std::string& language);
     void stop();
 
+    void enableSpeakerphone();
+    void disableSpeakerphone();
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;

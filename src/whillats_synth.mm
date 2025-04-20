@@ -1,6 +1,5 @@
 #include "whillats_synth.h" // Include the header for WhillatsSpeechSynthesizerWrapper definition
 #include "whillats_ios.h"   // Include for SpeechSynthesizerProcessor, AudioCallback
-#include "whillats_export.h"   // Include for SpeechSynthesizerProcessor, AudioCallback
 #include "whisper_helpers.h"
 
 #import <Foundation/Foundation.h> // Needed for NSString, nil, etc.
@@ -8,7 +7,19 @@
 #include <memory>          // Needed for std::unique_ptr
 #include <iostream>        // Needed for std::cout if used (e.g., in completion callback)
 
-// Ensure the guard matches the TTS_PLATFORMS definition from whillats_export.h
+// Ensure the guard matches the TTS_PLATFORMS definition from whillats.h
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+    // Exclude TTS (espeak-ng) for iOS builds
+    #if  TARGET_OS_IOS
+        #define TTS_PLATFORMS 0 // Building for iOS
+    #else
+        #define TTS_PLATFORMS 1 // Building for macOS or other non-iOS platforms
+    #endif
+#else
+    #define TTS_PLATFORMS 1 // Building for other platforms
+#endif
+
 #if !TTS_PLATFORMS
 
 // Define a single context struct for both callbacks
@@ -32,8 +43,10 @@ static void AudioCallbackBridge(bool success, const uint16_t* buffer, size_t siz
 // Static C bridge function for CompletionCallback
 static void CompletionCallbackBridge(void* user_data) {
     CallbackContext* context = static_cast<CallbackContext*>(user_data);
-    if (context && context->completionCallbackFunc) {
-        context->completionCallbackFunc();
+    if (context) {
+        if (context->completionCallbackFunc) {
+            context->completionCallbackFunc();
+        }
     }
 }
 
@@ -66,17 +79,10 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
     impl->audioCallbackPtr = audioCallback;
 
     // Create the C++ completion function object
-    std::function<void()> cppCompletionCallback = completionCallback ? completionCallback : [this](){ 
-        dispatch_async(dispatch_get_main_queue(),^{
-            NSString* nsText = [NSString stringWithUTF8String:_lastText.c_str()];
-            NSString* nsLanguage = [NSString stringWithUTF8String:_lastLanguage.c_str()];
-            NSDictionary* userInfo = @{@"text": nsText, @"language": nsLanguage};
-
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
-                                                              object:nil
-                                                            userInfo:userInfo];
-            NSLog(@"Notification posted: WhillatsTranscriptionResponseAvailableNotification");
-        });
+    std::function<void()> cppCompletionCallback = [this, completionCallback]() {
+        if (completionCallback) {
+            completionCallback();
+        }
     };
 
     // Create and populate the shared context
@@ -93,6 +99,8 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
         LOG_E("WhillatsSpeechSynthesizerWrapper: Failed to create SpeechSynthesizerProcessor");
         delete context; // Clean up context if processor creation failed
     }
+
+    [impl->processor enableSpeakerphone];
 }
 
 void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
@@ -100,6 +108,16 @@ void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const
         NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
         NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
         if (nsText && nsLanguage) { // Check if conversion was successful
+            _lastText = text;
+            _lastLanguage = language;
+            // Post notification before synthesis
+            dispatch_async(dispatch_get_main_queue(),^{
+                NSDictionary* userInfo = @{@"text": nsText, @"language": nsLanguage};
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
+                                                                  object:nil
+                                                                userInfo:userInfo];
+                NSLog(@"Notification posted before synthesis: WhillatsTranscriptionResponseAvailableNotification");
+            });
             [impl->processor synthesizeText:nsText language:nsLanguage];
         } else {
             LOG_E("WhillatsSpeechSynthesizerWrapper: Failed to convert text to NSString");
@@ -117,6 +135,18 @@ void WhillatsSpeechSynthesizerWrapper::stop() {
             delete context;
         }
         impl->processor = nil;
+    }
+}
+
+void WhillatsSpeechSynthesizerWrapper::enableSpeakerphone() {
+    if (impl->processor) {
+        [impl->processor enableSpeakerphone];
+    }
+}
+
+void WhillatsSpeechSynthesizerWrapper::disableSpeakerphone() {
+    if (impl->processor) {
+        [impl->processor disableSpeakerphone];
     }
 }
 

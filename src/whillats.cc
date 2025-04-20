@@ -41,6 +41,13 @@ void WhillatsTTS::stop() {
 int WhillatsTTS::getSampleRate() {
     return ESpeakTTS::getSampleRate();
 }
+
+void WhillatsTTS::enableSpeakerphone() {
+}
+
+void WhillatsTTS::disableSpeakerphone() {
+}
+
 #else // !TTS_PLATFORMS
 
 #include "whillats_synth.h"
@@ -54,7 +61,7 @@ WhillatsTTS::~WhillatsTTS() {
 }
 
 bool WhillatsTTS::start() { 
-    _speech_synthesizer->initialize(&_callback, []() {
+    _speech_synthesizer->initialize(&_callback, [this]() {
         std::cout << "Synthesis completed!" << std::endl;
     });
 
@@ -70,6 +77,14 @@ int WhillatsTTS::getSampleRate() {
 void WhillatsTTS::queueText(const char* text, const char* language) { 
     _speech_synthesizer->synthesize(text, language);
 }
+
+void WhillatsTTS::enableSpeakerphone() {
+    _speech_synthesizer->enableSpeakerphone();
+}
+
+void WhillatsTTS::disableSpeakerphone() {
+    _speech_synthesizer->disableSpeakerphone();
+}   
 
 #endif // !TTS_PLATFORMS
 

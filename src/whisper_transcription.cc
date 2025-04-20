@@ -147,6 +147,26 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     wparams.language = _language.c_str();
     wparams.detect_language = _detectLanguage;
 
+    // Manual language detection before transcription
+    std::vector<float> lang_probs(whisper_lang_max_id(), 0.0f);
+    if (whisper_lang_auto_detect(_ctx, 0, wparams.n_threads, lang_probs.data()) == 0) {
+        int best_lang_id = 0;
+        float best_prob = 0.0f;
+        for (int i = 0; i < whisper_lang_max_id(); ++i) {
+            if (lang_probs[i] > best_prob) {
+                best_prob = lang_probs[i];
+                best_lang_id = i;
+            }
+        }
+        const char* detected_lang = whisper_lang_str(best_lang_id);
+        LOG_I("Detected language: " << detected_lang << " with probability: " << best_prob);
+        wparams.language = detected_lang;
+    } else {
+        LOG_W("Language detection failed, falling back to default language");
+        wparams.language = "en";
+    }
+    wparams.detect_language = false;
+
     {
         std::lock_guard<std::mutex> lock(_state_mutex);
         if (whisper_full_with_state(_ctx, _state, wparams, samples.data(), samples.size()) != 0) {

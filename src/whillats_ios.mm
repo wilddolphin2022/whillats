@@ -37,9 +37,10 @@
     // Configure AVAudioSession
     AVAudioSession *session = [AVAudioSession sharedInstance];
     NSError *error;
-    [session setCategory:AVAudioSessionCategoryPlayback
+    // Modified: Use PlayAndRecord category to support speakerphone routing
+    [session setCategory:AVAudioSessionCategoryPlayAndRecord
                     mode:AVAudioSessionModeDefault
-                 options:0
+                 options:AVAudioSessionCategoryOptionDefaultToSpeaker // Prefer speakerphone
                    error:&error];
     if (error) {
         NSLog(@"Failed to set AVAudioSession category: %@", error);
@@ -53,6 +54,12 @@
     [session setPreferredSampleRate:48000 error:&error];
     if (error) {
         NSLog(@"Failed to set preferred sample rate: %@", error);
+    }
+    
+    // Modified: Explicitly set speakerphone as the output
+    [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&error];
+    if (error) {
+        NSLog(@"Failed to set speakerphone: %@", error);
     }
     
     [session setActive:YES error:&error];
@@ -121,6 +128,62 @@
     [_synthesizer stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
     [_playerNode stop];
     [_audioEngine stop];
+}
+
+// New: Enable speakerphone
+- (BOOL)enableSpeakerphone {
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    NSError *error;
+    // Set the audio session category to support speakerphone
+    BOOL categorySet = [session setCategory:AVAudioSessionCategoryPlayAndRecord
+                                withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker
+                                      error:&error];
+    if (!categorySet) {
+        NSLog(@"Failed to set audio session category: %@", error);
+        return NO;
+    }
+    // Activate the audio session
+    BOOL activated = [session setActive:YES error:&error];
+    if (!activated) {
+        NSLog(@"Failed to activate audio session: %@", error);
+        return NO;
+    }
+    // Override output to speaker
+    BOOL success = [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&error];
+    if (!success) {
+        NSLog(@"Failed to enable speakerphone: %@", error);
+    } else {
+        NSLog(@"Speakerphone enabled");
+    }
+    return success;
+}
+
+// New: Disable speakerphone (revert to default, e.g., earpiece)
+- (BOOL)disableSpeakerphone {
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    NSError *error;
+    // Set the audio session category to support default output
+    BOOL categorySet = [session setCategory:AVAudioSessionCategoryPlayAndRecord
+                                withOptions:0 // No specific options to default to earpiece
+                                      error:&error];
+    if (!categorySet) {
+        NSLog(@"Failed to set audio session category for disable: %@", error);
+        return NO;
+    }
+    // Activate the audio session
+    BOOL activated = [session setActive:YES error:&error];
+    if (!activated) {
+        NSLog(@"Failed to activate audio session for disable: %@", error);
+        return NO;
+    }
+    // Revert output to default (e.g., earpiece)
+    BOOL success = [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:&error];
+    if (!success) {
+        NSLog(@"Failed to disable speakerphone: %@", error);
+    } else {
+        NSLog(@"Speakerphone disabled");
+    }
+    return success;
 }
 
 #pragma mark - AVSpeechSynthesizerDelegate

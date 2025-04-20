@@ -32,8 +32,7 @@ FetchContent_Declare(
 )
 FetchContent_Declare(
     llama
-    GIT_REPOSITORY ${THIRD_PARTY_DIR}/local/llama.cpp.git
-    #https://github.com/ggerganov/llama.cpp
+    GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
     SOURCE_DIR ${THIRD_PARTY_DIR}/llama.cpp
     GIT_SHALLOW TRUE # Faster clone
 )

@@ -17,6 +17,10 @@ typedef void (*CompletionCallback)(void* user_data);
 - (void)synthesizeText:(NSString *)text language:(NSString *)language;
 - (void)stop;
 
+// Speakerphone control
+- (BOOL)enableSpeakerphone;
+- (BOOL)disableSpeakerphone;
+
 @property (nonatomic, readonly) void *userData; // Add getter for userData
 
 @end
