@@ -21,11 +21,14 @@
 
 #include <whisper.h>
 
-WhisperTranscriber::WhisperTranscriber(const char* modelPath, WhillatsSetResponseCallback callback)
+WhisperTranscriber::WhisperTranscriber(const char* modelPath, 
+    WhillatsSetResponseCallback callback,
+    WhillatsSetLanguageCallback languageCallback)
     : _audioBuffer(std::make_unique<AudioRingBuffer<float>>(WHISPER_SAMPLE_RATE * 60)),
       _ctx(nullptr),
       _state(nullptr),
       _responseCallback(callback),
+      _languageCallback(languageCallback),
       _segmentComplete(false),
       _nPast(0),
       _maxContext(224),
@@ -144,27 +147,7 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     wparams.temperature = 0.8f;
     wparams.no_speech_thold = 0.4f;
     wparams.logprob_thold = -1.0f;
-    wparams.language = _language.c_str();
-    wparams.detect_language = _detectLanguage;
-
-    // Manual language detection before transcription
-    std::vector<float> lang_probs(whisper_lang_max_id(), 0.0f);
-    if (whisper_lang_auto_detect(_ctx, 0, wparams.n_threads, lang_probs.data()) == 0) {
-        int best_lang_id = 0;
-        float best_prob = 0.0f;
-        for (int i = 0; i < whisper_lang_max_id(); ++i) {
-            if (lang_probs[i] > best_prob) {
-                best_prob = lang_probs[i];
-                best_lang_id = i;
-            }
-        }
-        const char* detected_lang = whisper_lang_str(best_lang_id);
-        LOG_I("Detected language: " << detected_lang << " with probability: " << best_prob);
-        wparams.language = detected_lang;
-    } else {
-        LOG_W("Language detection failed, falling back to default language");
-        wparams.language = "en";
-    }
+    wparams.language = "auto";
     wparams.detect_language = false;
 
     {
@@ -216,6 +199,17 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     } else {
         LOG_V("No tokens decoded");
     }
+
+    // After processing, retrieve and log the detected language
+    int lang_id = whisper_full_lang_id_from_state(_state);
+    const char* detected_lang = whisper_lang_str(lang_id);
+    LOG_I("Auto-detected language by whisper_full_with_state: " << detected_lang);
+    if(_language != detected_lang) {
+        LOG_I("Detected language mismatch, updating from " << _language << " to " << detected_lang);
+        _language = detected_lang;
+        _languageCallback.OnLanguageDetected(true, detected_lang);
+    }
+
     return true;
 }
 

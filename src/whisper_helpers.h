@@ -35,7 +35,7 @@ enum class LogLevel {
 };
 
 // Current log level - can be changed at runtime
-static LogLevel g_currentLogLevel = LogLevel::INFO;
+static LogLevel g_currentLogLevel = LogLevel::VERBOSE;
 
 // Forward declare LogMessage for macro use
 class LogMessage;

@@ -52,6 +52,11 @@
 typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);
 typedef void (*AudioCallback)(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data);
 
+class WhisperTranscriber;
+class LlamaDeviceBase;
+class ESpeakTTS;
+class WhillatsSpeechSynthesizerWrapper;
+
 class WHILLATS_API WhillatsSetResponseCallback {
 public:
     WhillatsSetResponseCallback(ResponseCallback callback, void* user_data)
@@ -84,10 +89,21 @@ private:
     void* user_data_;
 };
 
-class WhisperTranscriber;
-class LlamaDeviceBase;
-class ESpeakTTS;
-class WhillatsSpeechSynthesizerWrapper;
+class WHILLATS_API WhillatsSetLanguageCallback {
+public:
+    WhillatsSetLanguageCallback(ResponseCallback callback, void* user_data)
+        : callback_(callback), user_data_(user_data) {}
+    
+    void OnLanguageDetected(bool success, const std::string& language) {
+        if (callback_) {
+            callback_(success, language.c_str(), user_data_);
+        }
+    }
+
+private:
+    ResponseCallback callback_;
+    void* user_data_;
+};
 
 class WHILLATS_API WhillatsTTS {
   public:
@@ -113,7 +129,10 @@ class WHILLATS_API WhillatsTTS {
 
 class WHILLATS_API WhillatsTranscriber {
   public:
-    WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback);
+    WhillatsTranscriber(const char* model_path, 
+        WhillatsSetResponseCallback callback,
+        WhillatsSetLanguageCallback language_callback);
+
     ~WhillatsTranscriber();
 
     bool start();
@@ -128,6 +147,7 @@ class WHILLATS_API WhillatsTranscriber {
 
   private:
     WhillatsSetResponseCallback _callback; 
+    WhillatsSetLanguageCallback _language_callback;
     std::unique_ptr<WhisperTranscriber> _whisper_transcriber; 
 };
 

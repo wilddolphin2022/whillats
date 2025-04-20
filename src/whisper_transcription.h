@@ -15,7 +15,9 @@
 
 class WhisperTranscriber {
 public:
-    WhisperTranscriber(const char* modelPath, WhillatsSetResponseCallback callback);
+    WhisperTranscriber(const char* modelPath, 
+        WhillatsSetResponseCallback callback,
+        WhillatsSetLanguageCallback languageCallback);
     ~WhisperTranscriber();
 
     void ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSize);
@@ -47,6 +49,7 @@ private:
     whisper_state* _state;
     std::mutex _state_mutex;
     WhillatsSetResponseCallback _responseCallback;
+    WhillatsSetLanguageCallback _languageCallback;
     std::string _fullTranscription; // Accumulate text for current segment
     bool _segmentComplete;          // Flag to reset transcription
     std::string _model_path;

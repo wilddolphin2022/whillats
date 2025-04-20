@@ -27,6 +27,7 @@ std::vector<uint16_t> audio_buffer;
 bool tts_done = false;
 bool whisper_done = false;
 bool llama_done = false;
+bool language_changed = false;
 
 void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data) {
     // Handle audio buffer here
@@ -48,6 +49,12 @@ void llamaResponseCallback(bool success, const char* response, void* user_data) 
     // Handle response here
     std::cout << "Llama response via callback: " << response << std::endl;
     llama_done = true;   
+}
+
+void languageChangedCallback(bool success, const char* language, void* user_data) {
+    // Handle response here
+    std::cout << "Language changed via callback: " << language << std::endl;
+    language_changed = true;
 }
 
 int main(int argc, char *argv[])
@@ -103,7 +110,8 @@ int main(int argc, char *argv[])
   if (opts.whisper) {
     // Test WhisperTranscription
     WhillatsSetResponseCallback callback(whisperResponseCallback, nullptr);
-    WhillatsTranscriber whisper(opts.whisper_model.c_str(), callback);
+    WhillatsSetLanguageCallback language_callback(languageResponseCallback, nullptr);
+    WhillatsTranscriber whisper(opts.whisper_model.c_str(), callback, language_callback);
 
     // Start the transcriber before processing audio
     if (!whisper.start()) 

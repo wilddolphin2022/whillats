@@ -723,6 +723,16 @@ static void llamaResponseCallback(bool success, const char *llama_response, void
       AG_LOG(ERROR, "whisperResponseCallback reported an error.");
     return;
   }
+  
+  static void languageChangedCallback(bool success, const char* language, void* user_data) {
+    if (!success || !language || !user_data) {
+      if (!success)
+        AG_LOG(ERROR, "languageChangedCallback reported an error.");
+      return;
+    }
+
+    AG_LOG(INFO, "Language changed via callback: %s", language);
+  }
 
   TransceiverYuvPcm *transceiver = static_cast<TransceiverYuvPcm *>(user_data);
   const char *text_to_speak = llama_response; // Default to original whisper text
@@ -810,12 +820,13 @@ int main(int argc, char *argv[])
   WhillatsSetResponseCallback whisper_callback(whisperResponseCallback, transceiver.get());
   WhillatsSetAudioCallback tts_callback(ttsAudioCallback, transceiver.get());
   WhillatsSetResponseCallback llama_callback(llamaResponseCallback, transceiver.get());
-
+  WhillatsSetLanguageCallback language_callback(languageChangedCallback, transceiver.get());
   // Initialize Whillats Transcriber
   if (options.useWhisper)
   {
     transceiver->_transcriber = std::make_unique<WhillatsTranscriber>(options.whisperModelPath.c_str(),
-                                                                      whisper_callback);
+                                                                      whisper_callback,
+                                                                      language_callback);
     if (!transceiver->_transcriber->start())
     {
       AG_LOG(ERROR, "Failed to start WhillatsTranscriber!");

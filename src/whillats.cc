@@ -88,9 +88,12 @@ void WhillatsTTS::disableSpeakerphone() {
 
 #endif // !TTS_PLATFORMS
 
-WhillatsTranscriber::WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback) 
-    : _callback(callback),
-      _whisper_transcriber(std::make_unique<WhisperTranscriber>(model_path, callback)) {}
+WhillatsTranscriber::WhillatsTranscriber(const char* model_path, 
+    WhillatsSetResponseCallback callback,
+    WhillatsSetLanguageCallback language_callback) : 
+    _callback(callback),
+    _language_callback(language_callback),
+    _whisper_transcriber(std::make_unique<WhisperTranscriber>(model_path, callback, language_callback)) {}
 
 WhillatsTranscriber::~WhillatsTranscriber() {}
 

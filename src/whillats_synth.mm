@@ -112,7 +112,16 @@ void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const
             _lastLanguage = language;
             // Post notification before synthesis
             dispatch_async(dispatch_get_main_queue(),^{
-                NSDictionary* userInfo = @{@"text": nsText, @"language": nsLanguage};
+                std::string code = language;
+                std::transform(code.begin(), code.end(), code.begin(), ::toupper);
+
+                NSString* languageCode = 
+                (language == "en") ? @"en-US" : \
+                (language == "zh") ? @"zh-CN" : \
+                (language == "ja") ? @"ja-JP" : \
+                [NSString stringWithFormat:@"%s-%s", language.c_str(), code.c_str()];
+                NSDictionary* userInfo = @{@"text": nsText, @"language": languageCode, @"spoken_language": languageCode};
+
                 [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
                                                                   object:nil
                                                                 userInfo:userInfo];
