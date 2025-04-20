@@ -93,7 +93,8 @@ int main(int argc, char *argv[])
       const char *long_test_text = "Hello, this is a test of text to speech synthesis. "
                                   "This is a longer test to ensure we have enough audio data. "
                                   "We are testing the whisper transcription system. "
-                                  "The quick brown fox jumps over the lazy dog.";
+                                  "The quick brown fox jumps over the lazy dog. "
+                                  "¿Cómo estás? У вас есть меню на английском?";
       std::cout << "Testing TTS with text: " << long_test_text << std::endl;
       
       tts.queueText(long_test_text, "en");
@@ -110,7 +111,7 @@ int main(int argc, char *argv[])
   if (opts.whisper) {
     // Test WhisperTranscription
     WhillatsSetResponseCallback callback(whisperResponseCallback, nullptr);
-    WhillatsSetLanguageCallback language_callback(languageResponseCallback, nullptr);
+    WhillatsSetLanguageCallback language_callback(languageChangedCallback, nullptr);
     WhillatsTranscriber whisper(opts.whisper_model.c_str(), callback, language_callback);
 
     // Start the transcriber before processing audio

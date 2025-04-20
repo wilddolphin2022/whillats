@@ -58,7 +58,8 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
 
 void ESpeakTTS::synthesize(const char* text, const char* language) {
     if (!text) return;
-    espeak_SetVoiceByName(language == "en" ? "English" : ("ru" ? "Russian" : "English"));
+    std::string lang = std::string(language);
+    espeak_SetVoiceByName(lang == "en" ? "English" : ("ru" ? "Russian" : "English"));
 
     // Clear output buffer and ring buffer
     _buffer.clear();
