@@ -1,4 +1,19 @@
+/*
+ *  (c) 2025, wilddolphin2022 
+ *  For WebRTCsays.ai project
+ *  https://github.com/wilddolphin2022
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
+#include "whillats.h"
 #import "whillats_ios.h"
+
+#ifndef PLATFORM_DARWIN
 
 @interface WhillatsSpeechSynthesizerProcessor ()
 @property (nonatomic, strong) AVSpeechSynthesizer *synthesizer;
@@ -257,3 +272,5 @@
 @synthesize userData = _userData;
 
 @end
+
+#endif // PLATFORM_DARWIN

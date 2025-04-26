@@ -13,12 +13,23 @@
 #include <memory>
 #include <string>
 
+#include "whillats.h"
 #include "whisper_transcription.h"
 #include "llama_device_base.h"
-#include "whillats.h"
+#include "whillats_utils.h"
 
 #if TTS_PLATFORMS
 #include "espeak_tts.h"
+
+// Temporary fix for non-iOS builds
+#ifndef PLATFORM_DARWIN
+ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback) : _callback(callback) {}
+ESpeakTTS::~ESpeakTTS() {}
+const int ESpeakTTS::getSampleRate() { return 16000; }
+bool ESpeakTTS::start() { return false; }
+void ESpeakTTS::stop() { }
+void ESpeakTTS::queueText(const std::string& text, const std::string& language) { }
+#endif
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback),
@@ -98,7 +109,7 @@ WhillatsTranscriber::WhillatsTranscriber(const char* model_path,
 WhillatsTranscriber::~WhillatsTranscriber() {}
 
 void WhillatsTranscriber::processAudioBuffer(uint8_t* playoutBuffer, const size_t playoutBufferSize) {
-    _whisper_transcriber->ProcessAudioBuffer(playoutBuffer, playoutBufferSize);
+    _whisper_transcriber->processAudioBuffer(playoutBuffer, playoutBufferSize);
 }
 
 bool WhillatsTranscriber::start() {
@@ -145,4 +156,12 @@ void WhillatsLlama::stop() {
 
 void WhillatsLlama::askLlama(const char* prompt) {
     _llama_device->askLlama(prompt);
+}
+
+bool WhillatsLlama::setImage(cv::Mat& image) {
+    return _llama_device->setImage(image);
+}
+
+void WhillatsLlama::processWithImage(const char *prompt) {
+    _llama_device->processWithImage(prompt);
 }

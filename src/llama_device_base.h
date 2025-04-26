@@ -10,7 +10,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
  
-#pragma once
+#ifndef LLAMA_DEVICE_BASE_H
+#define LLAMA_DEVICE_BASE_H
 
 #include <cstdio>
 #include <cstring>
@@ -24,6 +25,7 @@
 
 #include "whillats.h"
 #include "whisper_helpers.h"
+#include "opencv2/opencv.hpp"
 
 struct llama_model;
 struct llama_context;
@@ -38,9 +40,12 @@ public:
   LlamaDeviceBase(const char* model_path, WhillatsSetResponseCallback callback);
   virtual ~LlamaDeviceBase();
 
-  void askLlama(const char *prompt);
   bool start();
   void stop();
+
+  void askLlama(const char *prompt);
+  bool setImage(cv::Mat& image);
+  void processWithImage(const char *prompt);
 
 private:
   bool _running;
@@ -60,6 +65,7 @@ private:
   std::mutex _queueMutex;
   std::condition_variable _queueCondition;
 
+
   // Add these new members
   std::vector<llama_token> context_tokens_;
   const size_t max_context_tokens_ = 2048; // Adjust based on your model   
@@ -67,3 +73,5 @@ private:
   bool TrimContext();
   bool AppendToContext(const std::vector<llama_token>& new_tokens);
 };
+
+#endif // LLAMA_DEVICE_BASE_H

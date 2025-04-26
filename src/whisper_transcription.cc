@@ -12,6 +12,7 @@
 
 #include "whisper_transcription.h"
 #include "whisper_helpers.h"
+#include "whillats_utils.h"
 
 #include <cstring>
 #include <algorithm>
@@ -73,7 +74,7 @@ bool WhisperTranscriber::InitializeWhisperModel(const std::string& modelPath) {
     return true;
 }
 
-void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSizeInBytes) {
+void WhisperTranscriber::processAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSizeInBytes) {
     // Assuming kPlayoutBufferSizeInBytes is the size in BYTES
     // and the data is 16-bit signed PCM, little-endian.
     if(kPlayoutBufferSizeInBytes == 0) {

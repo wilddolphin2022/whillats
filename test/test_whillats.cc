@@ -16,6 +16,7 @@
 
 #include "test_utils.h"
 #include "whisper_helpers.h"
+#include "whillats_utils.h"
 
 // Set log level
 void setLogLevel(LogLevel level)
@@ -168,10 +169,16 @@ int main(int argc, char *argv[])
     WhillatsLlama llama(opts.llama_model.c_str(), callback);
 
     LOG_I("Initializing Llama with model: " << opts.llama_model);
+    cv::Mat yuv = preprocess_yuv_i420_file(
+        "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image_grey.yuv", 300, 300);
     if (llama.start()) 
     {
-
-      std::string prompt = "What will be 2+2?";
+      if(llama.setImage(yuv)) {
+        yuv.release(); // after we set image to llama, we can release the yuv image
+        llama.processWithImage("Describe the contents of the image in detail.");
+      }
+      
+      std::string prompt = "What is your name?";
       LOG_I("Testing Llama with prompt: " << prompt);
       llama.askLlama(prompt.c_str());
 

@@ -47,6 +47,7 @@
 #include <cstring>
 #include <vector>
 #include <memory>
+#include <opencv2/opencv.hpp>
 
 // Change to C-style function pointer callbacks
 typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);
@@ -137,6 +138,7 @@ class WHILLATS_API WhillatsTranscriber {
 
     bool start();
     void stop();
+
     void processAudioBuffer(uint8_t* playoutBuffer, const size_t playoutBufferSize);
 
     void setLanguage(const std::string& language);
@@ -159,6 +161,9 @@ class WHILLATS_API WhillatsLlama {
     bool start();
     void stop();
     void askLlama(const char* prompt);
+
+    bool setImage(cv::Mat& image);
+    void processWithImage(const char *prompt);
   private:
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;

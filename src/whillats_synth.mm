@@ -1,3 +1,15 @@
+/*
+ *  (c) 2025, wilddolphin2022 
+ *  For WebRTCsays.ai project
+ *  https://github.com/wilddolphin2022
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+ 
 #include "whillats_synth.h" // Include the header for WhillatsSpeechSynthesizerWrapper definition
 #include "whillats_ios.h"   // Include for SpeechSynthesizerProcessor, AudioCallback
 #include "whisper_helpers.h"
