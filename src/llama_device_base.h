@@ -44,8 +44,9 @@ public:
   void stop();
 
   void askLlama(const char *prompt);
-  bool setImage(cv::Mat& image);
-  void askWithImage(const char *prompt);
+
+  bool setImage(const uint8_t* yuvData, int width, int height);
+  void askWithImage(const char *prompt, const uint8_t* yuvData, int width, int height);
 
 private:
   bool _running;

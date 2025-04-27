@@ -47,7 +47,6 @@
 #include <cstring>
 #include <vector>
 #include <memory>
-#include <opencv2/opencv.hpp>
 
 // Change to C-style function pointer callbacks
 typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);
@@ -162,8 +161,8 @@ class WHILLATS_API WhillatsLlama {
     void stop();
     void askLlama(const char* prompt);
 
-    bool setImage(cv::Mat& image);
-    void askWithImage(const char *prompt);
+    bool setImage(const uint8_t* yuvData, int width, int height);
+    void askWithImage(const char *prompt, const uint8_t* yuvData, int width, int height);
   private:
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;

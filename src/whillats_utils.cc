@@ -286,7 +286,7 @@ cv::Mat i420ToLlamaVision(const uint8_t* yuvData, int width, int height) {
 
     // Step 3: Resize to 336x336 (common for Mllama/Llama-3.2-Vision)
     cv::Mat resized;
-    cv::resize(rgb, resized, cv::Size(336, 336), 0, 0, cv::INTER_LINEAR);
+    cv::resize(rgb, resized, cv::Size(224, 224), 0, 0, cv::INTER_LINEAR);
 
     // Step 4: Convert to float32 and normalize
     cv::Mat floatImage;
@@ -303,5 +303,84 @@ cv::Mat i420ToLlamaVision(const uint8_t* yuvData, int width, int height) {
     }
     cv::merge(channels, floatImage);
 
-    return floatImage; // CV_32FC3, RGB, 336x336, normalized
+    return floatImage; // CV_32FC3, RGB, 224x224, normalized
+}
+
+// Function to load YUV file (4:2:0 format)
+YUVData* load_yuv(const char* filename, int width, int height) {
+    // Allocate YUVData structure
+    YUVData* data = (YUVData*)malloc(sizeof(YUVData));
+    if (!data) return NULL;
+
+    // Initialize dimensions
+    data->width = width;
+    data->height = height;
+    data->y_size = width * height;
+    data->uv_size = (width * height) / 4; // 4:2:0 subsampling
+
+    // Allocate memory for Y, U, V planes
+    data->y = (uint8_t*)malloc(data->y_size);
+    data->u = (uint8_t*)malloc(data->uv_size);
+    data->v = (uint8_t*)malloc(data->uv_size);
+    
+    if (!data->y || !data->u || !data->v) {
+        free(data->y);
+        free(data->u);
+        free(data->v);
+        free(data);
+        return NULL;
+    }
+
+    // Open file
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        free(data->y);
+        free(data->u);
+        free(data->v);
+        free(data);
+        return NULL;
+    }
+
+    // Read Y plane
+    if (fread(data->y, 1, data->y_size, file) != data->y_size) {
+        fclose(file);
+        free(data->y);
+        free(data->u);
+        free(data->v);
+        free(data);
+        return NULL;
+    }
+
+    // Read U plane
+    if (fread(data->u, 1, data->uv_size, file) != data->uv_size) {
+        fclose(file);
+        free(data->y);
+        free(data->u);
+        free(data->v);
+        free(data);
+        return NULL;
+    }
+
+    // Read V plane
+    if (fread(data->v, 1, data->uv_size, file) != data->uv_size) {
+        fclose(file);
+        free(data->y);
+        free(data->u);
+        free(data->v);
+        free(data);
+        return NULL;
+    }
+
+    fclose(file);
+    return data;
+}
+
+// Function to free YUV data
+void free_yuv(YUVData* data) {
+    if (data) {
+        free(data->y);
+        free(data->u);
+        free(data->v);
+        free(data);
+    }
 }

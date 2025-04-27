@@ -37,6 +37,12 @@ clip_image_u8* mat_to_clip_image_u8(const cv::Mat& img_float_rgb) {
     return img_clip;
 }
 
+// Convert YUV I420 to clip_image_u8
+clip_image_u8* i420ToLlamaVisionClip(const uint8_t* yuvData, int width, int height) {
+    cv::Mat img = i420ToLlamaVision(yuvData, width, height);
+    return mat_to_clip_image_u8(img);
+}
+
 // Clean response by removing special tokens and artifacts
 std::string clean_response(const std::string& response) {
     std::string cleaned = response;
@@ -69,8 +75,8 @@ public:
     bool isRepetitive(const std::string &text, size_t minPatternLength = 10);
     bool isCompleteSentence(const std::string &text);
 
-    bool setImage(cv::Mat& image);
-    std::string generateFromImage(const std::string& prompt, WhillatsSetResponseCallback callback);
+    bool setImage(const uint8_t* yuvData, int width, int height);
+    std::string generateFromImage(const uint8_t* yuvData, int width, int height, const std::string& prompt, WhillatsSetResponseCallback callback);
     cv::Mat image_mat_;
     std::string last_image_hash_;   
 
@@ -441,69 +447,69 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
 }
 
 // Set image and generate embedding
-bool LlamaSimpleChat::setImage(cv::Mat& image) {
-    if (!ctx_ || !vocab_ || !smpl_ || !ctx_clip_) {
-        LOG_E("setImage: context, vocab, sampler, or clip context not initialized.");
-        return false;
-    }
-    if (image.empty()) {
-        LOG_E("Empty image passed to setImage");
-        return false;
-    }
-    LOG_I("Input image size: " << image.cols << "x" << image.rows 
-          << ", type: " << image.type() << ", channels: " << image.channels());
+bool LlamaSimpleChat::setImage(const uint8_t* yuvData, int width, int height) {
+    // if (!ctx_ || !vocab_ || !smpl_ || !ctx_clip_) {
+    //     LOG_E("setImage: context, vocab, sampler, or clip context not initialized.");
+    //     return false;
+    // }
+    // if (image.empty()) {
+    //     LOG_E("Empty image passed to setImage");
+    //     return false;
+    // }
+    // LOG_I("Input image size: " << image.cols << "x" << image.rows 
+    //       << ", type: " << image.type() << ", channels: " << image.channels());
 
-    std::string current_hash = computeImageHash(image);
-    if (current_hash.empty()) {
-        LOG_E("Failed to compute image hash; proceeding without cache");
-    } else if (current_hash == last_image_hash_ && !last_image_hash_.empty()) {
-        LOG_I("Reusing cached embedding for hash: " << current_hash);
-        return true;
-    }
+    // std::string current_hash = computeImageHash(image);
+    // if (current_hash.empty()) {
+    //     LOG_E("Failed to compute image hash; proceeding without cache");
+    // } else if (current_hash == last_image_hash_ && !last_image_hash_.empty()) {
+    //     LOG_I("Reusing cached embedding for hash: " << current_hash);
+    //     return true;
+    // }
 
-    if (cached_embed_.embed) {
-        free(cached_embed_.embed);
-        cached_embed_.embed = nullptr;
-        cached_embed_.n_image_pos = 0;
-    }
+    // if (cached_embed_.embed) {
+    //     free(cached_embed_.embed);
+    //     cached_embed_.embed = nullptr;
+    //     cached_embed_.n_image_pos = 0;
+    // }
 
-    cv::Mat processed_image;
-    cv::resize(image, processed_image, cv::Size(224, 224), 0, 0, cv::INTER_AREA);
-    if (processed_image.empty()) {
-        LOG_E("Failed to resize image");
-        return false;
-    }
+    // cv::Mat processed_image;
+    // cv::resize(image, processed_image, cv::Size(224, 224), 0, 0, cv::INTER_AREA);
+    // if (processed_image.empty()) {
+    //     LOG_E("Failed to resize image");
+    //     return false;
+    // }
 
-    cv::Mat rgb_image;
-    if (processed_image.channels() == 3 && processed_image.type() == CV_8UC3) {
-        cv::cvtColor(processed_image, rgb_image, cv::COLOR_BGR2RGB);
-        rgb_image.convertTo(rgb_image, CV_32FC3, 1.0 / 255.0);
-    } else if (processed_image.type() == CV_32FC3) {
-        rgb_image = processed_image;
-    } else if (processed_image.channels() == 1) {
-        cv::Mat normalized;
-        if (processed_image.type() == CV_8UC1) {
-            cv::equalizeHist(processed_image, normalized);
-            normalized.convertTo(normalized, CV_32FC1, 1.0 / 255.0);
-        } else if (processed_image.type() == CV_32FC1) {
-            cv::Mat temp;
-            processed_image.convertTo(temp, CV_8UC1, 255.0);
-            cv::equalizeHist(temp, temp);
-            temp.convertTo(normalized, CV_32FC1, 1.0 / 255.0);
-        } else {
-            LOG_E("Unsupported greyscale image type: " << processed_image.type());
-            return false;
-        }
-        cv::normalize(normalized, normalized, 0.0, 1.0, cv::NORM_MINMAX);
-        cv::cvtColor(normalized, rgb_image, cv::COLOR_GRAY2RGB);
-    } else {
-        LOG_E("Unsupported image type: " << processed_image.type() << ", channels: " << processed_image.channels());
-        return false;
-    }
+    // cv::Mat rgb_image;
+    // if (processed_image.channels() == 3 && processed_image.type() == CV_8UC3) {
+    //     cv::cvtColor(processed_image, rgb_image, cv::COLOR_BGR2RGB);
+    //     rgb_image.convertTo(rgb_image, CV_32FC3, 1.0 / 255.0);
+    // } else if (processed_image.type() == CV_32FC3) {
+    //     rgb_image = processed_image;
+    // } else if (processed_image.channels() == 1) {
+    //     cv::Mat normalized;
+    //     if (processed_image.type() == CV_8UC1) {
+    //         cv::equalizeHist(processed_image, normalized);
+    //         normalized.convertTo(normalized, CV_32FC1, 1.0 / 255.0);
+    //     } else if (processed_image.type() == CV_32FC1) {
+    //         cv::Mat temp;
+    //         processed_image.convertTo(temp, CV_8UC1, 255.0);
+    //         cv::equalizeHist(temp, temp);
+    //         temp.convertTo(normalized, CV_32FC1, 1.0 / 255.0);
+    //     } else {
+    //         LOG_E("Unsupported greyscale image type: " << processed_image.type());
+    //         return false;
+    //     }
+    //     cv::normalize(normalized, normalized, 0.0, 1.0, cv::NORM_MINMAX);
+    //     cv::cvtColor(normalized, rgb_image, cv::COLOR_GRAY2RGB);
+    // } else {
+    //     LOG_E("Unsupported image type: " << processed_image.type() << ", channels: " << processed_image.channels());
+    //     return false;
+    // }
 
-    cv::normalize(rgb_image, rgb_image, 0.0, 1.0, cv::NORM_MINMAX);
+    // cv::normalize(rgb_image, rgb_image, 0.0, 1.0, cv::NORM_MINMAX);
 
-    clip_image_u8* img_clip = mat_to_clip_image_u8(rgb_image);
+    clip_image_u8* img_clip = i420ToLlamaVisionClip(yuvData, width, height);
     if (!img_clip) {
         LOG_E("Failed to convert image to clip_image_u8");
         return false;
@@ -535,14 +541,14 @@ bool LlamaSimpleChat::setImage(cv::Mat& image) {
     clip_image_u8_free(img_clip);
     LOG_I("Created image embedding, n_image_pos=" << n_image_pos);
 
-    image_mat_ = image;
-    last_image_hash_ = current_hash;
+    // image_mat_ = image;
+    // last_image_hash_ = current_hash;
 
-    LOG_I("Updated last_image_hash_: " << last_image_hash_);
+ //   LOG_I("Updated last_image_hash_: " << last_image_hash_);
     return true;
 }
 
-std::string LlamaSimpleChat::generateFromImage(const std::string& prompt, WhillatsSetResponseCallback callback) {
+std::string LlamaSimpleChat::generateFromImage(const uint8_t* yuvData, int width, int height, const std::string& prompt, WhillatsSetResponseCallback callback) {
     if (!ctx_ || !vocab_ || !smpl_ || !ctx_clip_) {
         LOG_E("Context, vocab, sampler, or clip context not initialized");
         return "";
@@ -556,18 +562,18 @@ std::string LlamaSimpleChat::generateFromImage(const std::string& prompt, Whilla
 
     // Preprocess image and create embedding if needed
     llava_image_embed embed = {nullptr, 0};
-    clip_image_u8* img_clip = nullptr;
+    clip_image_u8* img_clip = i420ToLlamaVisionClip(yuvData, width, height);
     if (ctx_clip_) {
-        if (image_mat_.empty()) {
-            llama_batch_free(batch);
-            return "";
-        }
+        // if (image_mat_.empty()) {
+        //     llama_batch_free(batch);
+        //     return "";
+        // }
 
-        img_clip = mat_to_clip_image_u8(image_mat_);
-        if (!img_clip) {
-            llama_batch_free(batch);
-            return "";
-        }
+        // img_clip = mat_to_clip_image_u8(image_mat_);
+        // if (!img_clip) {
+        //     llama_batch_free(batch);
+        //     return "";
+        // }
 
         float* image_embed_ptr = nullptr;
         int n_image_pos = 0;
@@ -833,9 +839,9 @@ bool LlamaDeviceBase::RunProcessingThread()
   return true;
 }
 
-bool LlamaDeviceBase::setImage(cv::Mat& image)
+bool LlamaDeviceBase::setImage(const uint8_t* yuvData, int width, int height)
 {
-  if (_llama_chat && _llama_chat->setImage(image))
+  if (_llama_chat && _llama_chat->setImage(yuvData, width, height))
   {
       LOG_V("Llama chat image set!");
       return true;
@@ -843,8 +849,8 @@ bool LlamaDeviceBase::setImage(cv::Mat& image)
   return false;
 }
 
-void LlamaDeviceBase::askWithImage(const char *prompt) {
+void LlamaDeviceBase::askWithImage(const char *prompt, const uint8_t* yuvData, int width, int height) {
     if (_llama_chat) {
-        _llama_chat->generateFromImage(prompt, _responseCallback);
+        _llama_chat->generateFromImage(yuvData, width, height, prompt, _responseCallback);
     }
 }

@@ -158,10 +158,10 @@ void WhillatsLlama::askLlama(const char* prompt) {
     _llama_device->askLlama(prompt);
 }
 
-bool WhillatsLlama::setImage(cv::Mat& image) {
-    return _llama_device->setImage(image);
+bool WhillatsLlama::setImage(const uint8_t* yuvData, int width, int height) {
+    return _llama_device->setImage(yuvData, width, height);
 }
 
-void WhillatsLlama::askWithImage(const char *prompt) {
-    _llama_device->askWithImage(prompt);
+void WhillatsLlama::askWithImage(const char *prompt, const uint8_t* yuvData, int width, int height) {
+    _llama_device->askWithImage(prompt, yuvData, width, height);
 }

@@ -171,18 +171,24 @@ int main(int argc, char *argv[])
     LOG_I("Initializing Llama with model: " << opts.llama_model);
     if (llama.start()) 
     {
-      cv::Mat grey_yuv = preprocess_yuv_i420_file(
+      // cv::Mat grey_yuv = preprocess_yuv_i420_file(
+      //   "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image_grey.yuv", 300, 300);
+      YUVData* grey_yuv = load_yuv(
         "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image_grey.yuv", 300, 300);
-      llama.setImage(grey_yuv);
-      grey_yuv.release(); // after we set image to llama, we can release the yuv image
 
-      cv::Mat yuv = preprocess_yuv_i420_file(
+      llama.setImage(static_cast<uint8_t*>(grey_yuv->y), 300, 300);
+
+      //grey_yuv.release(); // after we set image to llama, we can release the yuv image
+      llama.askWithImage("Describe the contents of the image in detail.", static_cast<uint8_t*>(grey_yuv->y), 300, 300);
+      free_yuv(grey_yuv);
+
+      YUVData* yuv = load_yuv(
         "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image.yuv", 1754, 1240);
-      llama.setImage(yuv);
-      yuv.release(); // after we set image to llama, we can release the yuv image
-      llama.askWithImage("Describe the contents of the image in detail.");
 
-      llama.askWithImage("Describe the contents of the image in detail.");
+      llama.setImage(static_cast<uint8_t*>(yuv->y), 1754, 1240);
+      llama.askWithImage("Describe the contents of the image in detail.", static_cast<uint8_t*>(yuv->y), 1754, 1240);
+      free_yuv(yuv);
+
       
       std::string prompt = "What is your name?";
       LOG_I("Testing Llama with prompt: " << prompt);
