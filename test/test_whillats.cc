@@ -169,14 +169,20 @@ int main(int argc, char *argv[])
     WhillatsLlama llama(opts.llama_model.c_str(), callback);
 
     LOG_I("Initializing Llama with model: " << opts.llama_model);
-    cv::Mat yuv = preprocess_yuv_i420_file(
-        "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image_grey.yuv", 300, 300);
     if (llama.start()) 
     {
-      if(llama.setImage(yuv)) {
-        yuv.release(); // after we set image to llama, we can release the yuv image
-        llama.processWithImage("Describe the contents of the image in detail.");
-      }
+      cv::Mat grey_yuv = preprocess_yuv_i420_file(
+        "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image_grey.yuv", 300, 300);
+      llama.setImage(grey_yuv);
+      grey_yuv.release(); // after we set image to llama, we can release the yuv image
+
+      cv::Mat yuv = preprocess_yuv_i420_file(
+        "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image.yuv", 1754, 1240);
+      llama.setImage(yuv);
+      yuv.release(); // after we set image to llama, we can release the yuv image
+      llama.askWithImage("Describe the contents of the image in detail.");
+
+      llama.askWithImage("Describe the contents of the image in detail.");
       
       std::string prompt = "What is your name?";
       LOG_I("Testing Llama with prompt: " << prompt);

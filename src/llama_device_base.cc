@@ -70,8 +70,8 @@ public:
     bool isCompleteSentence(const std::string &text);
 
     bool setImage(cv::Mat& image);
-    std::string processWithImage(const std::string& prompt);
-    cv::Mat _image;
+    std::string generateFromImage(const std::string& prompt, WhillatsSetResponseCallback callback);
+    cv::Mat image_mat_;
     std::string last_image_hash_;   
 
     std::string model_path_;
@@ -90,6 +90,7 @@ public:
 
     clip_ctx* ctx_clip_ = nullptr;
     llava_image_embed cached_embed_ = {nullptr, 0};
+    llama_batch image_batch_ = {0, 0, 0};
 
     std::chrono::steady_clock::time_point _lastResponseStart;
     std::chrono::steady_clock::time_point _lastResponseEnd;
@@ -130,7 +131,6 @@ void LlamaSimpleChat::StopGeneration() {
 bool LlamaSimpleChat::Initialize() {
 
     llama_backend_init();
-    // ??? ggml_backend_load_all();
 
     if (!LoadModel()) {
         LOG_E("Failed to load model.");
@@ -447,19 +447,17 @@ bool LlamaSimpleChat::setImage(cv::Mat& image) {
         return false;
     }
     if (image.empty()) {
-        LOG_E("ERROR: Empty image passed to setImage");
+        LOG_E("Empty image passed to setImage");
         return false;
     }
-    LOG_I("DEBUG: Input image size: " << image.cols << "x" << image.rows 
+    LOG_I("Input image size: " << image.cols << "x" << image.rows 
           << ", type: " << image.type() << ", channels: " << image.channels());
-
-    saveMatAsRGB(image, "debug_input_image.png");
 
     std::string current_hash = computeImageHash(image);
     if (current_hash.empty()) {
-        LOG_E("ERROR: Failed to compute image hash; proceeding without cache");
+        LOG_E("Failed to compute image hash; proceeding without cache");
     } else if (current_hash == last_image_hash_ && !last_image_hash_.empty()) {
-        LOG_I("DEBUG: Reusing cached embedding for hash: " << current_hash);
+        LOG_I("Reusing cached embedding for hash: " << current_hash);
         return true;
     }
 
@@ -472,7 +470,7 @@ bool LlamaSimpleChat::setImage(cv::Mat& image) {
     cv::Mat processed_image;
     cv::resize(image, processed_image, cv::Size(224, 224), 0, 0, cv::INTER_AREA);
     if (processed_image.empty()) {
-        LOG_E("ERROR: Failed to resize image");
+        LOG_E("Failed to resize image");
         return false;
     }
 
@@ -493,40 +491,33 @@ bool LlamaSimpleChat::setImage(cv::Mat& image) {
             cv::equalizeHist(temp, temp);
             temp.convertTo(normalized, CV_32FC1, 1.0 / 255.0);
         } else {
-            LOG_E("ERROR: Unsupported greyscale image type: " << processed_image.type());
+            LOG_E("Unsupported greyscale image type: " << processed_image.type());
             return false;
         }
         cv::normalize(normalized, normalized, 0.0, 1.0, cv::NORM_MINMAX);
         cv::cvtColor(normalized, rgb_image, cv::COLOR_GRAY2RGB);
     } else {
-        LOG_E("ERROR: Unsupported image type: " << processed_image.type() << ", channels: " << processed_image.channels());
+        LOG_E("Unsupported image type: " << processed_image.type() << ", channels: " << processed_image.channels());
         return false;
     }
 
     cv::normalize(rgb_image, rgb_image, 0.0, 1.0, cv::NORM_MINMAX);
 
-    // cv::Mat rgb_save;
-    // rgb_image.convertTo(rgb_save, CV_8UC3, 255.0);
-    // cv::imwrite("debug_processed_image.png", rgb_save);
-    // LOG_I("DEBUG: Saved processed RGB image to debug_processed_image.png");
-
     clip_image_u8* img_clip = mat_to_clip_image_u8(rgb_image);
     if (!img_clip) {
-        LOG_E("ERROR: Failed to convert image to clip_image_u8");
+        LOG_E("Failed to convert image to clip_image_u8");
         return false;
     }
-
-    //saveClipImageU8AsRGB(img_clip, "debug_clip_image.png");
 
     float* image_embed_ptr = nullptr;
     int n_image_pos = 0;
     if (!llava_image_embed_make_with_clip_img(ctx_clip_, std::thread::hardware_concurrency(), img_clip, &image_embed_ptr, &n_image_pos)) {
-        LOG_E("ERROR: Failed to create image embedding");
+        LOG_E("Failed to create image embedding");
         clip_image_u8_free(img_clip);
         return false;
     }
     if (n_image_pos <= 0) {
-        LOG_E("ERROR: Invalid image embedding size: " << n_image_pos);
+        LOG_E("Invalid image embedding size: " << n_image_pos);
         clip_image_u8_free(img_clip);
         return false;
     }
@@ -535,172 +526,173 @@ bool LlamaSimpleChat::setImage(cv::Mat& image) {
     cached_embed_.n_image_pos = n_image_pos;
 
     std::stringstream embed_log;
-    embed_log << "DEBUG: First 10 embedding values: ";
+    embed_log << "First 10 embedding values: ";
     for (int i = 0; i < std::min(10, n_image_pos); ++i) {
         embed_log << cached_embed_.embed[i] << " ";
     }
     LOG_I(embed_log.str());
 
     clip_image_u8_free(img_clip);
-    LOG_I("DEBUG: Created image embedding, n_image_pos=" << n_image_pos);
+    LOG_I("Created image embedding, n_image_pos=" << n_image_pos);
 
+    image_mat_ = image;
     last_image_hash_ = current_hash;
-    LOG_I("DEBUG: Updated last_image_hash_: " << last_image_hash_);
+
+    LOG_I("Updated last_image_hash_: " << last_image_hash_);
     return true;
 }
 
-// Process text prompt with optional image context
-std::string LlamaSimpleChat::processWithImage(const std::string& prompt) {
+std::string LlamaSimpleChat::generateFromImage(const std::string& prompt, WhillatsSetResponseCallback callback) {
     if (!ctx_ || !vocab_ || !smpl_ || !ctx_clip_) {
-        LOG_E("ERROR: Context, vocab, sampler, or clip context not initialized");
+        LOG_E("Context, vocab, sampler, or clip context not initialized");
         return "";
     }
 
-    if (!cached_embed_.embed || cached_embed_.n_image_pos <= 0) {
-        LOG_E("ERROR: No valid image embedding available. Call setImage first");
-        return "";
-    }
+    _lastResponseStart = std::chrono::steady_clock::now();
 
-    llama_kv_self_clear(ctx_);
-    context_tokens_.clear();
-    n_past_ = 0;
-    LOG_I("DEBUG: Cleared KV cache and context, n_past=" << n_past_);
-
-    int max_batch_size = llama_n_batch(ctx_);
+    // Initialize batch
+    int max_batch_size = 64; // Low for RAM
     llama_batch batch = llama_batch_init(max_batch_size, 0, 1);
-    LOG_I("DEBUG: Initialized batch with max_batch_size=" << max_batch_size);
 
-    // Evaluate image embedding
-    int n_image_pos = cached_embed_.n_image_pos;
-    for (int i = 0; i < n_image_pos; i += max_batch_size) {
-        int n_tokens_chunk = std::min(max_batch_size, n_image_pos - i);
-        llava_image_embed chunk_embed = cached_embed_;
-        chunk_embed.n_image_pos = n_tokens_chunk;
-        chunk_embed.embed += i;
-
-        if (!llava_eval_image_embed(ctx_, &chunk_embed, n_tokens_chunk, &n_past_)) {
-            LOG_E("ERROR: Failed to evaluate image embed chunk " << i << " to " << i + n_tokens_chunk);
+    // Preprocess image and create embedding if needed
+    llava_image_embed embed = {nullptr, 0};
+    clip_image_u8* img_clip = nullptr;
+    if (ctx_clip_) {
+        if (image_mat_.empty()) {
             llama_batch_free(batch);
             return "";
         }
-        LOG_I("DEBUG: Evaluated image embed chunk " << i << " to " << i + n_tokens_chunk << ", n_past=" << n_past_);
+
+        img_clip = mat_to_clip_image_u8(image_mat_);
+        if (!img_clip) {
+            llama_batch_free(batch);
+            return "";
+        }
+
+        float* image_embed_ptr = nullptr;
+        int n_image_pos = 0;
+        if (!llava_image_embed_make_with_clip_img(ctx_clip_, 2, img_clip, &image_embed_ptr, &n_image_pos)) {
+            LOG_E("ERROR: Failed to create image embedding");
+            clip_image_u8_free(img_clip);
+            llama_batch_free(batch);
+            return "";
+        }
+        if (n_image_pos <= 0) {
+            LOG_E("ERROR: Invalid image embedding size: " << n_image_pos);
+            clip_image_u8_free(img_clip);
+            llama_batch_free(batch);
+            return "";
+        }
+        embed = {image_embed_ptr, n_image_pos};
+        cached_embed_.embed = image_embed_ptr;
+        cached_embed_.n_image_pos = n_image_pos;
+        LOG_V("DEBUG: Created image embedding, n_image_pos=" << n_image_pos);
+    } else if (cached_embed_.embed) {
+        embed = cached_embed_;
+        LOG_V("DEBUG: Reusing cached image embedding, n_image_pos=" << embed.n_image_pos);
     }
-
+    
     // Process prompt
-    std::string full_prompt = prompt + "\n\n";
-    LOG_I("DEBUG: Full prompt: '" << full_prompt << "'");
+    int n_ctx = llama_n_ctx(ctx_);
 
-    std::vector<llama_token> tokens(n_predict_);
-    int n_tokens = llama_tokenize(vocab_, full_prompt.c_str(), full_prompt.length(), tokens.data(), tokens.size(), true, false);
-    if (n_tokens < 0) {
-        LOG_E("ERROR: Failed to tokenize prompt");
+    // Prompt structure: [INST] <image> USER: prompt ASSISTANT:
+    std::string text_before_image = "[INST] ";
+    std::string text_after_image = "USER: " + prompt + " ASSISTANT: ";
+
+    // 1. Process text before image
+    std::vector<llama_token> tokens_before(n_ctx);
+    int n_tokens_before = llama_tokenize(vocab_, text_before_image.c_str(), text_before_image.length(), tokens_before.data(), tokens_before.size(), true, false);
+    if (n_tokens_before < 0) {
+        LOG_E("ERROR: Failed to tokenize text before image");
+        if (img_clip) clip_image_u8_free(img_clip);
         llama_batch_free(batch);
         return "";
     }
-    tokens.resize(n_tokens);
+    tokens_before.resize(n_tokens_before);
 
-    // Log tokenized prompt
-    std::stringstream token_log;
-    token_log << "DEBUG: Prompt tokens (" << n_tokens << "): ";
-    for (int i = 0; i < n_tokens; ++i) {
-        char piece_buf[128];
-        int len = llama_token_to_piece(vocab_, tokens[i], piece_buf, sizeof(piece_buf), 0, true);
-        piece_buf[std::min(len, (int)sizeof(piece_buf) - 1)] = '\0';
-        token_log << tokens[i] << "='" << piece_buf << "' ";
-    }
-    LOG_I(token_log.str());
-
-    batch.n_tokens = n_tokens;
-    for (int i = 0; i < n_tokens; ++i) {
-        batch.token[i] = tokens[i];
+    batch.n_tokens = n_tokens_before;
+    for (int i = 0; i < n_tokens_before; ++i) {
+        batch.token[i] = tokens_before[i];
         batch.pos[i] = n_past_ + i;
         batch.n_seq_id[i] = 1;
         batch.seq_id[i][0] = 0;
-        batch.logits[i] = (i == n_tokens - 1);
+        batch.logits[i] = false;
     }
     if (llama_decode(ctx_, batch) != 0) {
-        LOG_E("ERROR: Failed to decode prompt");
+        std::cerr << "ERROR: Failed to decode text before image\n";
+        if (img_clip) clip_image_u8_free(img_clip);
         llama_batch_free(batch);
         return "";
     }
-    n_past_ += n_tokens;
-    context_tokens_.insert(context_tokens_.end(), tokens.begin(), tokens.begin() + n_tokens);
-    LOG_I("DEBUG: Decoded prompt, n_past=" << n_past_);
+    n_past_ += n_tokens_before;
+    LOG_V("DEBUG: Decoded text before image, n_past=" << n_past_);
 
-    // Initialize generation with BOS token
-    batch.n_tokens = 1;
-    batch.token[0] = llama_vocab_bos(vocab_);
-    batch.pos[0] = n_past_;
-    batch.n_seq_id[0] = 1;
-    batch.seq_id[0][0] = 0;
-    batch.logits[0] = true;
-    if (llama_decode(ctx_, batch) != 0) {
-        LOG_E("ERROR: Failed to decode initial BOS token");
+    // 2. Evaluate image embed if using image
+    if (cached_embed_.embed) {
+        if (!llava_eval_image_embed(ctx_, &cached_embed_, max_batch_size, &n_past_)) {
+            std::cerr << "ERROR: Failed to evaluate image embed\n";
+            if (img_clip) clip_image_u8_free(img_clip);
+            llama_batch_free(batch);
+            return "";
+        }
+        LOG_V("DEBUG: Evaluated image embed, n_past=" << n_past_);
+    }
+
+    // 3. Process text after image
+    std::vector<llama_token> tokens_after(n_ctx);
+    int n_tokens_after = llama_tokenize(vocab_, text_after_image.c_str(), text_after_image.length(), tokens_after.data(), tokens_after.size(), false, false);
+    if (n_tokens_after < 0) {
+        std::cerr << "ERROR: Failed to tokenize text after image\n";
+        if (img_clip) clip_image_u8_free(img_clip);
         llama_batch_free(batch);
         return "";
     }
-    n_past_++;
-    context_tokens_.push_back(batch.token[0]);
-    LOG_I("DEBUG: Decoded BOS token, n_past=" << n_past_);
+    tokens_after.resize(n_tokens_after);
 
-    // Generation loop
+    batch.n_tokens = n_tokens_after;
+    for (int i = 0; i < n_tokens_after; ++i) {
+        batch.token[i] = tokens_after[i];
+        batch.pos[i] = n_past_ + i;
+        batch.n_seq_id[i] = 1;
+        batch.seq_id[i][0] = 0;
+        batch.logits[i] = (i == n_tokens_after - 1); // Logits for last token
+    }
+    if (llama_decode(ctx_, batch) != 0) {
+        LOG_E("ERROR: Failed to decode text after image");
+        if (img_clip) clip_image_u8_free(img_clip);
+        llama_batch_free(batch);
+        return "";
+    }
+    n_past_ += n_tokens_after;
+    LOG_V("DEBUG: Decoded text after image, n_past=" << n_past_);
+
+    // Clean up image resources
+    if (img_clip) clip_image_u8_free(img_clip);
+
+    // 4. Generation loop
     std::string response;
-    response.reserve(1024);
-    int max_gen_tokens = 256;
+    int max_gen_tokens = 100; // Reduced to prevent over-generation
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* sampler = llama_sampler_chain_init(sparams);
-    llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40)); // Prevent low-probability tokens
-    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());  // Deterministic sampling
+    llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
 
     for (int i = 0; i < max_gen_tokens; ++i) {
-        float* logits = llama_get_logits(ctx_);
-        if (!logits) {
-            LOG_E("ERROR: No logits available for sampling");
-            llama_sampler_free(sampler);
-            llama_batch_free(batch);
-            return "";
-        }
-
-        // Validate context
-        if (n_past_ >= n_predict_) {
-            LOG_E("ERROR: Context size exceeded: n_past=" << n_past_ << ", n_predict=" << n_predict_);
-            llama_sampler_free(sampler);
-            llama_batch_free(batch);
-            return "";
-        }
-
-        llama_token new_token = llama_sampler_sample(sampler, ctx_, -1);
+        llama_token new_token = llama_sampler_sample(sampler, ctx_, -1); // Sample last token’s logits
         llama_sampler_accept(sampler, new_token);
 
-        if (i < 5) {
-            int n_vocab = llama_vocab_n_tokens(vocab_);
-            std::vector<std::pair<float, int>> probs;
-            for (int j = 0; j < n_vocab; ++j) {
-                probs.emplace_back(logits[j], j);
-            }
-            std::sort(probs.begin(), probs.end(), std::greater<>());
-            std::stringstream prob_log;
-            prob_log << "DEBUG: Top 3 tokens at iteration " << i << ": ";
-            for (int j = 0; j < 3; ++j) {
-                char piece_buf[128];
-                int len = llama_token_to_piece(vocab_, probs[j].second, piece_buf, sizeof(piece_buf), 0, true);
-                piece_buf[std::min(len, (int)sizeof(piece_buf) - 1)] = '\0';
-                prob_log << "{token=" << probs[j].second << ", prob=" << probs[j].first << ", text='" << piece_buf << "'} ";
-            }
-            LOG_I(prob_log.str());
-        }
+        // Log raw token ID for debugging
+        LOG_V("DEBUG: Raw token ID: " << new_token);
 
-        if (i < 10 && (new_token == llama_vocab_eos(vocab_) || new_token == 128001)) {
-            LOG_I("DEBUG: Skipping EOS token " << new_token << " at iteration " << i);
-            continue;
-        }
-
-        if (new_token == llama_vocab_eos(vocab_) || new_token == 128001) {
-            LOG_I("DEBUG: EOS token encountered");
+        // Check for EOS or special tokens (e.g., <|eot_id|>)
+        if (new_token == llama_vocab_eos(vocab_) || new_token == 128001) { // 128001 is <|eot_id|> for Llama-3
+            LOG_V("DEBUG: EOS or <|eot_id|> token encountered");
             break;
         }
 
+        // Convert token to text, skip special tokens
         char piece_buf[128];
+        piece_buf[0] = '\0';
         int len = llama_token_to_piece(vocab_, new_token, piece_buf, sizeof(piece_buf), 0, true);
         if (len < 0) {
             LOG_E("ERROR: Failed to convert token " << new_token << " to piece");
@@ -708,16 +700,19 @@ std::string LlamaSimpleChat::processWithImage(const std::string& prompt) {
         }
         piece_buf[std::min(len, (int)sizeof(piece_buf) - 1)] = '\0';
 
+        // Skip special tokens like <|eot_id|>
         if (std::string(piece_buf).find("<|eot_id|>") != std::string::npos) {
-            LOG_I("DEBUG: EOT token encountered");
+            LOG_V("DEBUG: Skipping special token: " << piece_buf);
             break;
         }
 
-        response += piece_buf;
-        LOG_I("DEBUG: Token " << new_token << ": '" << piece_buf << "'");
+        LOG_V("DEBUG: Token " << new_token << ": '" << piece_buf);
 
-        if (response.length() > 1000) {
-            LOG_I("DEBUG: Response length limit reached");
+        response += piece_buf;
+
+        // Stop if response is sufficiently long
+        if (response.length() > 500) {
+            LOG_V("DEBUG: Stopping due to response length");
             break;
         }
 
@@ -733,15 +728,22 @@ std::string LlamaSimpleChat::processWithImage(const std::string& prompt) {
             break;
         }
         n_past_++;
-        context_tokens_.push_back(new_token);
     }
 
+    // Clean up
     llama_sampler_free(sampler);
-    llama_batch_free(batch);
+    llama_batch_free(image_batch_);
 
-    std::string final_response = clean_response(response);
-    LOG_I("DEBUG: Final response: '" << final_response << "'");
-    return final_response;
+    // Post-process response to remove artifacts
+    std::string current_phrase = clean_response(response);
+    callback.OnResponseComplete(true, current_phrase.c_str());
+    response += current_phrase;
+    LOG_I("Llava done: '" << current_phrase << "' in "
+                << std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - _lastResponseStart).count()
+                << " ms");
+
+    return current_phrase;
 }
 
 //
@@ -841,8 +843,8 @@ bool LlamaDeviceBase::setImage(cv::Mat& image)
   return false;
 }
 
-void LlamaDeviceBase::processWithImage(const char *prompt) {
+void LlamaDeviceBase::askWithImage(const char *prompt) {
     if (_llama_chat) {
-        _llama_chat->processWithImage(prompt);
+        _llama_chat->generateFromImage(prompt, _responseCallback);
     }
 }

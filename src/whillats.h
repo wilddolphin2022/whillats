@@ -163,7 +163,7 @@ class WHILLATS_API WhillatsLlama {
     void askLlama(const char* prompt);
 
     bool setImage(cv::Mat& image);
-    void processWithImage(const char *prompt);
+    void askWithImage(const char *prompt);
   private:
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;

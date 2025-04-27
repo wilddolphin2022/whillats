@@ -162,6 +162,6 @@ bool WhillatsLlama::setImage(cv::Mat& image) {
     return _llama_device->setImage(image);
 }
 
-void WhillatsLlama::processWithImage(const char *prompt) {
-    _llama_device->processWithImage(prompt);
+void WhillatsLlama::askWithImage(const char *prompt) {
+    _llama_device->askWithImage(prompt);
 }
