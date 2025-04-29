@@ -52,6 +52,22 @@
 typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);
 typedef void (*AudioCallback)(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data);
 
+struct clip_image_u8 {
+    int width;
+    int height;
+    uint8_t* data; // RGB, interleaved [R,G,B,R,G,B,...]
+};
+
+struct YUVData {
+    std::unique_ptr<uint8_t[]> y;
+    std::unique_ptr<uint8_t[]> u;
+    std::unique_ptr<uint8_t[]> v;
+    int width;
+    int height;
+    size_t y_size;
+    size_t uv_size;
+};
+
 class WhisperTranscriber;
 class LlamaDeviceBase;
 class ESpeakTTS;
@@ -160,9 +176,7 @@ class WHILLATS_API WhillatsLlama {
     bool start();
     void stop();
     void askLlama(const char* prompt);
-
-    bool setImage(const uint8_t* yuvData, int width, int height);
-    void askWithImage(const char *prompt, const uint8_t* yuvData, int width, int height);
+    void askWithImage(const char *prompt, const YUVData& yuv);
   private:
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;

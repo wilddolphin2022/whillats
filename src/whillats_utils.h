@@ -14,37 +14,15 @@
 #define WHILLATS_UTILS_H
 
 #include "whillats.h"
-#include "opencv2/opencv.hpp"
-
-struct clip_image_u8 {
-    int width;
-    int height;
-    uint8_t* data; // RGB, interleaved [R,G,B,R,G,B,...]
-};
-
-typedef struct {
-    uint8_t* y;
-    uint8_t* u;
-    uint8_t* v;
-    int width;
-    int height;
-    size_t y_size;
-    size_t uv_size;
-} YUVData;
 
 // Converts YUV I420 image to OpenCV Mat
-cv::Mat preprocess_yuv_i420(uint8_t* yuv420pBuffer, const size_t yuv420pBufferSize, int width, int height);
-cv::Mat preprocess_yuv_i420_file(const std::string& image_path, int width, int height);
-
-// Converts YUV I420 image to OpenCV Mat, CV_32FC3, RGB, 224x224, normalized
-cv::Mat i420ToLlamaVision(const uint8_t* yuvData, int width, int height);
-clip_image_u8* i420ToLlamaVisionClip(const uint8_t* yuvData, int width, int height);
-std::string computeImageHash(const cv::Mat& image);
-
-bool saveMatAsRGB(const cv::Mat& image, const std::string& filename);
-bool saveClipImageU8AsRGB(const clip_image_u8* img_clip, const std::string& filename);
+clip_image_u8* yuv_to_clip(const YUVData& yuv);
+void free_clip(clip_image_u8* clip);
 
 YUVData* load_yuv(const char* filename, int width, int height);
 void free_yuv(YUVData* data);
 
+std::vector<uint8_t> yuv_to_flat_array(const YUVData& yuv);
+std::string compute_image_hash(const clip_image_u8& image);
+bool save_clip_as_bmp(const clip_image_u8& clip, const char* filename);
 #endif // WHILLATS_UTILS_H

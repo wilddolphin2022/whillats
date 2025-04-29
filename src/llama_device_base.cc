@@ -6,6 +6,7 @@
 #include <mutex>
 #include <queue>
 #include <regex>
+#include <set>
 
 #include "llama.h"
 #include "clip.h"
@@ -15,33 +16,6 @@
 #include "llama_device_base.h"
 #include "whisper_helpers.h"
 #include "whillats_utils.h"
-
-// Convert CV::Mat (float32 RGB, 0–1 range) to clip_image_u8
-clip_image_u8* mat_to_clip_image_u8(const cv::Mat& img_float_rgb) {
-    if (img_float_rgb.empty() || img_float_rgb.type() != CV_32FC3 || !img_float_rgb.isContinuous()) {
-        LOG_E("ERROR: Invalid input image for conversion");
-        return nullptr;
-    }
-
-    clip_image_u8* img_clip = clip_image_u8_init();
-    if (!img_clip) {
-        LOG_E("ERROR: Failed to initialize clip_image_u8");
-        return nullptr;
-    }
-
-    // Convert directly to uchar in-place to avoid extra Mat allocation
-    cv::Mat img_uchar_rgb(img_float_rgb.size(), CV_8UC3);
-    img_float_rgb.convertTo(img_uchar_rgb, CV_8UC3, 255.0);
-
-    clip_build_img_from_pixels(img_uchar_rgb.data, img_uchar_rgb.cols, img_uchar_rgb.rows, img_clip);
-    return img_clip;
-}
-
-// Convert YUV I420 to clip_image_u8
-clip_image_u8* i420ToLlamaVisionClip(const uint8_t* yuvData, int width, int height) {
-    cv::Mat img = i420ToLlamaVision(yuvData, width, height);
-    return mat_to_clip_image_u8(img);
-}
 
 // Clean response by removing special tokens and artifacts
 std::string clean_response(const std::string& response) {
@@ -67,18 +41,15 @@ public:
     bool SetContextSize(int size);
     void StopGeneration();
     bool Initialize();
+
     std::string generate(const std::string &prompt, WhillatsSetResponseCallback callback);
+    std::string generateFromImage(const YUVData& yuv, const std::string& prompt, WhillatsSetResponseCallback callback);
 
     bool LoadModel();
     bool InitializeContext();
     void FreeContext();
     bool isRepetitive(const std::string &text, size_t minPatternLength = 10);
     bool isCompleteSentence(const std::string &text);
-
-    bool setImage(const uint8_t* yuvData, int width, int height);
-    std::string generateFromImage(const uint8_t* yuvData, int width, int height, const std::string& prompt, WhillatsSetResponseCallback callback);
-    cv::Mat image_mat_;
-    std::string last_image_hash_;   
 
     std::string model_path_;
     std::string mmproj_path_;
@@ -93,6 +64,8 @@ public:
     const llama_vocab *vocab_ = nullptr;
     std::deque<llama_token> context_tokens_; // Persistent context
     int n_past_ = 0; // Track processed tokens
+    std::set<llama_token> stopping_token_ids_; // Store IDs of stopping tokens like <|eot_id|>
+    std::vector<std::string> stopping_token_strings_; // Store string representations of stopping tokens
 
     clip_ctx* ctx_clip_ = nullptr;
     llava_image_embed cached_embed_ = {nullptr, 0};
@@ -100,6 +73,9 @@ public:
 
     std::chrono::steady_clock::time_point _lastResponseStart;
     std::chrono::steady_clock::time_point _lastResponseEnd;
+
+    // New method to detect stopping tokens in vocabulary
+    void DetectStoppingTokens();
 };
 
 LlamaSimpleChat::LlamaSimpleChat() = default;
@@ -158,6 +134,9 @@ bool LlamaSimpleChat::Initialize() {
     llama_sampler_chain_add(smpl_, llama_sampler_init_top_p(0.9f, 1));
     llama_sampler_chain_add(smpl_, llama_sampler_init_temp(0.7f));
     llama_sampler_chain_add(smpl_, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    
+    // Detect stopping tokens in the model's vocabulary
+    DetectStoppingTokens();
     return true;
 }
 
@@ -293,6 +272,32 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         return "";
     }
 
+    // Ensure context has system prompt if empty
+    if (context_tokens_.empty()) {
+        const std::string system_prompt = "You are a helpful assistant.";
+        const int n_prompt = -llama_tokenize(vocab_, system_prompt.c_str(), system_prompt.size(), nullptr, 0, true, true);
+        if (n_prompt > 0) {
+            std::vector<llama_token> prompt_tokens(n_prompt);
+            if (llama_tokenize(vocab_, system_prompt.c_str(), system_prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) >= 0) {
+                context_tokens_ = std::deque<llama_token>(prompt_tokens.begin(), prompt_tokens.end());
+                n_past_ = 0;
+                // Process initial system prompt tokens
+                int n_eval = context_tokens_.size();
+                int n_batch = llama_context_default_params().n_batch;
+                for (int i = 0; i < n_eval; i += n_batch) {
+                    int n_tokens = std::min(n_batch, n_eval - i);
+                    struct llama_batch batch = llama_batch_get_one(&context_tokens_[i], n_tokens);
+                    if (llama_decode(ctx_, batch)) {
+                        LOG_E("Failed to decode initial system prompt tokens.");
+                        return "";
+                    }
+                    n_past_ += n_tokens;
+                }
+                LOG_I("Initialized context with system prompt, n_past_=" << n_past_);
+            }
+        }
+    }
+
     // Tokenize the new prompt
     const int n_tokens = -llama_tokenize(vocab_, prompt.c_str(), prompt.size(), nullptr, 0, false, false);
     if (n_tokens < 0) {
@@ -337,7 +342,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     std::string recent_text;
     continue_ = true;
 
-    const int max_response_tokens = 256;
+    const int max_response_tokens = 100; // Reduced from 256 to prevent long outputs
     int generated_tokens = 0;
     int repetition_count = 0;
 
@@ -370,8 +375,9 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         }
 
         llama_token new_token_id = cur_p.data[cur_p.selected].id;
-        if (new_token_id == llama_vocab_eos(vocab_)) {
-            LOG_V("Reached EOS token.");
+        // Check if the new token is in stopping_token_ids_
+        if (stopping_token_ids_.find(new_token_id) != stopping_token_ids_.end()) {
+            LOG_V("Reached a stopping token with ID: " << new_token_id);
             break;
         }
 
@@ -397,6 +403,18 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         current_phrase += piece;
         recent_text += piece;
 
+        // Check for stopping token strings in the output text and stop if found
+        for (const auto& stop_str : stopping_token_strings_) {
+            if (piece.find(stop_str) != std::string::npos) {
+                LOG_V("Found stopping token string '" << stop_str << "' in output, stopping generation.");
+                continue_ = false;
+                break;
+            }
+        }
+        if (!continue_) {
+            break;
+        }
+
         if (recent_text.length() > 50) {
             recent_text = recent_text.substr(recent_text.length() - 50);
         }
@@ -404,9 +422,9 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         context_tokens_.push_back(new_token_id);
         llama_sampler_accept(smpl_, new_token_id);
 
-        if (isRepetitive(recent_text)) {
+        if (isRepetitive(recent_text, 5)) { // Reduced minPatternLength from 10 to 5 for stricter check
             repetition_count++;
-            if (repetition_count > 5) {
+            if (repetition_count > 2) { // Reduced threshold from 5 to 2 to stop earlier
                 LOG_V("Stopping due to repetitive output.");
                 break;
             }
@@ -446,160 +464,85 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     return response;
 }
 
-// Set image and generate embedding
-bool LlamaSimpleChat::setImage(const uint8_t* yuvData, int width, int height) {
-    // if (!ctx_ || !vocab_ || !smpl_ || !ctx_clip_) {
-    //     LOG_E("setImage: context, vocab, sampler, or clip context not initialized.");
-    //     return false;
-    // }
-    // if (image.empty()) {
-    //     LOG_E("Empty image passed to setImage");
-    //     return false;
-    // }
-    // LOG_I("Input image size: " << image.cols << "x" << image.rows 
-    //       << ", type: " << image.type() << ", channels: " << image.channels());
-
-    // std::string current_hash = computeImageHash(image);
-    // if (current_hash.empty()) {
-    //     LOG_E("Failed to compute image hash; proceeding without cache");
-    // } else if (current_hash == last_image_hash_ && !last_image_hash_.empty()) {
-    //     LOG_I("Reusing cached embedding for hash: " << current_hash);
-    //     return true;
-    // }
-
-    // if (cached_embed_.embed) {
-    //     free(cached_embed_.embed);
-    //     cached_embed_.embed = nullptr;
-    //     cached_embed_.n_image_pos = 0;
-    // }
-
-    // cv::Mat processed_image;
-    // cv::resize(image, processed_image, cv::Size(224, 224), 0, 0, cv::INTER_AREA);
-    // if (processed_image.empty()) {
-    //     LOG_E("Failed to resize image");
-    //     return false;
-    // }
-
-    // cv::Mat rgb_image;
-    // if (processed_image.channels() == 3 && processed_image.type() == CV_8UC3) {
-    //     cv::cvtColor(processed_image, rgb_image, cv::COLOR_BGR2RGB);
-    //     rgb_image.convertTo(rgb_image, CV_32FC3, 1.0 / 255.0);
-    // } else if (processed_image.type() == CV_32FC3) {
-    //     rgb_image = processed_image;
-    // } else if (processed_image.channels() == 1) {
-    //     cv::Mat normalized;
-    //     if (processed_image.type() == CV_8UC1) {
-    //         cv::equalizeHist(processed_image, normalized);
-    //         normalized.convertTo(normalized, CV_32FC1, 1.0 / 255.0);
-    //     } else if (processed_image.type() == CV_32FC1) {
-    //         cv::Mat temp;
-    //         processed_image.convertTo(temp, CV_8UC1, 255.0);
-    //         cv::equalizeHist(temp, temp);
-    //         temp.convertTo(normalized, CV_32FC1, 1.0 / 255.0);
-    //     } else {
-    //         LOG_E("Unsupported greyscale image type: " << processed_image.type());
-    //         return false;
-    //     }
-    //     cv::normalize(normalized, normalized, 0.0, 1.0, cv::NORM_MINMAX);
-    //     cv::cvtColor(normalized, rgb_image, cv::COLOR_GRAY2RGB);
-    // } else {
-    //     LOG_E("Unsupported image type: " << processed_image.type() << ", channels: " << processed_image.channels());
-    //     return false;
-    // }
-
-    // cv::normalize(rgb_image, rgb_image, 0.0, 1.0, cv::NORM_MINMAX);
-
-    clip_image_u8* img_clip = i420ToLlamaVisionClip(yuvData, width, height);
-    if (!img_clip) {
-        LOG_E("Failed to convert image to clip_image_u8");
-        return false;
-    }
-
-    float* image_embed_ptr = nullptr;
-    int n_image_pos = 0;
-    if (!llava_image_embed_make_with_clip_img(ctx_clip_, std::thread::hardware_concurrency(), img_clip, &image_embed_ptr, &n_image_pos)) {
-        LOG_E("Failed to create image embedding");
-        clip_image_u8_free(img_clip);
-        return false;
-    }
-    if (n_image_pos <= 0) {
-        LOG_E("Invalid image embedding size: " << n_image_pos);
-        clip_image_u8_free(img_clip);
-        return false;
-    }
-
-    cached_embed_.embed = image_embed_ptr;
-    cached_embed_.n_image_pos = n_image_pos;
-
-    std::stringstream embed_log;
-    embed_log << "First 10 embedding values: ";
-    for (int i = 0; i < std::min(10, n_image_pos); ++i) {
-        embed_log << cached_embed_.embed[i] << " ";
-    }
-    LOG_I(embed_log.str());
-
-    clip_image_u8_free(img_clip);
-    LOG_I("Created image embedding, n_image_pos=" << n_image_pos);
-
-    // image_mat_ = image;
-    // last_image_hash_ = current_hash;
-
- //   LOG_I("Updated last_image_hash_: " << last_image_hash_);
-    return true;
-}
-
-std::string LlamaSimpleChat::generateFromImage(const uint8_t* yuvData, int width, int height, const std::string& prompt, WhillatsSetResponseCallback callback) {
+std::string LlamaSimpleChat::generateFromImage(const YUVData& yuv, const std::string& prompt, WhillatsSetResponseCallback callback) {
+ 
     if (!ctx_ || !vocab_ || !smpl_ || !ctx_clip_) {
         LOG_E("Context, vocab, sampler, or clip context not initialized");
         return "";
     }
 
     _lastResponseStart = std::chrono::steady_clock::now();
-
-    // Initialize batch
+    
+    // Reset context to system prompt for new image to avoid influence from previous outputs
+    context_tokens_.clear();
+    n_past_ = 0;
+    const std::string system_prompt = "[INST] You are a helpful assistant for image description.";
+    int n_ctx = llama_n_ctx(ctx_);
+    std::vector<llama_token> tokens(n_ctx);
+    int n_tokens = llama_tokenize(vocab_, system_prompt.c_str(), system_prompt.length(), tokens.data(), tokens.size(), true, false);
+    if (n_tokens > 0) {
+        tokens.resize(n_tokens);
+        context_tokens_ = std::deque<llama_token>(tokens.begin(), tokens.end());
+        // Initialize a temporary batch for context initialization
+        int max_batch_size = 64; // Low for RAM
+        llama_batch temp_batch = llama_batch_init(max_batch_size, 0, 1);
+        temp_batch.n_tokens = n_tokens;
+        for (int i = 0; i < n_tokens; ++i) {
+            temp_batch.token[i] = tokens[i];
+            temp_batch.pos[i] = i;
+            temp_batch.n_seq_id[i] = 1;
+            temp_batch.seq_id[i][0] = 0;
+            temp_batch.logits[i] = false;
+        }
+        if (llama_decode(ctx_, temp_batch) == 0) {
+            n_past_ = n_tokens;
+            LOG_I("Initialized context with system prompt, n_past_=" << n_past_);
+        } else {
+            LOG_E("Failed to initialize context with system prompt");
+        }
+        llama_batch_free(temp_batch);
+    }
+    
+    // Initialize batch for image processing
     int max_batch_size = 64; // Low for RAM
     llama_batch batch = llama_batch_init(max_batch_size, 0, 1);
 
-    // Preprocess image and create embedding if needed
     llava_image_embed embed = {nullptr, 0};
-    clip_image_u8* img_clip = i420ToLlamaVisionClip(yuvData, width, height);
-    if (ctx_clip_) {
-        // if (image_mat_.empty()) {
-        //     llama_batch_free(batch);
-        //     return "";
-        // }
+    clip_image_u8* img_clip = nullptr;
 
-        // img_clip = mat_to_clip_image_u8(image_mat_);
-        // if (!img_clip) {
-        //     llama_batch_free(batch);
-        //     return "";
-        // }
-
-        float* image_embed_ptr = nullptr;
-        int n_image_pos = 0;
-        if (!llava_image_embed_make_with_clip_img(ctx_clip_, 2, img_clip, &image_embed_ptr, &n_image_pos)) {
-            LOG_E("ERROR: Failed to create image embedding");
-            clip_image_u8_free(img_clip);
-            llama_batch_free(batch);
-            return "";
-        }
-        if (n_image_pos <= 0) {
-            LOG_E("ERROR: Invalid image embedding size: " << n_image_pos);
-            clip_image_u8_free(img_clip);
-            llama_batch_free(batch);
-            return "";
-        }
-        embed = {image_embed_ptr, n_image_pos};
-        cached_embed_.embed = image_embed_ptr;
-        cached_embed_.n_image_pos = n_image_pos;
-        LOG_V("DEBUG: Created image embedding, n_image_pos=" << n_image_pos);
-    } else if (cached_embed_.embed) {
-        embed = cached_embed_;
-        LOG_V("DEBUG: Reusing cached image embedding, n_image_pos=" << embed.n_image_pos);
+    //Preprocess image and create embedding if needed
+    img_clip = yuv_to_clip(yuv);
+    if (!img_clip) {
+        llama_batch_free(batch);
+        return "";
     }
+
+    // Uncomment to save image
+    //save_clip_as_bmp(*img_clip, "image.bmp");
+
+    float* image_embed_ptr = nullptr;
+    int n_image_pos = 0;
+
+    if (!llava_image_embed_make_with_clip_img(ctx_clip_, 2, img_clip, &image_embed_ptr, &n_image_pos)) {
+        LOG_E("Failed to create image embedding");
+        free_clip(img_clip);
+        llama_batch_free(batch);
+        return "";
+    }
+    if (n_image_pos <= 0) {
+        LOG_E("ERROR: Invalid image embedding size: " << n_image_pos);
+        free_clip(img_clip);
+        llama_batch_free(batch);
+        return "";
+    }
+
+    embed = {image_embed_ptr, n_image_pos};
+    //cached_embed_.embed = image_embed_ptr;
+    //cached_embed_.n_image_pos = n_image_pos;
+    LOG_V("DEBUG: Created image embedding, n_image_pos=" << n_image_pos);
     
     // Process prompt
-    int n_ctx = llama_n_ctx(ctx_);
+    n_ctx = llama_n_ctx(ctx_);
 
     // Prompt structure: [INST] <image> USER: prompt ASSISTANT:
     std::string text_before_image = "[INST] ";
@@ -610,10 +553,12 @@ std::string LlamaSimpleChat::generateFromImage(const uint8_t* yuvData, int width
     int n_tokens_before = llama_tokenize(vocab_, text_before_image.c_str(), text_before_image.length(), tokens_before.data(), tokens_before.size(), true, false);
     if (n_tokens_before < 0) {
         LOG_E("ERROR: Failed to tokenize text before image");
-        if (img_clip) clip_image_u8_free(img_clip);
+        if (img_clip) 
+            free_clip(img_clip);
         llama_batch_free(batch);
         return "";
     }
+
     tokens_before.resize(n_tokens_before);
 
     batch.n_tokens = n_tokens_before;
@@ -624,32 +569,40 @@ std::string LlamaSimpleChat::generateFromImage(const uint8_t* yuvData, int width
         batch.seq_id[i][0] = 0;
         batch.logits[i] = false;
     }
+
     if (llama_decode(ctx_, batch) != 0) {
-        std::cerr << "ERROR: Failed to decode text before image\n";
-        if (img_clip) clip_image_u8_free(img_clip);
+        LOG_E("Failed to decode text before image");
+        if (img_clip) free_clip(img_clip);
         llama_batch_free(batch);
         return "";
     }
+
     n_past_ += n_tokens_before;
-    LOG_V("DEBUG: Decoded text before image, n_past=" << n_past_);
+    LOG_I("Decoded text before image, n_past=" << n_past_);
 
     // 2. Evaluate image embed if using image
-    if (cached_embed_.embed) {
-        if (!llava_eval_image_embed(ctx_, &cached_embed_, max_batch_size, &n_past_)) {
-            std::cerr << "ERROR: Failed to evaluate image embed\n";
-            if (img_clip) clip_image_u8_free(img_clip);
-            llama_batch_free(batch);
-            return "";
-        }
-        LOG_V("DEBUG: Evaluated image embed, n_past=" << n_past_);
-    }
+    // Use a local embed structure like the working example
+    llava_image_embed embed_to_eval = {nullptr, 0};
+    // if (cached_embed_.embed) {
+    //   embed_to_eval = cached_embed_; // Copy the cached embed data
+    embed_to_eval = embed;
+
+      // Add logging before the call
+      if (!llava_eval_image_embed(ctx_, &embed_to_eval, max_batch_size, &n_past_)) {
+          LOG_E("Failed to evaluate image embed");
+          if (img_clip) free_clip(img_clip);
+          llama_batch_free(batch);
+          return "";
+      }
+      LOG_I("Evaluated image embed, n_past=" << n_past_);
+    // }
 
     // 3. Process text after image
     std::vector<llama_token> tokens_after(n_ctx);
     int n_tokens_after = llama_tokenize(vocab_, text_after_image.c_str(), text_after_image.length(), tokens_after.data(), tokens_after.size(), false, false);
     if (n_tokens_after < 0) {
-        std::cerr << "ERROR: Failed to tokenize text after image\n";
-        if (img_clip) clip_image_u8_free(img_clip);
+        LOG_E("Failed to tokenize text after image");
+        if (img_clip) free_clip(img_clip);
         llama_batch_free(batch);
         return "";
     }
@@ -664,36 +617,44 @@ std::string LlamaSimpleChat::generateFromImage(const uint8_t* yuvData, int width
         batch.logits[i] = (i == n_tokens_after - 1); // Logits for last token
     }
     if (llama_decode(ctx_, batch) != 0) {
-        LOG_E("ERROR: Failed to decode text after image");
-        if (img_clip) clip_image_u8_free(img_clip);
+        LOG_E("Failed to decode text after image"); 
+        if (img_clip) free_clip(img_clip);
         llama_batch_free(batch);
         return "";
     }
     n_past_ += n_tokens_after;
-    LOG_V("DEBUG: Decoded text after image, n_past=" << n_past_);
+    LOG_V("Decoded text after image, n_past=" << n_past_);
 
     // Clean up image resources
-    if (img_clip) clip_image_u8_free(img_clip);
+    if (img_clip) 
+        free_clip(img_clip);
 
     // 4. Generation loop
     std::string response;
-    int max_gen_tokens = 100; // Reduced to prevent over-generation
+    std::string current_phrase;
+    int max_gen_tokens = 300; // Increased from 200 to allow even longer descriptions
+    int min_gen_tokens = 10; // Minimum tokens to generate before checking stopping conditions
+    int generated_tokens = 0;
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* sampler = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
 
     for (int i = 0; i < max_gen_tokens; ++i) {
-        llama_token new_token = llama_sampler_sample(sampler, ctx_, -1); // Sample last token’s logits
+        llama_token new_token = llama_sampler_sample(sampler, ctx_, -1); // Sample last token's logits
         llama_sampler_accept(sampler, new_token);
+        generated_tokens++;
 
         // Log raw token ID for debugging
-        LOG_V("DEBUG: Raw token ID: " << new_token);
+        LOG_V("Raw token ID: " << new_token);
 
-        // Check for EOS or special tokens (e.g., <|eot_id|>)
-        if (new_token == llama_vocab_eos(vocab_) || new_token == 128001) { // 128001 is <|eot_id|> for Llama-3
-            LOG_V("DEBUG: EOS or <|eot_id|> token encountered");
-            break;
+        // Only check stopping tokens after minimum tokens are generated
+        if (generated_tokens > min_gen_tokens) {
+            // Check for stopping tokens
+            if (stopping_token_ids_.find(new_token) != stopping_token_ids_.end()) {
+                LOG_V("Stopping token encountered with ID: " << new_token);
+                break;
+            }
         }
 
         // Convert token to text, skip special tokens
@@ -701,24 +662,41 @@ std::string LlamaSimpleChat::generateFromImage(const uint8_t* yuvData, int width
         piece_buf[0] = '\0';
         int len = llama_token_to_piece(vocab_, new_token, piece_buf, sizeof(piece_buf), 0, true);
         if (len < 0) {
-            LOG_E("ERROR: Failed to convert token " << new_token << " to piece");
+            LOG_E("Failed to convert token " << new_token << " to piece");
             break;
         }
         piece_buf[std::min(len, (int)sizeof(piece_buf) - 1)] = '\0';
 
-        // Skip special tokens like <|eot_id|>
-        if (std::string(piece_buf).find("<|eot_id|>") != std::string::npos) {
-            LOG_V("DEBUG: Skipping special token: " << piece_buf);
-            break;
+        // Only check stopping token strings after minimum tokens
+        std::string piece_str(piece_buf);
+        current_phrase += piece_str;
+        response += piece_str;
+
+        if (generated_tokens > min_gen_tokens) {
+            for (const auto& stop_str : stopping_token_strings_) {
+                if (piece_str.find(stop_str) != std::string::npos) {
+                    LOG_V("Stopping token string '" << stop_str << "' encountered in output");
+                    continue_ = false;
+                    break;
+                }
+            }
+            if (!continue_) {
+                break;
+            }
         }
 
-        LOG_V("DEBUG: Token " << new_token << ": '" << piece_buf);
+        LOG_V("Token " << new_token << ": '" << piece_buf);
 
-        response += piece_buf;
+        // Check if current_phrase is a complete sentence and send via callback
+        if (isCompleteSentence(current_phrase)) {
+            callback.OnResponseComplete(true, current_phrase.c_str());
+            LOG_V("Partial image description: " << current_phrase);
+            current_phrase.clear();
+        }
 
         // Stop if response is sufficiently long
-        if (response.length() > 500) {
-            LOG_V("DEBUG: Stopping due to response length");
+        if (response.length() > 2000) { // Increased from 1000 to allow even longer descriptions
+            LOG_V("Stopping due to response length");
             break;
         }
 
@@ -730,7 +708,7 @@ std::string LlamaSimpleChat::generateFromImage(const uint8_t* yuvData, int width
         batch.logits[0] = true;
 
         if (llama_decode(ctx_, batch) != 0) {
-            LOG_E("ERROR: llama_decode failed during generation");
+            LOG_E("llama_decode failed during generation");
             break;
         }
         n_past_++;
@@ -739,17 +717,72 @@ std::string LlamaSimpleChat::generateFromImage(const uint8_t* yuvData, int width
     // Clean up
     llama_sampler_free(sampler);
     llama_batch_free(image_batch_);
+    if (embed.embed) {
+        free(embed.embed);
+        embed.embed = nullptr;
+    }
 
     // Post-process response to remove artifacts
-    std::string current_phrase = clean_response(response);
-    callback.OnResponseComplete(true, current_phrase.c_str());
-    response += current_phrase;
-    LOG_I("Llava done: '" << current_phrase << "' in "
+    if (!current_phrase.empty() && isCompleteSentence(current_phrase)) {
+        callback.OnResponseComplete(true, current_phrase.c_str());
+        response += current_phrase;
+        LOG_V("Final partial image description: " << current_phrase);
+    }
+    std::string full_response = clean_response(response);
+    if (!full_response.empty()) {
+        callback.OnResponseComplete(true, full_response.c_str());
+    }
+    LOG_V("Llava done: '" << full_response << "' in "
                 << std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - _lastResponseStart).count()
                 << " ms");
 
-    return current_phrase;
+    return full_response;
+}
+
+// New method to detect stopping tokens in vocabulary
+void LlamaSimpleChat::DetectStoppingTokens() {
+    if (!vocab_) {
+        LOG_E("Vocabulary not loaded, cannot detect stopping tokens.");
+        return;
+    }
+    stopping_token_ids_.clear();
+    stopping_token_strings_.clear();
+    
+    // List of known stopping token strings to check for
+    std::vector<std::string> known_stopping_tokens = {"<|eot_id|>", "<|end_of_text|>", "<|end|>", "</s>"};
+    
+    int n_vocab = llama_vocab_n_tokens(vocab_);
+    for (int token_id = 0; token_id < n_vocab; ++token_id) {
+        char piece_buf[128];
+        piece_buf[0] = '\0';
+        int len = llama_token_to_piece(vocab_, token_id, piece_buf, sizeof(piece_buf), 0, true);
+        if (len < 0) {
+            continue;
+        }
+        piece_buf[std::min(len, (int)sizeof(piece_buf) - 1)] = '\0';
+        std::string token_str(piece_buf);
+        
+        for (const auto& stop_token : known_stopping_tokens) {
+            if (token_str.find(stop_token) != std::string::npos) {
+                stopping_token_ids_.insert(token_id);
+                stopping_token_strings_.push_back(stop_token);
+                LOG_V("Detected stopping token: " << stop_token << " with ID: " << token_id);
+                break; // Avoid duplicate matches
+            }
+        }
+    }
+    
+    // Always add EOS token as a stopping condition
+    llama_token eos_token = llama_vocab_eos(vocab_);
+    if (eos_token != -1) {
+        stopping_token_ids_.insert(eos_token);
+        LOG_V("Added EOS token as stopping condition with ID: " << eos_token);
+    }
+    
+    if (stopping_token_ids_.empty()) {
+        LOG_W("No stopping tokens detected in vocabulary.");
+    }
 }
 
 //
@@ -839,18 +872,8 @@ bool LlamaDeviceBase::RunProcessingThread()
   return true;
 }
 
-bool LlamaDeviceBase::setImage(const uint8_t* yuvData, int width, int height)
-{
-  if (_llama_chat && _llama_chat->setImage(yuvData, width, height))
-  {
-      LOG_V("Llama chat image set!");
-      return true;
-  }
-  return false;
-}
-
-void LlamaDeviceBase::askWithImage(const char *prompt, const uint8_t* yuvData, int width, int height) {
+void LlamaDeviceBase::askWithImage(const char *prompt, const YUVData& yuv) {
     if (_llama_chat) {
-        _llama_chat->generateFromImage(yuvData, width, height, prompt, _responseCallback);
+        _llama_chat->generateFromImage(yuv, prompt, _responseCallback);
     }
 }

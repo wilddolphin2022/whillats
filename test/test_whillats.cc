@@ -171,33 +171,47 @@ int main(int argc, char *argv[])
     LOG_I("Initializing Llama with model: " << opts.llama_model);
     if (llama.start()) 
     {
-      // cv::Mat grey_yuv = preprocess_yuv_i420_file(
-      //   "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image_grey.yuv", 300, 300);
       YUVData* grey_yuv = load_yuv(
         "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image_grey.yuv", 300, 300);
 
-      llama.setImage(static_cast<uint8_t*>(grey_yuv->y), 300, 300);
+      //llama.setImage(*grey_yuv);
 
       //grey_yuv.release(); // after we set image to llama, we can release the yuv image
-      llama.askWithImage("Describe the contents of the image in detail.", static_cast<uint8_t*>(grey_yuv->y), 300, 300);
+      llama.askWithImage("Describe the contents of the image in detail.", *grey_yuv);
       free_yuv(grey_yuv);
-
-      YUVData* yuv = load_yuv(
-        "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image.yuv", 1754, 1240);
-
-      llama.setImage(static_cast<uint8_t*>(yuv->y), 1754, 1240);
-      llama.askWithImage("Describe the contents of the image in detail.", static_cast<uint8_t*>(yuv->y), 1754, 1240);
-      free_yuv(yuv);
-
       
-      std::string prompt = "What is your name?";
-      LOG_I("Testing Llama with prompt: " << prompt);
-      llama.askLlama(prompt.c_str());
-
+      // Wait for the first image processing to complete
       while (!llama_done)
       {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
+      llama_done = false;
+      
+      YUVData* yuv = load_yuv(
+        "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image.yuv", 1754, 1240);
+
+      //llama.setImage(*yuv);
+      llama.askWithImage("Describe the contents of the image in detail.", *yuv);
+      free_yuv(yuv);
+      
+      // Wait for the second image processing to complete
+      while (!llama_done)
+      {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+      llama_done = false;
+      
+      std::string prompt = "What is your name?";
+      LOG_I("Testing Llama with prompt: " << prompt);
+      llama.askLlama(prompt.c_str());
+      
+      // Wait for the text query response
+      while (!llama_done)
+      {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+      llama_done = false;
+      
       llama.stop();
     }
     else

@@ -25,7 +25,6 @@
 
 #include "whillats.h"
 #include "whisper_helpers.h"
-#include "opencv2/opencv.hpp"
 
 struct llama_model;
 struct llama_context;
@@ -44,9 +43,7 @@ public:
   void stop();
 
   void askLlama(const char *prompt);
-
-  bool setImage(const uint8_t* yuvData, int width, int height);
-  void askWithImage(const char *prompt, const uint8_t* yuvData, int width, int height);
+  void askWithImage(const char *prompt, const YUVData& yuv);
 
 private:
   bool _running;
