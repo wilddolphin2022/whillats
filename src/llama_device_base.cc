@@ -630,11 +630,11 @@ std::string LlamaSimpleChat::generateFromImage(const YUVData& yuv, const std::st
         free_clip(img_clip);
 
     // 4. Generation loop
-    std::string response;
     std::string current_phrase;
-    int max_gen_tokens = 300; // Increased from 200 to allow even longer descriptions
-    int min_gen_tokens = 10; // Minimum tokens to generate before checking stopping conditions
     int generated_tokens = 0;
+    std::string response;
+    int max_gen_tokens = 100; // Reduced to prevent over-generation
+    int min_gen_tokens = 20; // Minimum tokens to generate before checking stopping conditions
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* sampler = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40));
@@ -652,7 +652,7 @@ std::string LlamaSimpleChat::generateFromImage(const YUVData& yuv, const std::st
         if (generated_tokens > min_gen_tokens) {
             // Check for stopping tokens
             if (stopping_token_ids_.find(new_token) != stopping_token_ids_.end()) {
-                LOG_V("Stopping token encountered with ID: " << new_token);
+                LOG_V("Stopping token encountered with ID: " << new_token << " after " << generated_tokens << " tokens");
                 break;
             }
         }
@@ -675,7 +675,7 @@ std::string LlamaSimpleChat::generateFromImage(const YUVData& yuv, const std::st
         if (generated_tokens > min_gen_tokens) {
             for (const auto& stop_str : stopping_token_strings_) {
                 if (piece_str.find(stop_str) != std::string::npos) {
-                    LOG_V("Stopping token string '" << stop_str << "' encountered in output");
+                    LOG_V("Stopping token string '" << stop_str << "' encountered in output after " << generated_tokens << " tokens");
                     continue_ = false;
                     break;
                 }
@@ -687,16 +687,16 @@ std::string LlamaSimpleChat::generateFromImage(const YUVData& yuv, const std::st
 
         LOG_V("Token " << new_token << ": '" << piece_buf);
 
-        // Check if current_phrase is a complete sentence and send via callback
-        if (isCompleteSentence(current_phrase)) {
+        // Check if current_phrase is a complete sentence and long enough to send via callback
+        if (isCompleteSentence(current_phrase) && current_phrase.length() > 50) {
             callback.OnResponseComplete(true, current_phrase.c_str());
-            LOG_V("Partial image description: " << current_phrase);
+            LOG_V("Partial image description (" << current_phrase.length() << " chars): " << current_phrase);
             current_phrase.clear();
         }
 
         // Stop if response is sufficiently long
-        if (response.length() > 2000) { // Increased from 1000 to allow even longer descriptions
-            LOG_V("Stopping due to response length");
+        if (response.length() > 3000) { // Increased from 2000 to allow much longer descriptions
+            LOG_V("Stopping due to response length (" << response.length() << " chars) after " << generated_tokens << " tokens");
             break;
         }
 
@@ -708,7 +708,7 @@ std::string LlamaSimpleChat::generateFromImage(const YUVData& yuv, const std::st
         batch.logits[0] = true;
 
         if (llama_decode(ctx_, batch) != 0) {
-            LOG_E("llama_decode failed during generation");
+            LOG_E("llama_decode failed during generation after " << generated_tokens << " tokens");
             break;
         }
         n_past_++;
