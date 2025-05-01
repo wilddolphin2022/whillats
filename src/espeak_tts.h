@@ -10,7 +10,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#pragma once
+#ifndef ESPEAK_TTS_H
+#define ESPEAK_TTS_H
 
 #include <vector>
 #include <chrono>
@@ -24,6 +25,14 @@
 #include "whisper_helpers.h"
 
 #include <espeak-ng/speak_lib.h>
+
+// Remove toupper/tolower macros from espeak-ng compatibility headers
+#ifdef toupper
+#undef toupper
+#endif
+#ifdef tolower
+#undef tolower
+#endif
 
 class ESpeakTTS {
 public:
@@ -58,3 +67,5 @@ private:
     std::mutex _queueMutex;
     std::condition_variable _queueCondition;
 };
+
+#endif // ESPEAK_TTS_H

@@ -33,10 +33,13 @@ Options parseOptions(int argc, char *argv[])
                      "  --llama, --no-llama                Enable/disable llama (default: disabled)\n"
                      "  --whisper_model=<path>             Path to whisper model\n"
                      "  --llama_model=<path>               Path to llama model\n"
+                     "  --llama_mmproj=<path>              Path to llama mmproj model\n"
+                     "  --test_image1=<path>               Path to test image 1\n"
+                     "  --test_image2=<path>               Path to test image 2\n"
                      "  --help                             Show this help message\n"
                      "\nExamples:\n"
                      "  test_whillats --whisper --whisper_model=model.bin\n"
-                     "  test_whillats --llama --llama_model=model.bin\n";
+                     "  test_whillats --llama --llama_model=model.bin --llama_mmproj=mmproj.bin\n";
 
   for (int i = 1; i < argc; ++i)
   {
@@ -82,6 +85,21 @@ Options parseOptions(int argc, char *argv[])
     {
       opts.llama_model = arg.substr(14); // Length of "-llama_model="
       LOG_I("Llama model path: " << opts.llama_model);
+    }
+    else if (arg.find("--llama_mmproj=") == 0)
+    {
+      opts.llama_mmproj = arg.substr(15); // Length of "-llama_mmproj="
+      LOG_I("Llama mmproj path: " << opts.llama_mmproj);
+    }
+    else if (arg.find("--test_image1=") == 0)
+    {
+      opts.test_image1 = arg.substr(15); // Length of "-test_image1="
+      LOG_I("Test image 1 path: " << opts.test_image1);
+    }
+    else if (arg.find("--test_image2=") == 0)
+    {
+      opts.test_image2 = arg.substr(15); // Length of "-test_image2="
+      LOG_I("Test image 2 path: " << opts.test_image2);
     }
   }
 

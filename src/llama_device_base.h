@@ -36,7 +36,7 @@ class LlamaSimpleChat;
 
 class LlamaDeviceBase {
 public:
-  LlamaDeviceBase(const char* model_path, WhillatsSetResponseCallback callback);
+  LlamaDeviceBase(const char* model_path, const char* mmproj_path, WhillatsSetResponseCallback callback);
   virtual ~LlamaDeviceBase();
 
   bool start();
@@ -49,6 +49,7 @@ private:
   bool _running;
   std::thread _processingThread;
   std::string _model_path;
+  std::string _mmproj_path;
 
   WhillatsSetResponseCallback _responseCallback;  // Add callback member
   

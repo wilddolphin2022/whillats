@@ -14,16 +14,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib) # Changed to lib for
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib) # Changed to lib for consistency
 set(CMAKE_FRAMEWORK_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Frameworks) # Output for frameworks
 
-# Multi-config generators: ensure outputs go to configured directories
-if(CMAKE_CONFIGURATION_TYPES)
-  foreach(config IN LISTS CMAKE_CONFIGURATION_TYPES)
-    string(TOUPPER ${config} CONFIG_UPPER)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${CONFIG_UPPER} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${CONFIG_UPPER} ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${CONFIG_UPPER} ${CMAKE_ARCHIVE_OUTPUT_DIRECTORY})
-  endforeach()
-endif()
-
 # Additional compiler and linker flags
 set(CMAKE_CXX_STANDARD 14)
 add_compile_options(-Wno-incompatible-pointer-types-discards-qualifiers)
@@ -47,12 +37,13 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE # Faster clone
 )
 
-# Only declare non-iOS dependencies (macOS & Linux)
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+# Only declare non-Apple dependencies if not building for Apple
+if(NOT APPLE)
     FetchContent_Declare(
-        espeak-ng-proj
+        espeak-ng-proj # Rename to avoid conflict with potential target name
         GIT_REPOSITORY ${THIRD_PARTY_DIR}/local/espeak-ng.git
-        SOURCE_DIR      ${THIRD_PARTY_DIR}/espeak-ng
+        #https://github.com/espeak-ng/espeak-ng
+        SOURCE_DIR ${THIRD_PARTY_DIR}/espeak-ng
         GIT_SHALLOW TRUE # Faster clone
     )
     FetchContent_Declare(
@@ -72,7 +63,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             # CMake should automatically handle extraction for .tgz
         )
     endif()
-endif()
+endif() # NOT APPLE
 
 # --- Populate Common Dependencies (Headers needed even on iOS) ---
 FetchContent_GetProperties(whisper)
@@ -87,84 +78,38 @@ if(NOT llama_POPULATED)
     message(STATUS "Llama source downloaded to ${llama_SOURCE_DIR}")
 endif()
 
-# --- Build Dependencies and Target (non-iOS: Linux & macOS) ---
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    message(STATUS "Configuring for non-iOS static build (Linux & macOS)")
-    # --- Populate and Build Dependencies for static whisper and llama ---
-    # whisper.cpp (CMake) - static build
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static libs build" FORCE)
+# --- OpenCV Declaration ---
+
+# --- Build Dependencies and Target (Non-Apple Platforms) ---
+if(NOT APPLE)
+    message(STATUS "Configuring for non-Apple platform")
+
+    # --- Populate and Build Non-Apple Dependencies ---
+
+    # whisper.cpp (CMake)
     set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(WHISPER_STATIC ON CACHE BOOL "Build static libs for whisper" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libs for whisper" FORCE)
+    set(WHISPER_STATIC ON CACHE BOOL "Build static libs for whisper" FORCE) # Explicitly static
+    if(UNIX AND NOT APPLE) # Linux specific
+        set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
+    else()
+        set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
+    endif()
     FetchContent_MakeAvailable(whisper)
 
-    # Create an imported target for the built whisper static library
-    add_library(whisper_static STATIC IMPORTED)
-    set_target_properties(whisper_static PROPERTIES
-        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/lib/libwhisper.a"
-        INTERFACE_INCLUDE_DIRECTORIES "${whisper_SOURCE_DIR}/include"
-    )
-
-    # llama.cpp (CMake) - static build
-    set(LLAMA_STATIC ON CACHE BOOL "Build static libs for llama" FORCE)
+    # llama.cpp (CMake)
+    set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    if(UNIX AND NOT APPLE) # Linux specific
+        set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
+    else()
+        set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
+    endif()
     FetchContent_MakeAvailable(llama)
 
-    # Create an imported target for the built llama static library
-    add_library(llama_static STATIC IMPORTED)
-    set_target_properties(llama_static PROPERTIES
-        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/lib/libllama.a"
-        INTERFACE_INCLUDE_DIRECTORIES "${llama_SOURCE_DIR}/include"
-    )
-
-    # --- Define whillats Target (shared library for Linux) ---
-    add_library(${PROJECT_NAME} SHARED
-        src/whisper_transcription.cc
-        src/llama_device_base.cc
-        src/espeak_tts.cc
-        src/whillats.cc
-        src/whillats_utils.cc
-    )
-
-    add_dependencies(${PROJECT_NAME} copy_espeak_data)
-
-    target_compile_definitions(${PROJECT_NAME} PRIVATE
-        ESPEAK_DATA_PATH="\"${ESPEAK_DATA_DEST_DIR}\""
-        WHILLATS_BUILDING_DLL # For Windows DLL export/import if needed later
-    )
-
-    # Include our own headers on Linux
-    target_include_directories(${PROJECT_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-        ${whisper_SOURCE_DIR}/include
-        ${whisper_SOURCE_DIR}/ggml/include
-        ${llama_SOURCE_DIR}/include
-        ${llama_SOURCE_DIR}/ggml/include
-        ${THIRD_PARTY_DIR}/llama.cpp/examples/llava # Added for clip.h        
-    )
-
-    # System includes for espeak-ng to avoid overriding standard headers
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-        ${THIRD_PARTY_DIR}/espeak-ng/src/include
-        ${THIRD_PARTY_DIR}/espeak-ng/src/ucd-tools/src/include
-    )
-
-    # Link static whisper and llama directly from the build output, plus espeak-ng and pcaudio
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-        "${CMAKE_BINARY_DIR}/lib/libwhisper.a"
-        "${CMAKE_BINARY_DIR}/lib/libllama.a"
-        espeak-ng
-        pcaudio
-    )
-
-    # Linux-specific flags and system libraries
-    if(UNIX)
-        target_link_libraries(${PROJECT_NAME} PRIVATE gomp stdc++)
-    endif()
-
-    # espeak-ng & pcaudiolib (CMake & Autotools) on Linux
+    # espeak-ng & pcaudiolib (CMake & Autotools)
     FetchContent_GetProperties(pcaudiolib-proj)
     if(NOT pcaudiolib-proj_POPULATED)
         cmake_policy(SET CMP0169 OLD)
@@ -207,6 +152,10 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     )
     add_dependencies(pcaudio pcaudiolib_external)
 
+    # Ensure espeak-ng uses the correct C compiler
+    set(CMAKE_C_COMPILER ${CMAKE_C_COMPILER} CACHE STRING "C compiler" FORCE)
+    list(APPEND CMAKE_PROGRAM_PATH /usr/bin /bin)
+    set(CMAKE_PROGRAM_PATH ${CMAKE_PROGRAM_PATH} CACHE STRING "Path for CMake to search for programs" FORCE)
     FetchContent_MakeAvailable(espeak-ng-proj)
 
     # Define paths for espeak-ng data
@@ -221,94 +170,152 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     )
     add_custom_target(copy_espeak_data ALL DEPENDS ${ESPEAK_DATA_DEST_DIR}/phontab)
 
-endif() # end non-iOS static build
-
-# --- iOS Framework Build ---
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    message(STATUS "Configuring for iOS framework build")
-
-    # Prepare static whisper library (disable shared build)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static whisper build" FORCE)
-    set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(WHISPER_STATIC ON CACHE BOOL "Build static whisper" FORCE)
-    FetchContent_MakeAvailable(whisper)
-    # Prepare static llama library (disable shared build)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static llama build" FORCE)
-    set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(llama)
-
-    # Imported targets for the static whisper and llama libraries
-    add_library(whisper_static STATIC IMPORTED)
-    set_target_properties(whisper_static PROPERTIES
-        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/lib/libwhisper.a"
-        INTERFACE_INCLUDE_DIRECTORIES "${whisper_SOURCE_DIR}/include"
-    )
-    add_library(llama_static STATIC IMPORTED)
-    set_target_properties(llama_static PROPERTIES
-        IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/lib/libllama.a"
-        INTERFACE_INCLUDE_DIRECTORIES "${llama_SOURCE_DIR}/include"
+    # --- Define whillats Target (Non-Apple) ---
+    add_library(${PROJECT_NAME} SHARED
+        src/whisper_transcription.cc
+        src/llama_device_base.cc
+        src/espeak_tts.cc # Only include for non-Apple
+        src/whillats.cc
+        src/whillats_utils.cc
     )
 
-    # Select sources: use AVFoundation on Apple
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        set(WHILLATS_APPLE_SOURCES
-            src/whisper_transcription.cc
-            src/llama_device_base.cc
-            src/whillats.cc
-            src/whillats_synth.mm
-            src/whillats_ios.mm
-            src/whillats_utils.cc
-        )
-    else()
-        message(FATAL_ERROR "Non-iOS Apple targets (macOS) must use the static build path. Disable iOS build or adjust CMake_SYSTEM_NAME.")
+    add_dependencies(${PROJECT_NAME} copy_espeak_data)
+
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        ESPEAK_DATA_PATH="\"${ESPEAK_DATA_DEST_DIR}\""
+        WHILLATS_BUILDING_DLL # For Windows DLL export/import if needed later
+    )
+
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${llama_BINARY_DIR}/include # Use build path for llama includes
+        ${whisper_BINARY_DIR}/include # Use build path for whisper includes
+        ${whisper_BINARY_DIR}/ggml/include # Use build path for ggml includes
+        ${espeak-ng-proj_SOURCE_DIR}/src/include
+        ${espeak-ng-proj_SOURCE_DIR}/src/ucd-tools/src/include
+        ${pcaudiolib-proj_SOURCE_DIR}/src/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+        ${THIRD_PARTY_DIR}/llama.cpp/examples/llava # Added for clip.h
+    )
+
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        whisper      # Link against main whisper target (static)
+        llama        # Link against main llama target (static)
+        espeak-ng    # Link against espeak-ng target (static)
+        pcaudio      # Link against imported pcaudio target (static)
+    )
+
+    if(UNIX AND NOT APPLE)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE PLATFORM_LINUX)
+        target_link_libraries(${PROJECT_NAME} PRIVATE gomp stdc++)
     endif()
 
-    add_library(${PROJECT_NAME} SHARED ${WHILLATS_APPLE_SOURCES})
+# --- Build Configuration for Apple Platforms (macOS, iOS) ---
+else() # APPLE
+    message(STATUS "Configuring for Apple platform: ${CMAKE_SYSTEM_NAME}")
+
+    set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+    set(CMAKE_VISIBILITY_INLINES_HIDDEN YES)
+
+    # Assume XCFrameworks are pre-built in standard locations
+    set(LLAMA_XCFRAMEWORK_PATH ${THIRD_PARTY_DIR}/llama.cpp/build-apple/llama.xcframework)
+    set(WHISPER_XCFRAMEWORK_PATH ${THIRD_PARTY_DIR}/whisper.cpp/build-apple/whisper.xcframework)
+
+    if(NOT EXISTS ${LLAMA_XCFRAMEWORK_PATH})
+        message(WARNING "Llama XCFramework not found at ${LLAMA_XCFRAMEWORK_PATH}. Please build it using third_party/llama.cpp/build-xcframework.sh")
+    endif()
+    if(NOT EXISTS ${WHISPER_XCFRAMEWORK_PATH})
+        message(WARNING "Whisper XCFramework not found at ${WHISPER_XCFRAMEWORK_PATH}. Please build it using third_party/whisper.cpp/build-xcframework.sh")
+    endif()
+
+    # --- Define whillats Target (Apple Framework) ---
+    add_library(${PROJECT_NAME} SHARED
+        src/whisper_transcription.cc
+        src/llama_device_base.cc
+        #src/espeak_tts.cc
+        src/whillats.cc
+        src/whillats_synth.mm
+        src/whillats_ios.mm
+        src/whillats_utils.cc
+    )
+
     set_target_properties(${PROJECT_NAME} PROPERTIES
         FRAMEWORK ON
-        FRAMEWORK_VERSION A
+        FRAMEWORK_VERSION A # Standard practice
         MACOSX_FRAMEWORK_IDENTIFIER ai.webrtcsays.whillats
-        XCODE_ATTRIBUTE_DEFINES_MODULE YES
+        # Define PUBLIC_HEADER to list headers exposed by the framework
+        # PUBLIC_HEADER "src/whillats.h;src/whillats_ios.h"
+        # Remove headers from RESOURCES
+        # RESOURCE "src/whillats.h;src/whillats_ios.h"
+        XCODE_ATTRIBUTE_DEFINES_MODULE YES # Enable module map generation
         XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES YES
+        XCODE_ATTRIBUTE_APPLICATION_EXTENSION_API_ONLY NO # Or YES if needed
+        # Ensure ObjC ARC is enabled if needed (often default, but good to be explicit)
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
+        # Set deployment target (should ideally come from toolchain file)
+        # CMAKE_OSX_DEPLOYMENT_TARGET "16.4" # Example for iOS
     )
 
-    # Compile definitions
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        target_compile_definitions(${PROJECT_NAME} PRIVATE TTS_PLATFORMS=0)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<PLATFORM_ID:iOS>:WEBRTC_IOS>)
-    else()
-        target_compile_definitions(${PROJECT_NAME} PRIVATE TTS_PLATFORMS=1)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<PLATFORM_ID:Darwin>:PLATFORM_DARWIN>)
-    endif()
+    # Remove the previous set(FRAMEWORK_OUTPUT_PATH ...) if it exists
+    # set(FRAMEWORK_OUTPUT_PATH $<TARGET_FILE_DIR:${PROJECT_NAME}>/${PROJECT_NAME}.framework)
 
-    # Link XCFrameworks if built
-    set(LLAMA_XCF ${THIRD_PARTY_DIR}/llama.cpp/build-apple/llama.xcframework)
-    set(WHISPER_XCF ${THIRD_PARTY_DIR}/whisper.cpp/build-apple/whisper.xcframework)
-    if(EXISTS ${LLAMA_XCF} AND EXISTS ${WHISPER_XCF})
-        target_link_options(${PROJECT_NAME} PRIVATE
-            "-F${THIRD_PARTY_DIR}/llama.cpp/build-apple"
-            "-F${THIRD_PARTY_DIR}/whisper.cpp/build-apple"
-        )
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        # Use direct CMake commands and variable substitution
+        COMMAND ${CMAKE_COMMAND} -E echo "POST_BUILD: CMAKE_LIBRARY_OUTPUT_DIRECTORY = ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
+        COMMAND ${CMAKE_COMMAND} -E echo "POST_BUILD: PROJECT_NAME = ${PROJECT_NAME}"
+        COMMAND ${CMAKE_COMMAND} -E echo "POST_BUILD: Creating Headers Dir = ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers"
+            COMMENT "Creating Headers directory in Release framework (direct)"
+        COMMAND ${CMAKE_COMMAND} -E echo "POST_BUILD: Copying ${CMAKE_CURRENT_SOURCE_DIR}/src/whillats.h to ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/whillats.h" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
+            COMMENT "Copying whillats.h to Release framework (direct)"
+        #COMMAND ${CMAKE_COMMAND} -E echo "POST_BUILD: Copying ${CMAKE_CURRENT_SOURCE_DIR}/src/whillats_ios.h to ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
+        #COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/whillats_ios.h" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/Release/${PROJECT_NAME}.framework/Headers/"
+        #    COMMENT "Copying whillats_ios.h to Release framework (direct)"
+        VERBATIM
+    )
+
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        $<$<PLATFORM_ID:Darwin>:PLATFORM_DARWIN>
+        $<$<PLATFORM_ID:iOS>:WEBRTC_IOS>
+        TTS_PLATFORMS=0
+        # Add other necessary definitions for Apple platforms
+    )
+
+    target_include_directories(${PROJECT_NAME} PUBLIC # Headers for the framework interface
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+     PRIVATE # Internal include paths
+        ${llama_SOURCE_DIR}/include
+        ${llama_SOURCE_DIR}/ggml/include
+        ${whisper_SOURCE_DIR}/include
+        ${whisper_SOURCE_DIR}/ggml/include
+        ${THIRD_PARTY_DIR}/llama.cpp/examples/llava # Added for clip.h
+    )
+
+    # Link only if the XCFrameworks actually exist (they might not on the first configure pass)
+    if(EXISTS ${LLAMA_XCFRAMEWORK_PATH} AND EXISTS ${WHISPER_XCFRAMEWORK_PATH})
+        # Link against the pre-built XCFrameworks
         target_link_libraries(${PROJECT_NAME} PRIVATE
-            ${LLAMA_XCF}
-            ${WHISPER_XCF}
-            "-framework AVFoundation"
+            ${LLAMA_XCFRAMEWORK_PATH}
+            ${WHISPER_XCFRAMEWORK_PATH}
             "-framework Foundation"
             "-framework Accelerate"
             "-framework Metal"
             "-framework MetalKit"
+            "-framework AVFoundation"
         )
     else()
-        message(FATAL_ERROR "Llama or Whisper XCFramework not found at ${LLAMA_XCF} or ${WHISPER_XCF}. Please build them via build-xcframework.sh.")
+        message(STATUS "Skipping XCFramework linking because paths not found (will retry on next configure)")
     endif()
 
-    # Include llava example headers for clip.h and llava.h
-    target_include_directories(${PROJECT_NAME} PRIVATE ${THIRD_PARTY_DIR}/llama.cpp/examples/llava)
+    # Set RPATH so the framework can find the embedded XCFrameworks if needed
+    # Usually handled by Xcode build process when linking frameworks
+    # set_target_properties(${PROJECT_NAME} PROPERTIES
+    #     XCODE_ATTRIBUTE_LD_RUNPATH_SEARCH_PATHS "@loader_path/Frameworks"
+    # )
 
-endif() # end iOS framework build
+endif() # APPLE / NOT APPLE
 
 # --- llava example shared library ---
 find_package(Threads REQUIRED)
@@ -343,9 +350,13 @@ install(TARGETS llava_shared ARCHIVE)
 
 # --- Common Post-Build Steps (If any) ---
 
+if(APPLE)
+    # Link llava example object library directly into the framework (avoid missing static lib file)
+    target_link_libraries(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:llava>)
+endif()
 message(STATUS "CMake Project Name: ${PROJECT_NAME}")
 message(STATUS "CMAKE_SYSTEM_NAME: ${CMAKE_SYSTEM_NAME}")
-message(STATUS "Apple Target: ${CMAKE_SYSTEM_NAME} STREQUAL \"iOS\"")
+message(STATUS "Apple Target: ${APPLE}")
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(IS_IOS_TARGET TRUE)
 else()

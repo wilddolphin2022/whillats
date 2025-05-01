@@ -198,12 +198,14 @@ bool LlamaSimpleChat::InitializeContext() {
     }
 
     // Load MMProj
-    ctx_clip_ = clip_model_load(mmproj_path_.c_str(), true);
-    if (!ctx_clip_) {
-        LOG_E("ERROR: Failed to load MMProj model\n");
-        llama_model_free(model_);
-        model_ = nullptr;
-        return false;
+    if(!mmproj_path_.empty()) {
+        ctx_clip_ = clip_model_load(mmproj_path_.c_str(), true);
+        if (!ctx_clip_) {
+            LOG_E("ERROR: Failed to load MMProj model\n");
+            llama_model_free(model_);
+            model_ = nullptr;
+            return false;
+        }
     }
 
     // Process initial context tokens
@@ -789,8 +791,10 @@ void LlamaSimpleChat::DetectStoppingTokens() {
 // Llama device base
 LlamaDeviceBase::LlamaDeviceBase(
     const char*model_path,
+    const char* mmproj_path, 
     WhillatsSetResponseCallback callback)
     : _model_path(model_path),
+      _mmproj_path(mmproj_path),
       _responseCallback(callback)
 {
 }
@@ -812,7 +816,7 @@ void LlamaDeviceBase::askLlama(const char *prompt)
 bool LlamaDeviceBase::start() {
     if (!_running) {
         _llama_chat.reset(new LlamaSimpleChat());
-        _llama_chat->SetModelPaths(_model_path, "/Users/ykiryanov/Public/models/llava-llama-3-8b-v1_1-mmproj-f16.gguf");
+        _llama_chat->SetModelPaths(_model_path, _mmproj_path);
         if (_llama_chat && _llama_chat->Initialize()) {
             LOG_V("Llama chat initialized!");
         } else {

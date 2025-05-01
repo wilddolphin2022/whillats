@@ -166,13 +166,12 @@ int main(int argc, char *argv[])
   if (opts.llama) {
     //  Test LlamaDeviceBase
     WhillatsSetResponseCallback callback(llamaResponseCallback, nullptr);
-    WhillatsLlama llama(opts.llama_model.c_str(), callback);
+    WhillatsLlama llama(opts.llama_model.c_str(), opts.llama_mmproj.c_str(), callback);
 
     LOG_I("Initializing Llama with model: " << opts.llama_model);
     if (llama.start()) 
     {
-      YUVData* grey_yuv = load_yuv(
-        "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image_grey.yuv", 300, 300);
+      YUVData* grey_yuv = load_yuv(opts.test_image1.c_str(), 300, 300);
 
       //llama.setImage(*grey_yuv);
 
@@ -187,8 +186,7 @@ int main(int argc, char *argv[])
       }
       llama_done = false;
       
-      YUVData* yuv = load_yuv(
-        "/Users/ykiryanov/Public/ios/webrtcsays.aios/src/modules/third_party/whillats/example/llava_recognition/input_image.yuv", 1754, 1240);
+      YUVData* yuv = load_yuv(opts.test_image2.c_str(), 1754, 1240);
 
       //llama.setImage(*yuv);
       llama.askWithImage("Describe the contents of the image in detail.", *yuv);

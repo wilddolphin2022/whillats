@@ -16,6 +16,13 @@
 // Include TargetConditionals for TARGET_OS_IOS macro
 #if defined(__APPLE__)
     #include <TargetConditionals.h>
+    // Undefine toupper/tolower macros from espeak compat to avoid conflicts in STL headers
+#ifdef toupper
+#undef toupper
+#endif
+#ifdef tolower
+#undef tolower
+#endif
     // Exclude TTS (espeak-ng) for iOS builds
     #if  TARGET_OS_IOS
         #define TTS_PLATFORMS 0 // Building for iOS
@@ -170,7 +177,7 @@ class WHILLATS_API WhillatsTranscriber {
 
 class WHILLATS_API WhillatsLlama {
   public:
-    WhillatsLlama(const char*model_path, WhillatsSetResponseCallback callback);
+    WhillatsLlama(const char* model_path, const char* mmproj_path, WhillatsSetResponseCallback callback);
     ~WhillatsLlama();
 
     bool start();

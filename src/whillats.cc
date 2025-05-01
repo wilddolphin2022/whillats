@@ -22,14 +22,15 @@
 #include "espeak_tts.h"
 
 // Temporary fix for non-iOS builds
-#ifndef PLATFORM_DARWIN
-ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback) : _callback(callback) {}
-ESpeakTTS::~ESpeakTTS() {}
-const int ESpeakTTS::getSampleRate() { return 16000; }
-bool ESpeakTTS::start() { return false; }
-void ESpeakTTS::stop() { }
-void ESpeakTTS::queueText(const std::string& text, const std::string& language) { }
-#endif
+// #ifndef TARGET_OS_OSX
+// #pragma message("PLATFORM_DARWIN is not defined")
+// ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback) : _callback(callback) {}
+// ESpeakTTS::~ESpeakTTS() {}
+// const int ESpeakTTS::getSampleRate() { return 16000; }
+// bool ESpeakTTS::start() { return false; }
+// void ESpeakTTS::stop() { }
+// void ESpeakTTS::queueText(const std::string& text, const std::string& language) { }
+// #endif
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback),
@@ -140,9 +141,12 @@ float WhillatsTranscriber::getVADThreshold() {
     return _whisper_transcriber->getVADThreshold();
 }
 
-WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback callback) 
+WhillatsLlama::WhillatsLlama(
+    const char* model_path, 
+    const char* mmproj_path,
+    WhillatsSetResponseCallback callback) 
     : _callback(callback),
-      _llama_device(std::make_unique<LlamaDeviceBase>(model_path, callback)) {}
+      _llama_device(std::make_unique<LlamaDeviceBase>(model_path, mmproj_path, callback)) {}
 
 WhillatsLlama::~WhillatsLlama() {}
 
