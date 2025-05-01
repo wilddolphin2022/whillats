@@ -184,6 +184,7 @@ class WHILLATS_API WhillatsLlama {
     void stop();
     void askLlama(const char* prompt);
     void askWithImage(const char *prompt, const YUVData& yuv);
+    void askWithImageFile(const char *prompt, const char *image_file, int width, int height);
   private:
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;

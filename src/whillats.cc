@@ -165,3 +165,9 @@ void WhillatsLlama::askLlama(const char* prompt) {
 void WhillatsLlama::askWithImage(const char *prompt, const YUVData& yuv) {
     _llama_device->askWithImage(prompt, yuv);
 }
+
+void WhillatsLlama::askWithImageFile(const char *prompt, const char *image_file, int width, int height) {
+    YUVData* yuv = load_yuv(image_file, width, height);
+    _llama_device->askWithImage(prompt, *yuv);
+    free_yuv(yuv);
+}
