@@ -19,8 +19,6 @@
 #include <span>
 #include <cstdio>
 
-namespace fs = std::filesystem;
-
 #include "whillats.h"
 #include "whillats_utils.h"
 #include "whisper_helpers.h"

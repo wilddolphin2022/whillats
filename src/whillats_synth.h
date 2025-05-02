@@ -31,9 +31,10 @@ public:
     void synthesize(const std::string& text, const std::string& language);
     void stop();
 
+#if TARGET_OS_IOS
     void enableSpeakerphone();
     void disableSpeakerphone();
-
+#endif
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;

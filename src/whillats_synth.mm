@@ -9,30 +9,16 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
- 
+
+#import <Foundation/Foundation.h> // Needed for NSString, nil, NSNotificationCenter
+
+#include "whillats_osx.h"   // Include for macOS SpeechSynthesizerProcessor
 #include "whillats_synth.h" // Include the header for WhillatsSpeechSynthesizerWrapper definition
-#include "whillats_ios.h"   // Include for SpeechSynthesizerProcessor, AudioCallback
 #include "whisper_helpers.h"
 
-#import <Foundation/Foundation.h> // Needed for NSString, nil, etc.
 #include <vector>          // Needed for std::vector used in callbacks
 #include <memory>          // Needed for std::unique_ptr
 #include <iostream>        // Needed for std::cout if used (e.g., in completion callback)
-
-// Ensure the guard matches the TTS_PLATFORMS definition from whillats.h
-#if defined(__APPLE__)
-    #include <TargetConditionals.h>
-    // Exclude TTS (espeak-ng) for iOS builds
-    #if  TARGET_OS_IOS
-        #define TTS_PLATFORMS 0 // Building for iOS
-    #else
-        #define TTS_PLATFORMS 1 // Building for macOS or other non-iOS platforms
-    #endif
-#else
-    #define TTS_PLATFORMS 1 // Building for other platforms
-#endif
-
-#if !TTS_PLATFORMS
 
 // Define a single context struct for both callbacks
 struct CallbackContext {
@@ -63,25 +49,22 @@ static void CompletionCallbackBridge(void* user_data) {
 }
 
 struct WhillatsSpeechSynthesizerWrapper::Impl {
-    WhillatsSpeechSynthesizerProcessor* processor; // Use correct ObjC type from whillats_ios.h
-    // Store a raw pointer to the callback object managed elsewhere (e.g., in WhillatsTTS)
-    WhillatsSetAudioCallback* audioCallbackPtr;
+    WhillatsSpeechSynthesizerProcessor* processor; // Objective-C processor (iOS or macOS)
+    WhillatsSetAudioCallback* audioCallbackPtr; // Store pointer to callback object
 
     // Constructor initializes the pointer to nullptr
     Impl() : processor(nil), audioCallbackPtr(nullptr) {}
 };
 
 WhillatsSpeechSynthesizerWrapper::WhillatsSpeechSynthesizerWrapper() :
-    // Use the default Impl constructor
     impl(std::make_unique<Impl>()) {}
 
 WhillatsSpeechSynthesizerWrapper::~WhillatsSpeechSynthesizerWrapper() {
     stop();
 }
 
-// Implementation now takes a pointer
 void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audioCallback,
-                                                CompletionCallback completionCallback) {
+                                                 CompletionCallback completionCallback) {
     // Ensure processor is not already initialized or clean up previous one
     if (impl->processor) {
         stop(); // Clean up existing processor and context first
@@ -103,20 +86,25 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
     context->completionCallbackFunc = cppCompletionCallback; // Store C++ completion function
 
     // Create the Objective-C processor using the C bridge functions and the shared context
-    impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc] initWithAudioCallback:AudioCallbackBridge // Pass C function pointer
-                                                                             userData:context // Pass shared context pointer
-                                                                   completionCallback:CompletionCallbackBridge]; // Pass C function pointer
+    impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc] initWithAudioCallback:AudioCallbackBridge
+                                                                             userData:context
+                                                                   completionCallback:CompletionCallbackBridge];
 
     if (!impl->processor) {
         LOG_E("WhillatsSpeechSynthesizerWrapper: Failed to create SpeechSynthesizerProcessor");
         delete context; // Clean up context if processor creation failed
     }
 
+#if TARGET_OS_IOS
     [impl->processor enableSpeakerphone];
+#endif
+
+    LOG_I("WhillatsSpeechSynthesizerWrapper: Initialized");
 }
 
 void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
     if (impl->processor) {
+        LOG_I("WhillatsSpeechSynthesizerWrapper: Synthesizing text: " << text << " with language: " << language);
         NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
         NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
         if (nsText && nsLanguage) { // Check if conversion was successful
@@ -128,10 +116,10 @@ void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const
                 std::transform(code.begin(), code.end(), code.begin(), ::toupper);
 
                 NSString* languageCode = 
-                (language == "en") ? @"en-US" : \
-                (language == "zh") ? @"zh-CN" : \
-                (language == "ja") ? @"ja-JP" : \
-                [NSString stringWithFormat:@"%s-%s", language.c_str(), code.c_str()];
+                    (language == "en") ? @"en-US" : \
+                    (language == "zh") ? @"zh-CN" : \
+                    (language == "ja") ? @"ja-JP" : \
+                    [NSString stringWithFormat:@"%s-%s", language.c_str(), code.c_str()];
                 NSDictionary* userInfo = @{@"text": nsText, @"language": languageCode, @"spoken_language": languageCode};
 
                 [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
@@ -159,6 +147,7 @@ void WhillatsSpeechSynthesizerWrapper::stop() {
     }
 }
 
+#if TARGET_OS_IOS
 void WhillatsSpeechSynthesizerWrapper::enableSpeakerphone() {
     if (impl->processor) {
         [impl->processor enableSpeakerphone];
@@ -170,5 +159,4 @@ void WhillatsSpeechSynthesizerWrapper::disableSpeakerphone() {
         [impl->processor disableSpeakerphone];
     }
 }
-
-#endif // !TTS_PLATFORMS
+#endif

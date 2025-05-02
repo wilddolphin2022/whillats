@@ -74,7 +74,7 @@ WhillatsTTS::~WhillatsTTS() {
 
 bool WhillatsTTS::start() { 
     _speech_synthesizer->initialize(&_callback, [this]() {
-        std::cout << "Synthesis completed!" << std::endl;
+        LOG_I("Synthesis started...");
     });
 
     return true; 
@@ -91,11 +91,15 @@ void WhillatsTTS::queueText(const char* text, const char* language) {
 }
 
 void WhillatsTTS::enableSpeakerphone() {
+#if TARGET_OS_IOS
     _speech_synthesizer->enableSpeakerphone();
+#endif
 }
 
 void WhillatsTTS::disableSpeakerphone() {
+#if TARGET_OS_IOS
     _speech_synthesizer->disableSpeakerphone();
+#endif
 }   
 
 #endif // !TTS_PLATFORMS

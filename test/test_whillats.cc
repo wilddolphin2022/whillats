@@ -17,6 +17,7 @@
 #include "test_utils.h"
 #include "whisper_helpers.h"
 #include "whillats_utils.h"
+#include <CoreFoundation/CFRunLoop.h> // For CFRunLoopRunInMode
 
 // Set log level
 void setLogLevel(LogLevel level)
@@ -31,13 +32,14 @@ bool llama_done = false;
 bool language_changed = false;
 
 void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data) {
-    // Handle audio buffer here
-    LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
-    audio_buffer = std::vector<uint16_t>(buffer, buffer + buffer_size);
-    if(success) {
-      writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
+    // Only handle actual audio data
+    if (success && buffer && buffer_size > 0) {
+        LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
+        audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
+    } else {
+        // Signal end of synthesis
+        tts_done = true;
     }
-    tts_done = true; 
 }
 
 void whisperResponseCallback(bool success, const char* response, void* user_data) {
@@ -75,6 +77,8 @@ int main(int argc, char *argv[])
   setLogLevel(LogLevel::VERBOSE);
 
   if (opts.tts) {
+    // Clear buffer before starting TTS
+    audio_buffer.clear();
     WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
     WhillatsTTS tts(callback); 
       
@@ -83,13 +87,17 @@ int main(int argc, char *argv[])
       const char *test_text = "Hello, this is a test of text to speech synthesis.";
       std::cout << "Testing TTS with text: " << test_text << std::endl;
 
+      // Queue and wait for first utterance
       tts.queueText(test_text, "en");
-      while (!tts_done)
-      {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      // Pump the CFRunLoop to process speech callbacks
+      while (!tts_done) {
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
       }
-
+      // Write accumulated audio for first utterance
+      writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
+      // Prepare for next utterance
       tts_done = false;
+      audio_buffer.clear();
 
       const char *long_test_text = "Hello, this is a test of text to speech synthesis. "
                                   "This is a longer test to ensure we have enough audio data. "
@@ -98,13 +106,13 @@ int main(int argc, char *argv[])
                                   "¿Cómo estás? У вас есть меню на английском?";
       std::cout << "Testing TTS with text: " << long_test_text << std::endl;
       
+      // Queue and wait for second (long) utterance
       tts.queueText(long_test_text, "en");
-
-      while (!tts_done)
-      {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      while (!tts_done) {
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
       }
-
+      // Write accumulated audio for second utterance
+      writeWavFile("synthesized_audio_long.wav", audio_buffer, WhillatsTTS::getSampleRate());
       tts.stop();
     }
   }

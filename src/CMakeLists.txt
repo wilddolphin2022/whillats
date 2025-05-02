@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(whillats VERSION 1.0.0 LANGUAGES CXX)
+project(whillats VERSION 1.0.0 LANGUAGES CXX OBJCXX)
 
 # Ensure Debug build type for whillats and subdirectories (llama, whisper)
 set(CMAKE_BUILD_TYPE Debug)
@@ -46,13 +46,23 @@ set_target_properties(pcaudio PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/include
 )
 
-# Create library target
-add_library(${PROJECT_NAME} SHARED
+# Gather core sources
+set(WHILLATS_SOURCES
     src/whisper_transcription.cc
     src/llama_device_base.cc
     src/espeak_tts.cc
     src/whillats.cc
 )
+if(APPLE)
+    # Include Objective-C++ implementation files for macOS
+    list(APPEND WHILLATS_SOURCES
+        src/whillats_synth.mm
+        src/whillats_osx.mm
+    )
+endif()
+
+# Create shared library target
+add_library(${PROJECT_NAME} SHARED ${WHILLATS_SOURCES})
 
 # Add additional include directories
 target_include_directories(${PROJECT_NAME}
@@ -109,12 +119,14 @@ target_compile_definitions(${PROJECT_NAME}
 
 if(APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE PLATFORM_DARWIN)
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-        "-framework Accelerate"
-        "-framework Metal"
-        "-framework MetalKit"
-        "-framework CoreAudio"
-        "-framework AudioToolbox"
+    target_link_libraries(${PROJECT_NAME} PUBLIC
+        "-framework" "ApplicationServices"
+        "-framework" "SpeechSynthesis"
+        "-framework" "Accelerate"
+        "-framework" "Metal"
+        "-framework" "MetalKit"
+        "-framework" "CoreAudio"
+        "-framework" "AudioToolbox"
     )
     target_link_options(${PROJECT_NAME} PRIVATE
         "-Wl,-rpath,@loader_path/third_party/whisper.cpp/build/src"
@@ -152,6 +164,14 @@ target_link_libraries(test_whillats
     PRIVATE
         ${PROJECT_NAME}
 )
+
+# On macOS, link the Carbon SpeechSynth frameworks for the test executable
+if(APPLE)
+    target_link_libraries(test_whillats PRIVATE
+        "-framework" "ApplicationServices"
+        "-framework" "SpeechSynthesis"
+    )
+endif()
 
 # Set rpath for the test executable
 if(APPLE)
