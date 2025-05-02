@@ -17,7 +17,13 @@
 #include "test_utils.h"
 #include "whisper_helpers.h"
 #include "whillats_utils.h"
+
+#ifdef __APPLE__ 
+#define WHILLATS_USE_CF_RUNLOOP 1
+#if WHILLATS_USE_CF_RUNLOOP
 #include <CoreFoundation/CFRunLoop.h> // For CFRunLoopRunInMode
+#endif
+#endif
 
 // Set log level
 void setLogLevel(LogLevel level)
@@ -91,7 +97,11 @@ int main(int argc, char *argv[])
       tts.queueText(test_text, "en");
       // Pump the CFRunLoop to process speech callbacks
       while (!tts_done) {
+#if WHILLATS_USE_CF_RUNLOOP
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+#else
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#endif
       }
       // Write accumulated audio for first utterance
       writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
@@ -109,7 +119,11 @@ int main(int argc, char *argv[])
       // Queue and wait for second (long) utterance
       tts.queueText(long_test_text, "en");
       while (!tts_done) {
+#if WHILLATS_USE_CF_RUNLOOP
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+#else
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#endif
       }
       // Write accumulated audio for second utterance
       writeWavFile("synthesized_audio_long.wav", audio_buffer, WhillatsTTS::getSampleRate());
