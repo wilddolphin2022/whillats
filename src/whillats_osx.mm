@@ -43,7 +43,19 @@
 
 - (void)synthesizeText:(NSString *)text language:(NSString *)language {
     AVSpeechUtterance *utterance = [[AVSpeechUtterance alloc] initWithString:text];
-    utterance.voice = [AVSpeechSynthesisVoice voiceWithLanguage:language];
+    // Map simple codes to BCP-47 locale for voice selection
+    NSString *localeCode;
+    if ([language isEqualToString:@"en"]) {
+        localeCode = @"en-US";
+    } else if ([language isEqualToString:@"zh"]) {
+        localeCode = @"zh-CN";
+    } else if ([language isEqualToString:@"ja"]) {
+        localeCode = @"ja-JP";
+    } else {
+        // Fallback: language-region uppercase
+        localeCode = [NSString stringWithFormat:@"%@-%@", language, [language uppercaseString]];
+    }
+    utterance.voice = [AVSpeechSynthesisVoice voiceWithLanguage:localeCode];
     utterance.rate = 0.5;
     if ([self.synthesizer respondsToSelector:@selector(writeUtterance:toBufferCallback:)]) {
         __weak typeof(self) weakSelf = self;
