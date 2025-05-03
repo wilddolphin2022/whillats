@@ -37,13 +37,34 @@ bool whisper_done = false;
 bool llama_done = false;
 bool language_changed = false;
 
+static size_t bufferCount = 0;
+
 void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data) {
+    // if (success && buffer && buffer_size > 0) {
+    //     std::cout << "Generated " << buffer_size << " audio samples at 16000Hz\n";
+    //     audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
+    //     if (buffer_size >= 5) {
+    //         std::cout << "First 5 samples: ";
+    //         for (size_t i = 0; i < 5; i++) {
+    //             std::cout << buffer[i] << " ";
+    //         }
+    //         std::cout << "\n";
+    //     }
+    // } else {
+    //     std::cout << "TTS done or error\n";
+    //     tts_done = true;
+    // }
     // Only handle actual audio data
     if (success && buffer && buffer_size > 0) {
         LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
         audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
+        // if(++bufferCount > 300) {
+        //     LOG_I("TTS done");
+        //     tts_done = true;
+        // }
     } else {
         // Signal end of synthesis
+        LOG_I("TTS done");
         tts_done = true;
     }
 }
@@ -100,9 +121,10 @@ int main(int argc, char *argv[])
 #if WHILLATS_USE_CF_RUNLOOP
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
 #else
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 #endif
       }
+
       // Write accumulated audio for first utterance
       writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
       // Prepare for next utterance
@@ -122,9 +144,11 @@ int main(int argc, char *argv[])
 #if WHILLATS_USE_CF_RUNLOOP
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
 #else
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 #endif
       }
+
+      tts_done = false;
       // Write accumulated audio for second utterance
       writeWavFile("synthesized_audio_long.wav", audio_buffer, WhillatsTTS::getSampleRate());
       tts.stop();

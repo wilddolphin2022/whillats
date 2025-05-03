@@ -10,20 +10,17 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#import <Foundation/Foundation.h> // Needed for NSString, nil, NSNotificationCenter
-
-#include "whillats_osx.h"   // Include for macOS SpeechSynthesizerProcessor
-#include "whillats_synth.h" // Include the header for WhillatsSpeechSynthesizerWrapper definition
+#import <Foundation/Foundation.h>
+#include "whillats_osx.h"
+#include "whillats_synth.h"
 #include "whisper_helpers.h"
+#include <vector>
+#include <memory>
+#include <iostream>
 
-#include <vector>          // Needed for std::vector used in callbacks
-#include <memory>          // Needed for std::unique_ptr
-#include <iostream>        // Needed for std::cout if used (e.g., in completion callback)
-
-// Define a single context struct for both callbacks
+// Define a single context struct for audio callback
 struct CallbackContext {
-    WhillatsSetAudioCallback* audioCallbackPtr; // Pointer to the C++ audio callback object
-    std::function<void()> completionCallbackFunc; // C++ completion callback function
+    WhillatsSetAudioCallback* audioCallbackPtr;
 };
 
 // Static C bridge function for AudioCallback
@@ -41,14 +38,12 @@ static void AudioCallbackBridge(bool success, const uint16_t* buffer, size_t siz
 // Static C bridge function for CompletionCallback
 static void CompletionCallbackBridge(void* user_data) {
     CallbackContext* context = static_cast<CallbackContext*>(user_data);
-    if (context) {
-        if (context->completionCallbackFunc) {
-            context->completionCallbackFunc();
-        }
+    if (context && context->audioCallbackPtr) {
+        context->audioCallbackPtr->OnSynthesisComplete();
     }
 }
 
-// Define Impl: remove thread-related fields
+// Define Impl
 struct WhillatsSpeechSynthesizerWrapper::Impl {
     WhillatsSpeechSynthesizerProcessor* processor;
     WhillatsSetAudioCallback* audioCallbackPtr;
@@ -68,15 +63,10 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
     if (impl->processor) stop();
     // Store callback pointer
     impl->audioCallbackPtr = audioCallback;
-    // Create C++ completion callback wrapper
-    std::function<void()> cppCompletionCallback = [this, completionCallback]() {
-        if (completionCallback) completionCallback();
-    };
     // Create and populate the shared context
     CallbackContext* context = new CallbackContext();
     context->audioCallbackPtr = impl->audioCallbackPtr;
-    context->completionCallbackFunc = cppCompletionCallback;
-    // Initialize the OS X speech processor (spawns its own thread/runloop)
+    // Initialize the OS X speech processor
     impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc]
                        initWithAudioCallback:AudioCallbackBridge
                                  userData:context
@@ -91,13 +81,11 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
 }
 
 void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
-    // Directly pass through to the OS X processor, which runs on its own NSThread
     NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
     NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
     if (!nsText || !nsLanguage) return;
     _lastText = text;
     _lastLanguage = language;
-    // Trigger processor
     [impl->processor synthesizeText:nsText language:nsLanguage];
 }
 

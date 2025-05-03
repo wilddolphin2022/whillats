@@ -107,6 +107,12 @@ public:
         }
     }
 
+    void OnSynthesisComplete() {
+        if (callback_) {
+            // Call with success = false, empty buffer to signal completion
+            callback_(false, nullptr, 0, user_data_);
+        }
+    }
 private:
     AudioCallback callback_;
     void* user_data_;
