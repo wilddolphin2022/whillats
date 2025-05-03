@@ -147,6 +147,8 @@ class WHILLATS_API WhillatsTTS {
     std::unique_ptr<ESpeakTTS> _espeak_tts;
 #else    
     std::unique_ptr<WhillatsSpeechSynthesizerWrapper> _speech_synthesizer;
+public:
+    void setNotificationName(const char* name);
 #endif
 };
 

@@ -35,12 +35,16 @@ public:
     void enableSpeakerphone();
     void disableSpeakerphone();
 #endif
+
+    void setNotificationName(const char* name);
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;
 
     std::string _lastLanguage; 
     std::string _lastText;
+
+    std::string _notification_name;
 };
 
 #endif // WHILLATS_SYNTH_H

@@ -102,6 +102,10 @@ void WhillatsTTS::disableSpeakerphone() {
 #endif
 }   
 
+void WhillatsTTS::setNotificationName(const char* name) {
+    _speech_synthesizer->setNotificationName(name);
+}
+
 #endif // !TTS_PLATFORMS
 
 WhillatsTranscriber::WhillatsTranscriber(const char* model_path, 

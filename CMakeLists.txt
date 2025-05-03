@@ -173,16 +173,16 @@ add_custom_target(copy_espeak_data ALL DEPENDS ${ESPEAK_DATA_DEST_DIR}/phontab)
 find_package(Threads REQUIRED)
 
 add_library(llava OBJECT
-    ${THIRD_PARTY_DIR}/llama.cpp/examples/llava/llava.cpp
-    ${THIRD_PARTY_DIR}/llama.cpp/examples/llava/llava.h
-    ${THIRD_PARTY_DIR}/llama.cpp/examples/llava/clip.cpp
-    ${THIRD_PARTY_DIR}/llama.cpp/examples/llava/clip.h
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/llava/llava.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/llava/llava.h
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/llava/clip.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/llava/clip.h
 )
 
 target_link_libraries(llava PRIVATE ggml llama Threads::Threads)
 
 target_include_directories(llava PUBLIC
-    ${THIRD_PARTY_DIR}/llama.cpp/examples/llava
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/llava
     ${THIRD_PARTY_DIR}/llama.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/include
     ${THIRD_PARTY_DIR}/llama.cpp/common
@@ -234,7 +234,7 @@ target_include_directories(${PROJECT_NAME}
         ${pcaudiolib-proj_SOURCE_DIR}/src/include # pcaudiolib source path for includes        
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-        ${THIRD_PARTY_DIR}/llama.cpp/examples/llava # Added for clip.h
+        ${THIRD_PARTY_DIR}/llama.cpp/tools/llava # Added for clip.h
 )
 
 # Link directories no longer needed
@@ -354,9 +354,9 @@ target_link_options(test_whillats PRIVATE
 
 # Add Objective-C++ compile flags for macOS speech
 if(APPLE)
-    set_target_properties(test_whillats PROPERTIES
-        COMPILE_FLAGS "-x objective-c++ -ObjC"
-    )
+    # set_target_properties(test_whillats PROPERTIES
+    #     COMPILE_FLAGS "-x objective-c++ -ObjC"
+    # )
     target_link_libraries(test_whillats PRIVATE
         "-framework ApplicationServices"
         "-framework Foundation"

@@ -1086,53 +1086,53 @@ test/test_whillats.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_whillats.dir/build.make CMakeFiles/test_whillats.dir/test/test_whillats.cc.s
 .PHONY : test/test_whillats.cc.s
 
-third_party/llama.cpp/examples/llava/clip.o: third_party/llama.cpp/examples/llava/clip.cpp.o
-.PHONY : third_party/llama.cpp/examples/llava/clip.o
+third_party/llama.cpp/tools/llava/clip.o: third_party/llama.cpp/tools/llava/clip.cpp.o
+.PHONY : third_party/llama.cpp/tools/llava/clip.o
 
 # target to build an object file
-third_party/llama.cpp/examples/llava/clip.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/examples/llava/clip.cpp.o
-.PHONY : third_party/llama.cpp/examples/llava/clip.cpp.o
+third_party/llama.cpp/tools/llava/clip.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/tools/llava/clip.cpp.o
+.PHONY : third_party/llama.cpp/tools/llava/clip.cpp.o
 
-third_party/llama.cpp/examples/llava/clip.i: third_party/llama.cpp/examples/llava/clip.cpp.i
-.PHONY : third_party/llama.cpp/examples/llava/clip.i
+third_party/llama.cpp/tools/llava/clip.i: third_party/llama.cpp/tools/llava/clip.cpp.i
+.PHONY : third_party/llama.cpp/tools/llava/clip.i
 
 # target to preprocess a source file
-third_party/llama.cpp/examples/llava/clip.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/examples/llava/clip.cpp.i
-.PHONY : third_party/llama.cpp/examples/llava/clip.cpp.i
+third_party/llama.cpp/tools/llava/clip.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/tools/llava/clip.cpp.i
+.PHONY : third_party/llama.cpp/tools/llava/clip.cpp.i
 
-third_party/llama.cpp/examples/llava/clip.s: third_party/llama.cpp/examples/llava/clip.cpp.s
-.PHONY : third_party/llama.cpp/examples/llava/clip.s
+third_party/llama.cpp/tools/llava/clip.s: third_party/llama.cpp/tools/llava/clip.cpp.s
+.PHONY : third_party/llama.cpp/tools/llava/clip.s
 
 # target to generate assembly for a file
-third_party/llama.cpp/examples/llava/clip.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/examples/llava/clip.cpp.s
-.PHONY : third_party/llama.cpp/examples/llava/clip.cpp.s
+third_party/llama.cpp/tools/llava/clip.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/tools/llava/clip.cpp.s
+.PHONY : third_party/llama.cpp/tools/llava/clip.cpp.s
 
-third_party/llama.cpp/examples/llava/llava.o: third_party/llama.cpp/examples/llava/llava.cpp.o
-.PHONY : third_party/llama.cpp/examples/llava/llava.o
+third_party/llama.cpp/tools/llava/llava.o: third_party/llama.cpp/tools/llava/llava.cpp.o
+.PHONY : third_party/llama.cpp/tools/llava/llava.o
 
 # target to build an object file
-third_party/llama.cpp/examples/llava/llava.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/examples/llava/llava.cpp.o
-.PHONY : third_party/llama.cpp/examples/llava/llava.cpp.o
+third_party/llama.cpp/tools/llava/llava.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/tools/llava/llava.cpp.o
+.PHONY : third_party/llama.cpp/tools/llava/llava.cpp.o
 
-third_party/llama.cpp/examples/llava/llava.i: third_party/llama.cpp/examples/llava/llava.cpp.i
-.PHONY : third_party/llama.cpp/examples/llava/llava.i
+third_party/llama.cpp/tools/llava/llava.i: third_party/llama.cpp/tools/llava/llava.cpp.i
+.PHONY : third_party/llama.cpp/tools/llava/llava.i
 
 # target to preprocess a source file
-third_party/llama.cpp/examples/llava/llava.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/examples/llava/llava.cpp.i
-.PHONY : third_party/llama.cpp/examples/llava/llava.cpp.i
+third_party/llama.cpp/tools/llava/llava.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/tools/llava/llava.cpp.i
+.PHONY : third_party/llama.cpp/tools/llava/llava.cpp.i
 
-third_party/llama.cpp/examples/llava/llava.s: third_party/llama.cpp/examples/llava/llava.cpp.s
-.PHONY : third_party/llama.cpp/examples/llava/llava.s
+third_party/llama.cpp/tools/llava/llava.s: third_party/llama.cpp/tools/llava/llava.cpp.s
+.PHONY : third_party/llama.cpp/tools/llava/llava.s
 
 # target to generate assembly for a file
-third_party/llama.cpp/examples/llava/llava.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/examples/llava/llava.cpp.s
-.PHONY : third_party/llama.cpp/examples/llava/llava.cpp.s
+third_party/llama.cpp/tools/llava/llava.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/llava.dir/build.make CMakeFiles/llava.dir/third_party/llama.cpp/tools/llava/llava.cpp.s
+.PHONY : third_party/llama.cpp/tools/llava/llava.cpp.s
 
 # Help Target
 help:
@@ -1228,12 +1228,12 @@ help:
 	@echo "... test/test_whillats.o"
 	@echo "... test/test_whillats.i"
 	@echo "... test/test_whillats.s"
-	@echo "... third_party/llama.cpp/examples/llava/clip.o"
-	@echo "... third_party/llama.cpp/examples/llava/clip.i"
-	@echo "... third_party/llama.cpp/examples/llava/clip.s"
-	@echo "... third_party/llama.cpp/examples/llava/llava.o"
-	@echo "... third_party/llama.cpp/examples/llava/llava.i"
-	@echo "... third_party/llama.cpp/examples/llava/llava.s"
+	@echo "... third_party/llama.cpp/tools/llava/clip.o"
+	@echo "... third_party/llama.cpp/tools/llava/clip.i"
+	@echo "... third_party/llama.cpp/tools/llava/clip.s"
+	@echo "... third_party/llama.cpp/tools/llava/llava.o"
+	@echo "... third_party/llama.cpp/tools/llava/llava.i"
+	@echo "... third_party/llama.cpp/tools/llava/llava.s"
 .PHONY : help
 
 

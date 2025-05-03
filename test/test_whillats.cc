@@ -19,7 +19,7 @@
 #include "whillats_utils.h"
 
 #ifdef __APPLE__ 
-#define WHILLATS_USE_CF_RUNLOOP 1
+#define WHILLATS_USE_CF_RUNLOOP 0
 #if WHILLATS_USE_CF_RUNLOOP
 #include <CoreFoundation/CFRunLoop.h> // For CFRunLoopRunInMode
 #endif
@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
 #if WHILLATS_USE_CF_RUNLOOP
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
 #else
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 #endif
       }
       // Write accumulated audio for first utterance
@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
 #if WHILLATS_USE_CF_RUNLOOP
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
 #else
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 #endif
       }
       // Write accumulated audio for second utterance

@@ -48,11 +48,10 @@ static void CompletionCallbackBridge(void* user_data) {
     }
 }
 
+// Define Impl: remove thread-related fields
 struct WhillatsSpeechSynthesizerWrapper::Impl {
-    WhillatsSpeechSynthesizerProcessor* processor; // Objective-C processor (iOS or macOS)
-    WhillatsSetAudioCallback* audioCallbackPtr; // Store pointer to callback object
-
-    // Constructor initializes the pointer to nullptr
+    WhillatsSpeechSynthesizerProcessor* processor;
+    WhillatsSetAudioCallback* audioCallbackPtr;
     Impl() : processor(nil), audioCallbackPtr(nullptr) {}
 };
 
@@ -65,86 +64,54 @@ WhillatsSpeechSynthesizerWrapper::~WhillatsSpeechSynthesizerWrapper() {
 
 void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audioCallback,
                                                  CompletionCallback completionCallback) {
-    // Ensure processor is not already initialized or clean up previous one
-    if (impl->processor) {
-        stop(); // Clean up existing processor and context first
-    }
-
-    // Store the pointer
+    // Clean up any prior processor
+    if (impl->processor) stop();
+    // Store callback pointer
     impl->audioCallbackPtr = audioCallback;
-
-    // Create the C++ completion function object
+    // Create C++ completion callback wrapper
     std::function<void()> cppCompletionCallback = [this, completionCallback]() {
-        if (completionCallback) {
-            completionCallback();
-        }
+        if (completionCallback) completionCallback();
     };
-
     // Create and populate the shared context
     CallbackContext* context = new CallbackContext();
-    context->audioCallbackPtr = impl->audioCallbackPtr; // Store pointer to C++ audio callback obj
-    context->completionCallbackFunc = cppCompletionCallback; // Store C++ completion function
-
-    // Create the Objective-C processor using the C bridge functions and the shared context
-    impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc] initWithAudioCallback:AudioCallbackBridge
-                                                                             userData:context
-                                                                   completionCallback:CompletionCallbackBridge];
-
+    context->audioCallbackPtr = impl->audioCallbackPtr;
+    context->completionCallbackFunc = cppCompletionCallback;
+    // Initialize the OS X speech processor (spawns its own thread/runloop)
+    impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc]
+                       initWithAudioCallback:AudioCallbackBridge
+                                 userData:context
+                       completionCallback:CompletionCallbackBridge];
     if (!impl->processor) {
-        LOG_E("WhillatsSpeechSynthesizerWrapper: Failed to create SpeechSynthesizerProcessor");
-        delete context; // Clean up context if processor creation failed
+        LOG_E("[Whillats]: Failed to create SpeechSynthesizerProcessor");
+        delete context;
     }
-
 #if TARGET_OS_IOS
     [impl->processor enableSpeakerphone];
 #endif
-
-    LOG_I("WhillatsSpeechSynthesizerWrapper: Initialized");
 }
 
 void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
-    if (impl->processor) {
-        LOG_I("WhillatsSpeechSynthesizerWrapper: Synthesizing text: " << text << " with language: " << language);
-        NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
-        NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
-        if (nsText && nsLanguage) { // Check if conversion was successful
-            _lastText = text;
-            _lastLanguage = language;
-            // Post notification before synthesis
-            dispatch_async(dispatch_get_main_queue(),^{
-                std::string code = language;
-                std::transform(code.begin(), code.end(), code.begin(), ::toupper);
-
-                NSString* languageCode = 
-                    (language == "en") ? @"en-US" : \
-                    (language == "zh") ? @"zh-CN" : \
-                    (language == "ja") ? @"ja-JP" : \
-                    [NSString stringWithFormat:@"%s-%s", language.c_str(), code.c_str()];
-                NSDictionary* userInfo = @{@"text": nsText, @"language": languageCode, @"spoken_language": languageCode};
-
-                [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
-                                                                  object:nil
-                                                                userInfo:userInfo];
-                NSLog(@"Notification posted before synthesis: WhillatsTranscriptionResponseAvailableNotification");
-            });
-            [impl->processor synthesizeText:nsText language:nsLanguage];
-        } else {
-            LOG_E("WhillatsSpeechSynthesizerWrapper: Failed to convert text to NSString");
-            // Optionally trigger an error state or callback
-        }
-    }
+    // Directly pass through to the OS X processor, which runs on its own NSThread
+    NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
+    NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
+    if (!nsText || !nsLanguage) return;
+    _lastText = text;
+    _lastLanguage = language;
+    // Trigger processor
+    [impl->processor synthesizeText:nsText language:nsLanguage];
 }
 
 void WhillatsSpeechSynthesizerWrapper::stop() {
     if (impl->processor) {
         [impl->processor stop];
-        // Clean up context
         CallbackContext* context = static_cast<CallbackContext*>([impl->processor userData]);
-        if (context) {
-            delete context;
-        }
+        if (context) delete context;
         impl->processor = nil;
     }
+}
+
+void WhillatsSpeechSynthesizerWrapper::setNotificationName(const char* name) {
+    _notification_name = name;
 }
 
 #if TARGET_OS_IOS

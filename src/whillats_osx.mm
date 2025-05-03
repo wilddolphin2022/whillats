@@ -8,6 +8,7 @@
  *  tree.
  */
 
+#import <Foundation/Foundation.h>
 #import "whillats.h"
 #import "whillats_osx.h"
 #import <AVFoundation/AVFoundation.h>
@@ -18,6 +19,7 @@
 @property (nonatomic, strong) AVAudioFormat *outputFormat;    // 16kHz Int16 PCM
 @property (nonatomic, assign) AudioCallback audioCallback;
 @property (nonatomic, assign) CompletionCallback completionCallback;
+@property (nonatomic, strong) NSThread *synthThread;
 @end
 
 @implementation WhillatsSpeechSynthesizerProcessor
@@ -30,6 +32,7 @@
         _audioCallback = audioCallback;
         _completionCallback = completionCallback;
         self.userData = userData;
+        // Initialize AVSpeechSynthesizer
         _synthesizer = [[AVSpeechSynthesizer alloc] init];
         // Prepare output format: 16kHz Int16 PCM
         _outputFormat = [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
@@ -37,82 +40,113 @@
                                                           channels:1
                                                        interleaved:YES];
         _converter = nil;
+        // Spawn dedicated thread with its own run loop
+        _synthThread = [[NSThread alloc] initWithTarget:self selector:@selector(threadEntryPoint:) object:nil];
+        [_synthThread start];
     }
     return self;
 }
 
 - (void)synthesizeText:(NSString *)text language:(NSString *)language {
+    if (!self.synthThread) return;
+    NSArray *args = @[text, language];
+    [self performSelector:@selector(doSynthesizeText:) onThread:self.synthThread withObject:args waitUntilDone:NO];
+}
+
+- (void)stop {
+    if (!self.synthThread) return;
+    // Stop speaking on the synth thread
+    [self performSelector:@selector(stopSpeakingInternal) onThread:self.synthThread withObject:nil waitUntilDone:YES];
+    // Cancel and wake up the run loop
+    [self.synthThread cancel];
+    [self.synthThread performSelector:@selector(wakeUpRunLoop:) onThread:self.synthThread withObject:nil waitUntilDone:NO];
+    self.synthThread = nil;
+}
+
+- (void)processBuffer:(AVAudioPCMBuffer *)buffer {
+    if (!buffer) {
+        if (self.audioCallback) self.audioCallback(false, NULL, 0, self.userData);
+        return;
+    }
+    if (!_converter) {
+        _converter = [[AVAudioConverter alloc] initFromFormat:buffer.format toFormat:_outputFormat];
+    }
+    AVAudioPCMBuffer *converted = [[AVAudioPCMBuffer alloc] initWithPCMFormat:_outputFormat
+                                                               frameCapacity:(uint32_t)(buffer.frameLength * _outputFormat.sampleRate / buffer.format.sampleRate)];
+    converted.frameLength = converted.frameCapacity;
+    NSError *error = nil;
+    [_converter convertToBuffer:converted error:&error withInputFromBlock:^AVAudioBuffer *(AVAudioPacketCount inPackets, AVAudioConverterInputStatus *outStatus) {
+        *outStatus = AVAudioConverterInputStatus_HaveData;
+        return buffer;
+    }];
+    if (error) {
+        if (self.audioCallback) self.audioCallback(false, NULL, 0, self.userData);
+        return;
+    }
+    uint32_t totalSamples = converted.frameLength;
+    uint32_t samplesPerChunk = _outputFormat.sampleRate * 10 / 1000;
+    int16_t *pcmData = converted.int16ChannelData[0];
+    for (uint32_t i = 0; i < totalSamples; i += samplesPerChunk) {
+        uint32_t count = MIN(samplesPerChunk, totalSamples - i);
+        if (self.audioCallback) self.audioCallback(true, (const uint16_t *)(pcmData + i), count, self.userData);
+    }
+}
+
+// MARK: - Thread and synthesis helpers
+- (void)threadEntryPoint:(id)unused {
+    @autoreleasepool {
+        NSThread *t = [NSThread currentThread];
+        NSPort *port = [NSMachPort port];
+        [[NSRunLoop currentRunLoop] addPort:port forMode:NSDefaultRunLoopMode];
+        while (!t.isCancelled) {
+            @autoreleasepool {
+                [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
+            }
+        }
+    }
+}
+
+- (void)doSynthesizeText:(NSArray *)args {
+    NSString *text = args[0];
+    NSString *language = args[1];
     AVSpeechUtterance *utterance = [[AVSpeechUtterance alloc] initWithString:text];
-    // Map simple codes to BCP-47 locale for voice selection
+    // Map codes to BCP-47
     NSString *localeCode;
-    if ([language isEqualToString:@"en"]) {
+    if ([language isEqualToString:@"auto"]) {
+        localeCode = @"en-US";
+    } else if ([language isEqualToString:@"en"]) {
         localeCode = @"en-US";
     } else if ([language isEqualToString:@"zh"]) {
         localeCode = @"zh-CN";
     } else if ([language isEqualToString:@"ja"]) {
         localeCode = @"ja-JP";
     } else {
-        // Fallback: language-region uppercase
         localeCode = [NSString stringWithFormat:@"%@-%@", language, [language uppercaseString]];
     }
     utterance.voice = [AVSpeechSynthesisVoice voiceWithLanguage:localeCode];
     utterance.rate = 0.5;
     if ([self.synthesizer respondsToSelector:@selector(writeUtterance:toBufferCallback:)]) {
-        __weak typeof(self) weakSelf = self;
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            [weakSelf.synthesizer writeUtterance:utterance toBufferCallback:^(AVAudioBuffer *buffer) {
-                if (![buffer isKindOfClass:[AVAudioPCMBuffer class]]) return;
-                AVAudioPCMBuffer *pcmBuffer = (AVAudioPCMBuffer *)buffer;
-                if (pcmBuffer.frameLength == 0) {
-                    // End of stream
-                    if (weakSelf.audioCallback) weakSelf.audioCallback(false, NULL, 0, weakSelf.userData);
-                    if (weakSelf.completionCallback) weakSelf.completionCallback(weakSelf.userData);
-                } else {
-                    [weakSelf processBuffer:pcmBuffer];
-                }
-            }];
-        });
+        [self.synthesizer writeUtterance:utterance toBufferCallback:^(AVAudioBuffer *buffer) {
+            if (![buffer isKindOfClass:[AVAudioPCMBuffer class]]) return;
+            AVAudioPCMBuffer *pcmBuffer = (AVAudioPCMBuffer *)buffer;
+            if (pcmBuffer.frameLength == 0) {
+                if (self.audioCallback) self.audioCallback(false, NULL, 0, self.userData);
+                if (self.completionCallback) self.completionCallback(self.userData);
+            } else {
+                [self processBuffer:pcmBuffer];
+            }
+        }];
     } else {
-        // Fallback: speak without buffer capture
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self.synthesizer speakUtterance:utterance];
-        });
+        [self.synthesizer speakUtterance:utterance];
     }
 }
 
-- (void)stop {
+- (void)stopSpeakingInternal {
     [self.synthesizer stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
 }
 
-- (void)processBuffer:(AVAudioPCMBuffer *)buffer {
-    NSLog(@"[Whillats] processBuffer called, frameLength=%u", (unsigned)buffer.frameLength);
-    if (!buffer) {
-        if (self.audioCallback) self.audioCallback(false, NULL, 0, self.userData);
-        return;
-    }
-    // Convert to 16kHz Int16 PCM
-    if (!self.converter) {
-        self.converter = [[AVAudioConverter alloc] initFromFormat:buffer.format toFormat:self.outputFormat];
-    }
-    AVAudioPCMBuffer *converted = [[AVAudioPCMBuffer alloc] initWithPCMFormat:self.outputFormat
-                                                               frameCapacity:(uint32_t)(buffer.frameLength * self.outputFormat.sampleRate / buffer.format.sampleRate)];
-    converted.frameLength = converted.frameCapacity;
-    NSError *convError = nil;
-    [self.converter convertToBuffer:converted error:&convError withInputFromBlock:^AVAudioBuffer * _Nullable(AVAudioPacketCount inPackets, AVAudioConverterInputStatus *outStatus) {
-        *outStatus = AVAudioConverterInputStatus_HaveData;
-        return buffer;
-    }];
-    if (convError) {
-        if (self.audioCallback) self.audioCallback(false, NULL, 0, self.userData);
-        return;
-    }
-    uint32_t totalSamples = converted.frameLength;
-    uint32_t samplesPerChunk = self.outputFormat.sampleRate * 10 / 1000; // 10ms chunks
-    int16_t *pcmData = converted.int16ChannelData[0];
-    for (uint32_t pos = 0; pos < totalSamples; pos += samplesPerChunk) {
-        uint32_t count = MIN(samplesPerChunk, totalSamples - pos);
-        if (self.audioCallback) self.audioCallback(true, (const uint16_t *)(pcmData + pos), count, self.userData);
-    }
+- (void)wakeUpRunLoop:(id)unused {
+    // no-op: wakes up the run loop after cancellation
 }
 
 @end
