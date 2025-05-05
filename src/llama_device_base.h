@@ -22,6 +22,9 @@
 #include <thread>
 #include <functional>
 #include <condition_variable>
+#include <deque>
+#include <algorithm>
+#include <memory>
 
 #include "whillats.h"
 #include "whisper_helpers.h"
@@ -33,6 +36,12 @@ struct llama_vocab;
 typedef int32_t llama_token;
 
 class LlamaSimpleChat;
+
+struct Request {
+  std::string              prompt;
+  bool                     withImage;
+  std::shared_ptr<YUVData> yuv;   // nullptr for text-only, deep-copied frame if withImage
+};
 
 class LlamaDeviceBase {
 public:
@@ -59,11 +68,10 @@ private:
 
   std::unique_ptr<LlamaSimpleChat> _llama_chat;
 
-  // Incoming ask text queue
-  std::queue<std::string> _textQueue;
-  std::mutex _queueMutex;
-  std::condition_variable _queueCondition;
-
+  // Instead, queue up both text-only and image requests here:
+  std::deque<Request>       _requestQueue;
+  std::mutex                _queueMutex;
+  std::condition_variable   _queueCondition;
 
   // Add these new members
   std::vector<llama_token> context_tokens_;

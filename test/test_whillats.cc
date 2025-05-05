@@ -19,7 +19,7 @@
 #include "whillats_utils.h"
 
 #ifdef __APPLE__ 
-#define WHILLATS_USE_CF_RUNLOOP 0
+#define WHILLATS_USE_CF_RUNLOOP 1
 #if WHILLATS_USE_CF_RUNLOOP
 #include <CoreFoundation/CFRunLoop.h> // For CFRunLoopRunInMode
 #endif
@@ -40,28 +40,13 @@ bool language_changed = false;
 static size_t bufferCount = 0;
 
 void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data) {
-    // if (success && buffer && buffer_size > 0) {
-    //     std::cout << "Generated " << buffer_size << " audio samples at 16000Hz\n";
-    //     audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
-    //     if (buffer_size >= 5) {
-    //         std::cout << "First 5 samples: ";
-    //         for (size_t i = 0; i < 5; i++) {
-    //             std::cout << buffer[i] << " ";
-    //         }
-    //         std::cout << "\n";
-    //     }
-    // } else {
-    //     std::cout << "TTS done or error\n";
-    //     tts_done = true;
-    // }
     // Only handle actual audio data
-    if (success && buffer && buffer_size > 0) {
+    if (success) 
+    {
         LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
-        audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
-        // if(++bufferCount > 300) {
-        //     LOG_I("TTS done");
-        //     tts_done = true;
-        // }
+        if(buffer && buffer_size > 0) {
+            audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
+        }
     } else {
         // Signal end of synthesis
         LOG_I("TTS done");
@@ -116,14 +101,15 @@ int main(int argc, char *argv[])
 
       // Queue and wait for first utterance
       tts.queueText(test_text, "en");
-      // Pump the CFRunLoop to process speech callbacks
-      while (!tts_done) {
 #if WHILLATS_USE_CF_RUNLOOP
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+      // Run the main run loop until .mm signals CFRunLoopStop
+      CFRunLoopRun();
 #else
+      // Fallback: poll until completion
+      while (!tts_done) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-#endif
       }
+#endif
 
       // Write accumulated audio for first utterance
       writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
@@ -140,13 +126,13 @@ int main(int argc, char *argv[])
       
       // Queue and wait for second (long) utterance
       tts.queueText(long_test_text, "en");
-      while (!tts_done) {
 #if WHILLATS_USE_CF_RUNLOOP
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+      CFRunLoopRun();
 #else
+      while (!tts_done) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-#endif
       }
+#endif
 
       tts_done = false;
       // Write accumulated audio for second utterance
@@ -217,13 +203,10 @@ int main(int argc, char *argv[])
     LOG_I("Initializing Llama with model: " << opts.llama_model);
     if (llama.start()) 
     {
-      YUVData* grey_yuv = load_yuv(opts.test_image1.c_str(), 300, 300);
+      YUVData grey_yuv;
+      load_yuv(grey_yuv, opts.test_image1.c_str(), 300, 300);
 
-      //llama.setImage(*grey_yuv);
-
-      //grey_yuv.release(); // after we set image to llama, we can release the yuv image
-      llama.askWithImage("Describe the contents of the image in detail.", *grey_yuv);
-      free_yuv(grey_yuv);
+      llama.askWithImage("Describe the contents of the image in detail.", grey_yuv);
       
       // Wait for the first image processing to complete
       while (!llama_done)
@@ -232,11 +215,11 @@ int main(int argc, char *argv[])
       }
       llama_done = false;
       
-      YUVData* yuv = load_yuv(opts.test_image2.c_str(), 1754, 1240);
+      YUVData yuv;
+      load_yuv(yuv, opts.test_image2.c_str(), 1754, 1240);
 
       //llama.setImage(*yuv);
-      llama.askWithImage("Describe the contents of the image in detail.", *yuv);
-      free_yuv(yuv);
+      llama.askWithImage("Describe the contents of the image in detail.", yuv);
       
       // Wait for the second image processing to complete
       while (!llama_done)

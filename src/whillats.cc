@@ -73,9 +73,7 @@ WhillatsTTS::~WhillatsTTS() {
 }
 
 bool WhillatsTTS::start() { 
-    _speech_synthesizer->initialize(&_callback, [this]() {
-        LOG_I("Synthesis started...");
-    });
+    _speech_synthesizer->initialize(&_callback);
 
     return true; 
 }
@@ -171,7 +169,7 @@ void WhillatsLlama::askWithImage(const char *prompt, const YUVData& yuv) {
 }
 
 void WhillatsLlama::askWithImageFile(const char *prompt, const char *image_file, int width, int height) {
-    YUVData* yuv = load_yuv(image_file, width, height);
-    _llama_device->askWithImage(prompt, *yuv);
-    free_yuv(yuv);
+    YUVData yuv;
+    load_yuv(yuv, image_file, width, height);
+    _llama_device->askWithImage(prompt, yuv);
 }

@@ -43,7 +43,7 @@ public:
     bool Initialize();
 
     std::string generate(const std::string &prompt, WhillatsSetResponseCallback callback);
-    std::string generateFromImage(const YUVData& yuv, const std::string& prompt, WhillatsSetResponseCallback callback);
+    std::string generateFromImage(YUVData* yuv, const std::string& prompt, WhillatsSetResponseCallback callback);
 
     bool LoadModel();
     bool InitializeContext();
@@ -466,10 +466,15 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     return response;
 }
 
-std::string LlamaSimpleChat::generateFromImage(const YUVData& yuv, const std::string& prompt, WhillatsSetResponseCallback callback) {
+std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& prompt, WhillatsSetResponseCallback callback) {
  
     if (!ctx_ || !vocab_ || !smpl_ || !ctx_clip_) {
         LOG_E("Context, vocab, sampler, or clip context not initialized");
+        return "";
+    }
+
+    if (!yuv) {
+        LOG_E("Invalid YUV data");
         return "";
     }
 
@@ -513,14 +518,14 @@ std::string LlamaSimpleChat::generateFromImage(const YUVData& yuv, const std::st
     clip_image_u8* img_clip = nullptr;
 
     //Preprocess image and create embedding if needed
-    img_clip = yuv_to_clip(yuv);
+    img_clip = yuv_to_clip(*yuv);
     if (!img_clip) {
         llama_batch_free(batch);
         return "";
     }
 
     // Uncomment to save image
-    //save_clip_as_bmp(*img_clip, "image.bmp");
+    save_clip_as_bmp(*img_clip, "image.bmp");
 
     float* image_embed_ptr = nullptr;
     int n_image_pos = 0;
@@ -807,8 +812,31 @@ void LlamaDeviceBase::askLlama(const char *prompt)
     std::unique_lock<std::mutex> lock(_queueMutex);
     if (prompt && *prompt)
     {
-      LOG_I("Asking llama: " << prompt);
-      _textQueue.push(std::string(prompt));
+        LOG_I("Asking llama: " << prompt);
+        _requestQueue.emplace_back(Request{std::string(prompt), false, nullptr});
+        _queueCondition.notify_one();
+    }
+  }
+}
+
+void LlamaDeviceBase::askWithImage(const char *prompt, const YUVData& yuv) {
+  {
+    std::unique_lock<std::mutex> lock(_queueMutex);
+    if (prompt && *prompt)
+    {
+      LOG_I("Asking llama with image: " << prompt);
+      YUVData copy;
+      copy.width   = yuv.width;   copy.height  = yuv.height;
+      copy.y_size  = yuv.y_size;  copy.uv_size = yuv.uv_size;
+      copy.y       = std::make_unique<uint8_t[]>(copy.y_size);
+      copy.u       = std::make_unique<uint8_t[]>(copy.uv_size);
+      copy.v       = std::make_unique<uint8_t[]>(copy.uv_size);
+      std::memcpy(copy.y.get(), yuv.y.get(), copy.y_size);
+      std::memcpy(copy.u.get(), yuv.u.get(), copy.uv_size);
+      std::memcpy(copy.v.get(), yuv.v.get(), copy.uv_size);
+      auto framePtr = std::make_shared<YUVData>(std::move(copy));
+      _requestQueue.emplace_back(Request{std::string(prompt), true, framePtr});
+      _queueCondition.notify_one();
     }
   }
 }
@@ -856,11 +884,17 @@ bool LlamaDeviceBase::RunProcessingThread()
     bool shouldAsk = false;
     {
       std::unique_lock<std::mutex> lock(_queueMutex);
-      if (!_textQueue.empty())
+      if (!_requestQueue.empty()) 
       {
-        textToAsk = _textQueue.front();
-        _textQueue.pop();
+        Request request = _requestQueue.front();
+        _requestQueue.pop_front();
         shouldAsk = true;
+        textToAsk = request.prompt;
+        if (request.withImage) {
+          _llama_chat->generateFromImage(request.yuv.get(), request.prompt, _responseCallback);
+        } else {
+          _llama_chat->generate(request.prompt, _responseCallback);
+        }
       }
     }
 
@@ -874,10 +908,4 @@ bool LlamaDeviceBase::RunProcessingThread()
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   return true;
-}
-
-void LlamaDeviceBase::askWithImage(const char *prompt, const YUVData& yuv) {
-    if (_llama_chat) {
-        _llama_chat->generateFromImage(yuv, prompt, _responseCallback);
-    }
 }

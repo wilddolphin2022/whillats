@@ -44,12 +44,12 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
     voice.languages = langNativeString;
     voice.name = "US";
     voice.variant = 1;
-    voice.gender = 1;
+    voice.gender = 2;
     espeak_SetVoiceByProperties(&voice);
 
     espeak_SetParameter(espeakRATE, 180, 0);
     espeak_SetParameter(espeakVOLUME, 75, 0);
-    espeak_SetParameter(espeakPITCH, 150, 0);
+    espeak_SetParameter(espeakPITCH, 200, 0);
     espeak_SetParameter(espeakRANGE, 100, 0);
     espeak_SetParameter((espeak_PARAMETER)11, 0, 0);
 
