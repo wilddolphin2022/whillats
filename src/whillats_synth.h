@@ -27,7 +27,7 @@ public:
     WhillatsSpeechSynthesizerWrapper();
     ~WhillatsSpeechSynthesizerWrapper();
 
-    void initialize(WhillatsSetAudioCallback* audioCallback, CompletionCallback completionCallback);
+    void initialize(WhillatsSetAudioCallback* audioCallback);
     void synthesize(const std::string& text, const std::string& language);
     void stop();
 

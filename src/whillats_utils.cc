@@ -188,10 +188,10 @@ void free_clip(clip_image_u8* clip) {
 }
 
 // Load YUV I420 file into memory
-YUVData* load_yuv(const char* filename, int width, int height) {
+bool load_yuv(YUVData& yuv, const char* filename, int width, int height) {
     // Validate file
     FILE* file = fopen(filename, "rb");
-    if (!file) return nullptr;
+    if (!file) return false;
 
     // Check file size
     fseek(file, 0, SEEK_END);
@@ -200,37 +200,36 @@ YUVData* load_yuv(const char* filename, int width, int height) {
     size_t expected_size = static_cast<size_t>(width * height) * 3 / 2; // Y + U + V
     if (file_size < expected_size) {
         fclose(file);
-        return nullptr;
+        return false;
     }
 
-    // Allocate YUVData
-    auto* data = new YUVData;
-    data->width = width;
-    data->height = height;
-    data->y_size = static_cast<size_t>(width) * height;
-    data->uv_size = data->y_size / 4; // 4:2:0
+    yuv.width = width;
+    yuv.height = height;
+    yuv.y_size = static_cast<size_t>(width) * height;
+    yuv.uv_size = yuv.y_size / 4; // 4:2:0
 
     // Allocate memory
-    data->y = std::make_unique<uint8_t[]>(data->y_size);
-    data->u = std::make_unique<uint8_t[]>(data->uv_size);
-    data->v = std::make_unique<uint8_t[]>(data->uv_size);
+    yuv.y = std::make_unique<uint8_t[]>(yuv.y_size);
+    yuv.u = std::make_unique<uint8_t[]>(yuv.uv_size);
+    yuv.v = std::make_unique<uint8_t[]>(yuv.uv_size);
 
     // Read file
-    if (fread(data->y.get(), 1, data->y_size, file) != data->y_size ||
-        fread(data->u.get(), 1, data->uv_size, file) != data->uv_size ||
-        fread(data->v.get(), 1, data->uv_size, file) != data->uv_size) {
+    if (fread(yuv.y.get(), 1, yuv.y_size, file) != yuv.y_size ||
+        fread(yuv.u.get(), 1, yuv.uv_size, file) != yuv.uv_size ||
+        fread(yuv.v.get(), 1, yuv.uv_size, file) != yuv.uv_size) {
         fclose(file);
-        delete data;
-        return nullptr;
+        return false;
     }
 
     fclose(file);
-    return data;
+    return true;
 }
 
 // Function to free YUV data
-void free_yuv(YUVData* data) {
-    delete data; // unique_ptr handles memory cleanup
+void free_yuv(YUVData& yuv) {
+    yuv.y.reset();
+    yuv.u.reset();
+    yuv.v.reset();
 }
 
 // Converts YUVData to a flat byte array in YUV I420 format (Y, U, V order)

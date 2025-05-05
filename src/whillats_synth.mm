@@ -27,11 +27,14 @@ struct CallbackContext {
 static void AudioCallbackBridge(bool success, const uint16_t* buffer, size_t size, void* user_data) {
     CallbackContext* context = static_cast<CallbackContext*>(user_data);
     if (context && context->audioCallbackPtr) {
-        std::vector<uint16_t> bufferVec;
+        // If there is valid data, deliver buffer; otherwise signal completion
         if (success && buffer && size > 0) {
-            bufferVec.assign(buffer, buffer + size);
+            std::vector<uint16_t> bufferVec(buffer, buffer + size);
+            context->audioCallbackPtr->OnBufferComplete(true, bufferVec);
+        } else {
+            // End of synthesis or error: invoke synthesis-complete callback
+            context->audioCallbackPtr->OnSynthesisComplete();
         }
-        context->audioCallbackPtr->OnBufferComplete(success, bufferVec);
     }
 }
 
@@ -57,8 +60,7 @@ WhillatsSpeechSynthesizerWrapper::~WhillatsSpeechSynthesizerWrapper() {
     stop();
 }
 
-void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audioCallback,
-                                                 CompletionCallback completionCallback) {
+void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audioCallback) {
     // Clean up any prior processor
     if (impl->processor) stop();
     // Store callback pointer
@@ -69,8 +71,7 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
     // Initialize the OS X speech processor
     impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc]
                        initWithAudioCallback:AudioCallbackBridge
-                                 userData:context
-                       completionCallback:CompletionCallbackBridge];
+                                 userData:context];
     if (!impl->processor) {
         LOG_E("[Whillats]: Failed to create SpeechSynthesizerProcessor");
         delete context;

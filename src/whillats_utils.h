@@ -19,8 +19,8 @@
 clip_image_u8* yuv_to_clip(const YUVData& yuv);
 void free_clip(clip_image_u8* clip);
 
-YUVData* load_yuv(const char* filename, int width, int height);
-void free_yuv(YUVData* data);
+bool load_yuv(YUVData& yuv, const char* filename, int width, int height);
+void free_yuv(YUVData& yuv);
 
 std::vector<uint8_t> yuv_to_flat_array(const YUVData& yuv);
 std::string compute_image_hash(const clip_image_u8& image);
