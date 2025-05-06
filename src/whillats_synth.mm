@@ -10,15 +10,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#import <Foundation/Foundation.h>
-#include "whillats_osx.h"
-#include "whillats_synth.h"
-#include "whisper_helpers.h"
-#include <vector>
-#include <memory>
-#include <iostream>
+#import <Foundation/Foundation.h> // Needed for NSString, nil, NSNotificationCenter
 
-// Define a single context struct for audio callback
+#import "whillats_synth.h" // Include the header for WhillatsSpeechSynthesizerWrapper definition
+#import "whillats_ios.h"   // Include the correct processor interface (iOS & macOS)
+#include <algorithm>       // Needed for std::transform
+
+// Define a single context struct for both callbacks
 struct CallbackContext {
     WhillatsSetAudioCallback* audioCallbackPtr;
 };
@@ -48,8 +46,10 @@ static void CompletionCallbackBridge(void* user_data) {
 
 // Define Impl
 struct WhillatsSpeechSynthesizerWrapper::Impl {
-    WhillatsSpeechSynthesizerProcessor* processor;
-    WhillatsSetAudioCallback* audioCallbackPtr;
+    WhillatsSpeechSynthesizerProcessor* processor; // Objective-C processor (iOS or macOS)
+    WhillatsSetAudioCallback* audioCallbackPtr; // Store pointer to callback object
+
+    // Constructor initializes the pointer to nullptr
     Impl() : processor(nil), audioCallbackPtr(nullptr) {}
 };
 
@@ -73,7 +73,7 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
                        initWithAudioCallback:AudioCallbackBridge
                                  userData:context];
     if (!impl->processor) {
-        LOG_E("[Whillats]: Failed to create SpeechSynthesizerProcessor");
+        NSLog(@"[Whillats]: Failed to create SpeechSynthesizerProcessor");
         delete context;
     }
 #if TARGET_OS_IOS
@@ -82,12 +82,35 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
 }
 
 void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
-    NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
-    NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
-    if (!nsText || !nsLanguage) return;
-    _lastText = text;
-    _lastLanguage = language;
-    [impl->processor synthesizeText:nsText language:nsLanguage];
+    if (impl->processor) {
+        NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
+        NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
+        if (nsText && nsLanguage) { // Check if conversion was successful
+            _lastText = text;
+            _lastLanguage = language;
+            // Post notification before synthesis
+            dispatch_async(dispatch_get_main_queue(),^{
+                std::string code = language;
+                std::transform(code.begin(), code.end(), code.begin(), ::toupper);
+
+                NSString* languageCode = 
+                    (language == "en") ? @"en-US" : \
+                    (language == "zh") ? @"zh-CN" : \
+                    (language == "ja") ? @"ja-JP" : \
+                    [NSString stringWithFormat:@"%s-%s", language.c_str(), code.c_str()];
+                NSDictionary* userInfo = @{@"text": nsText, @"language": languageCode, @"spoken_language": languageCode};
+
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
+                                                                  object:nil
+                                                                userInfo:userInfo];
+                NSLog(@"Notification posted before synthesis: WhillatsTranscriptionResponseAvailableNotification");
+            });
+            [impl->processor synthesizeText:nsText language:nsLanguage];
+        } else {
+            NSLog(@"WhillatsSpeechSynthesizerWrapper: Failed to convert text to NSString");
+            // Optionally trigger an error state or callback
+        }
+    }
 }
 
 void WhillatsSpeechSynthesizerWrapper::stop() {
@@ -97,10 +120,6 @@ void WhillatsSpeechSynthesizerWrapper::stop() {
         if (context) delete context;
         impl->processor = nil;
     }
-}
-
-void WhillatsSpeechSynthesizerWrapper::setNotificationName(const char* name) {
-    _notification_name = name;
 }
 
 #if TARGET_OS_IOS
@@ -114,5 +133,13 @@ void WhillatsSpeechSynthesizerWrapper::disableSpeakerphone() {
     if (impl->processor) {
         [impl->processor disableSpeakerphone];
     }
+}
+#else
+void WhillatsSpeechSynthesizerWrapper::enableSpeakerphone() {
+    // No-op on macOS
+}
+
+void WhillatsSpeechSynthesizerWrapper::disableSpeakerphone() {
+    // No-op on macOS
 }
 #endif

@@ -19,6 +19,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#import <AudioToolbox/AudioToolbox.h>
+
 // C callback signature available in all contexts
 typedef void (*AudioCallback)(bool success, const uint16_t *audioData, size_t length, void *userData);
 
@@ -35,7 +37,7 @@ typedef void (*AudioCallback)(bool success, const uint16_t *audioData, size_t le
 - (void)synthesizeText:(NSString *)text language:(NSString *)language;
 - (void)stop;
 
-@property (nonatomic, readwrite, assign) void *userData;
+@property (nonatomic, assign) void *userData;
 
 @end
 #endif // __OBJC__

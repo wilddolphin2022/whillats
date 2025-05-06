@@ -20,8 +20,11 @@
 
 @interface WhillatsSpeechSynthesizerProcessor () <AVSpeechSynthesizerDelegate>
 @property (nonatomic, strong) AVSpeechSynthesizer *synthesizer;
+@property (nonatomic, strong) AVAudioEngine *audioEngine;
+@property (nonatomic, strong) AVAudioConverter *converter;
+@property (nonatomic, strong) AVAudioFormat *outputFormat;
+@property (nonatomic, strong) AVAudioFormat *engineFormat;
 @property (nonatomic, assign) AudioCallback audioCallback;
-// userData is declared in the public header
 @end
 
 @implementation WhillatsSpeechSynthesizerProcessor
