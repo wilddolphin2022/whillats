@@ -7,6 +7,9 @@
 #include <queue>
 #include <regex>
 #include <set>
+#include <cstdint>       // for uint64_t
+#include <cstring>       // for memcpy
+#include <memory>        // for shared_ptr
 
 #include "llama.h"
 #include "clip.h"
@@ -473,7 +476,7 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
         return "";
     }
 
-    if (!yuv) {
+    if (!yuv || !yuv->y || !yuv->u || !yuv->v) {
         LOG_E("Invalid YUV data");
         return "";
     }
@@ -792,6 +795,17 @@ void LlamaSimpleChat::DetectStoppingTokens() {
     }
 }
 
+// very-fast 64-bit FNV-1a on the three YUV planes
+uint64_t fnv1a_hash_yuv(const YUVData &yuv) {
+    const uint64_t FNV_offset_basis = 1469598103934665603ull;
+    const uint64_t FNV_prime        = 1099511628211ull;
+    uint64_t h = FNV_offset_basis;
+    for (size_t i = 0; i < yuv.y_size;  ++i) h = (h ^ yuv.y[i]) * FNV_prime;
+    for (size_t i = 0; i < yuv.uv_size; ++i) h = (h ^ yuv.u[i]) * FNV_prime;
+    for (size_t i = 0; i < yuv.uv_size; ++i) h = (h ^ yuv.v[i]) * FNV_prime;
+    return h;
+}
+
 //
 // Llama device base
 LlamaDeviceBase::LlamaDeviceBase(
@@ -878,34 +892,30 @@ void LlamaDeviceBase::stop()
 // LlamaDeviceBase remains mostly unchanged, but ensure TrimContext and AppendToContext are used correctly
 bool LlamaDeviceBase::RunProcessingThread()
 {
-  while (_running)
-  {
-    std::string textToAsk;
-    bool shouldAsk = false;
+  while (_running) {
+    Request req;
     {
       std::unique_lock<std::mutex> lock(_queueMutex);
-      if (!_requestQueue.empty()) 
-      {
-        Request request = _requestQueue.front();
-        _requestQueue.pop_front();
-        shouldAsk = true;
-        textToAsk = request.prompt;
-        if (request.withImage) {
-          _llama_chat->generateFromImage(request.yuv.get(), request.prompt, _responseCallback);
-        } else {
-          _llama_chat->generate(request.prompt, _responseCallback);
-        }
+      // wait until we have a request or are shutting down
+      _queueCondition.wait(lock, [&]{ return !_requestQueue.empty() || !_running; });
+      if (!_running && _requestQueue.empty()) break;
+      req = std::move(_requestQueue.front());
+      _requestQueue.pop_front();
+    }
+
+    if (req.withImage && req.yuv) {
+      // only handle new frames
+      uint64_t h = fnv1a_hash_yuv(*req.yuv);
+      if (h != _lastYuvHash) {
+        _lastYuvHash = h;
+        _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
+        _llama_chat->generateFromImage(req.yuv.get(), req.prompt, _responseCallback);
+      } else {
       }
-    }
-
-    if (shouldAsk)
-    {
+    } else {
       _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
-      _llama_chat->generate(textToAsk, _responseCallback);
-      textToAsk.clear();
+      _llama_chat->generate(req.prompt, _responseCallback);
     }
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   return true;
 }

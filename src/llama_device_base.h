@@ -73,6 +73,9 @@ private:
   std::mutex                _queueMutex;
   std::condition_variable   _queueCondition;
 
+  // Last‐seen YUV hash; skip generateFromImage on duplicates
+  uint64_t                  _lastYuvHash = 0;
+  
   // Add these new members
   std::vector<llama_token> context_tokens_;
   const size_t max_context_tokens_ = 2048; // Adjust based on your model   

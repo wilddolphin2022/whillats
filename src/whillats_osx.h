@@ -15,16 +15,24 @@
 #ifndef WHILLATS_OSX_H
 #define WHILLATS_OSX_H
 
+// Define fixed-width integer and size types for C/C++
+#include <stdint.h>
+#include <stddef.h>
+
 #import <AudioToolbox/AudioToolbox.h>
 
+// C callback signature available in all contexts
 typedef void (*AudioCallback)(bool success, const uint16_t *audioData, size_t length, void *userData);
-typedef void (*CompletionCallback)(void *userData);
 
-@interface WhillatsSpeechSynthesizerProcessor : NSObject
+#ifdef __OBJC__
+#import <AppKit/AppKit.h>
+#import <AudioToolbox/AudioToolbox.h>
+#import <AVFoundation/AVFoundation.h>
+
+@interface WhillatsSpeechSynthesizerProcessor : NSObject <AVSpeechSynthesizerDelegate>
 
 - (instancetype)initWithAudioCallback:(AudioCallback)audioCallback
-                             userData:(void *)userData
-                    completionCallback:(CompletionCallback)completionCallback;
+                             userData:(void *)userData;
 
 - (void)synthesizeText:(NSString *)text language:(NSString *)language;
 - (void)stop;
@@ -32,5 +40,6 @@ typedef void (*CompletionCallback)(void *userData);
 @property (nonatomic, assign) void *userData;
 
 @end
+#endif // __OBJC__
 
 #endif // WHILLATS_OSX_H

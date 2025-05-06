@@ -61,22 +61,17 @@ WhillatsSpeechSynthesizerWrapper::~WhillatsSpeechSynthesizerWrapper() {
 }
 
 void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audioCallback) {
-    // Ensure processor is not already initialized or clean up previous one
-    if (impl->processor) {
-        stop(); // Clean up existing processor and context first
-    }
-
-    // Store the pointer
+    // Clean up any prior processor
+    if (impl->processor) stop();
+    // Store callback pointer
     impl->audioCallbackPtr = audioCallback;
     // Create and populate the shared context
     CallbackContext* context = new CallbackContext();
-    context->audioCallbackPtr = impl->audioCallbackPtr; // Store pointer to C++ audio callback obj
-
-    // Create the Objective-C processor using the C bridge functions and the shared context
-    impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc] initWithAudioCallback:AudioCallbackBridge
-                                                                             userData:context
-                                                                   completionCallback:CompletionCallbackBridge];
-
+    context->audioCallbackPtr = impl->audioCallbackPtr;
+    // Initialize the OS X speech processor
+    impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc]
+                       initWithAudioCallback:AudioCallbackBridge
+                                 userData:context];
     if (!impl->processor) {
         NSLog(@"[Whillats]: Failed to create SpeechSynthesizerProcessor");
         delete context;
