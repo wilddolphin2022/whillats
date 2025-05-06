@@ -68,10 +68,11 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
     // Create and populate the shared context
     CallbackContext* context = new CallbackContext();
     context->audioCallbackPtr = impl->audioCallbackPtr;
-    // Initialize the OS X speech processor
+    // Initialize the speech processor with audio and completion callbacks
     impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc]
                        initWithAudioCallback:AudioCallbackBridge
-                                 userData:context];
+                                 userData:context
+                        completionCallback:CompletionCallbackBridge];
     if (!impl->processor) {
         NSLog(@"[Whillats]: Failed to create SpeechSynthesizerProcessor");
         delete context;
