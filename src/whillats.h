@@ -24,7 +24,7 @@
 #undef tolower
 #endif
     // Exclude TTS (espeak-ng) for iOS builds
-    #if  TARGET_OS_IOS // || TARGET_OS_OSX
+    #if  TARGET_OS_IOS || TARGET_OS_OSX
         #define TTS_PLATFORMS 0 // Building for iOS
     #else
         #define TTS_PLATFORMS 1 // Building for macOS or other non-iOS platforms
