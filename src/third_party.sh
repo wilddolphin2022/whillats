@@ -53,7 +53,7 @@ case "$(uname -s | tr '[:upper:]' '[:lower:]')" in
         ;;
 esac
 
-BUILD_TYPE=
+BUILD_TYPE=debug
 
 while [ "$1" != "" ]; do
     case $1 in
@@ -79,9 +79,6 @@ while [ "$1" != "" ]; do
 done
 
     echo "HOST_PLATFORM is ${HOST_PLATFORM}, BUILD_TYPE is ${BUILD_TYPE}, THIRD_PARTY is ${THIRD_PARTY}"
-    if [ ! -d ${THIRD_PARTY} ]; then
-        mkdir ${THIRD_PARTY}
-    fi
 
     cd ${THIRD_PARTY}
     if [ ! -f ${THIRD_PARTY}/whisper.cpp/CMakeLists.txt ]; then
@@ -105,79 +102,81 @@ done
     fi
 
     cd ${THIRD_PARTY}/whisper.cpp
+    echo "building whisper.cpp"
     
     if [ "${HOST_PLATFORM}" = "linux" ]
     then
         sed -i 's/Wunreachable-code-break/Wunreachable-code/g' ggml/src/CMakeLists.txt 
         sed -i 's/Wunreachable-code-return/Wunreachable-code/g' ggml/src/CMakeLists.txt
+        cmake -B build -DGGML_CUDA=1
+    else
+        cmake -B build
     fi
 
-    if [ -z ${BUILD_TYPE} ]
+    if [ "${BUILD_TYPE}" = "release" ]
+        cmake --build build --config Release  
     then
-        echo "building skipped, no build type"
+        cmake --build build --config Debug  
+    fi
+
+    if [ "${HOST_PLATFORM}" = "linux" ]
+    then
+        echo "installing whisper.cpp"
+        cd build; sudo make install; cd ..
+    fi
+
+    cd ${THIRD_PARTY}/llama.cpp
+    echo "building llama.cpp"
+
+    if [ "${HOST_PLATFORM}" = "linux" ]
+    then
+        sed -i 's/Wunreachable-code-break/Wunreachable-code/g' ggml/src/CMakeLists.txt 
+        sed -i 's/Wunreachable-code-return/Wunreachable-code/g' ggml/src/CMakeLists.txt
+        cmake -B build -DGGML_CUDA=1
     else
-
-        echo "building whisper.cpp"
         cmake -B build
+    fi
 
-        if [ "${BUILD_TYPE}" = "release" ]
-            cmake --build build --config Release  
-        then
-            cmake --build build --config Debug  
-        fi
+    if [ "${BUILD_TYPE}" = "release" ]
+        cmake --build build --config Release  
+    then
+        cmake --build build --config Debug  
+    fi
 
-        if [ "${HOST_PLATFORM}" = "linux" ]
-        then
-            echo "installing whisper.cpp"
-            cd build; sudo make install; cd ..
-        fi
+    if [ "${HOST_PLATFORM}" = "linux" ]
+    then
+        echo "installing llama.cpp"
+        cd build; sudo make install; cd ..
+    fi
 
-        cd ${THIRD_PARTY}/llama.cpp
+    cd ${THIRD_PARTY}/espeak-ng
 
-        if [ "${HOST_PLATFORM}" = "linux" ]
-        then
-            sed -i 's/Wunreachable-code-break/Wunreachable-code/g' ggml/src/CMakeLists.txt 
-            sed -i 's/Wunreachable-code-return/Wunreachable-code/g' ggml/src/CMakeLists.txt
-        fi
+    echo "building espeak-ng"
 
-        echo "building llama.cpp"
-        cmake -B build
+    cmake -B build
 
-        if [ "${BUILD_TYPE}" = "release" ]
-            cmake --build build --config Release  
-        then
-            cmake --build build --config Debug  
-        fi
+    if [ "${BUILD_TYPE}" = "release" ]
+        cmake --build build --config Release  
+    then
+        cmake --build build --config Debug  
+    fi
 
-        if [ "${HOST_PLATFORM}" = "linux" ]
-        then
-            echo "installing llama.cpp"
-            cd build; sudo make install; cd ..
-        fi
+    #if [ "${HOST_PLATFORM}" = "linux" ]
+    #then
+    #    echo "installing espeak-ng"
+    #    sudo make install
+    #fi
 
-        cd ${THIRD_PARTY}/espeak-ng
+    echo "building pcaudio"
 
-        echo "building espeak-ng"
+    cd ${THIRD_PARTY}/pcaudiolib
 
-        cmake -B build
-
-        if [ "${BUILD_TYPE}" = "release" ]
-            cmake --build build --config Release  
-        then
-            cmake --build build --config Debug  
-        fi
-
-        echo "building pcaudio"
-
-        cd ${THIRD_PARTY}/pcaudiolib
-
-        echo "building pcaudiolib"
-        ./autogen.sh
-        ./configure --with-pic
-        make
-        if [ "${HOST_PLATFORM}" = "mac" ]
-        then
-            ./libtool --mode=install cp src/libpcaudio.la  ${THIRD_PARTY}/pcaudiolib/src/libpcaudio.dylib
-        fi
+    echo "building pcaudiolib"
+    ./autogen.sh
+    ./configure --with-pic
+    make
+    if [ "${HOST_PLATFORM}" = "mac" ]
+    then
+        ./libtool --mode=install cp src/libpcaudio.la  ${THIRD_PARTY}/pcaudiolib/src/libpcaudio.dylib
     fi
 
