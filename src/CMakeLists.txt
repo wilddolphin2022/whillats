@@ -51,13 +51,14 @@ set(WHILLATS_SOURCES
     src/whisper_transcription.cc
     src/llama_device_base.cc
     src/espeak_tts.cc
+    src/synthesis.cc
     src/whillats.cc
 )
 if(APPLE)
-    # Include Objective-C++ implementation files for macOS
+    # Include Objective-C++ implementation files for iOS/macOS
     list(APPEND WHILLATS_SOURCES
-        src/whillats_synth.mm
-        src/whillats_osx.mm
+        src/whillats_synth.mm  # restored for iOS support
+        # src/whillats_osx.mm  # removed, using process-based Synthesis on macOS
     )
 endif()
 
@@ -160,10 +161,14 @@ add_executable(test_whillats
     test/test_utils.cc
 )
 
+# Link the test executable against the library
 target_link_libraries(test_whillats
     PRIVATE
         ${PROJECT_NAME}
 )
+
+# Force debug symbols and disable optimization for test executable
+target_compile_options(test_whillats PRIVATE -g -O0 -UNDEBUG)
 
 # On macOS, link the Carbon SpeechSynth frameworks for the test executable
 if(APPLE)

@@ -10,11 +10,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#import <Foundation/Foundation.h> // Needed for NSString, nil, NSNotificationCenter
+#import <Foundation/Foundation.h>
+#include "whillats_osx.h"
+#include "whillats_synth.h"
+#include "whisper_helpers.h"
+#include <vector>
+#include <memory>
+#include <iostream>
 
-#import "whillats_synth.h" // Include the header for WhillatsSpeechSynthesizerWrapper definition
-#import "whillats_ios.h"   // Include the correct processor interface (iOS & macOS)
-#include <algorithm>       // Needed for std::transform
+#if TARGET_OS_IOS
 
 // Define a single context struct for both callbacks
 struct CallbackContext {
@@ -77,9 +81,7 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
         NSLog(@"[Whillats]: Failed to create SpeechSynthesizerProcessor");
         delete context;
     }
-#if TARGET_OS_IOS
     [impl->processor enableSpeakerphone];
-#endif
 }
 
 void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
@@ -123,7 +125,10 @@ void WhillatsSpeechSynthesizerWrapper::stop() {
     }
 }
 
-#if TARGET_OS_IOS
+void WhillatsSpeechSynthesizerWrapper::setNotificationName(const char* name) {
+    _notification_name = name;
+}
+
 void WhillatsSpeechSynthesizerWrapper::enableSpeakerphone() {
     if (impl->processor) {
         [impl->processor enableSpeakerphone];
@@ -135,12 +140,5 @@ void WhillatsSpeechSynthesizerWrapper::disableSpeakerphone() {
         [impl->processor disableSpeakerphone];
     }
 }
-#else
-void WhillatsSpeechSynthesizerWrapper::enableSpeakerphone() {
-    // No-op on macOS
-}
 
-void WhillatsSpeechSynthesizerWrapper::disableSpeakerphone() {
-    // No-op on macOS
-}
-#endif
+#endif // TARGET_OS_IOS

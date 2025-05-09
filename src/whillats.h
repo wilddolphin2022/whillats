@@ -24,7 +24,7 @@
 #undef tolower
 #endif
     // Exclude TTS (espeak-ng) for iOS builds
-    #if  TARGET_OS_IOS // || TARGET_OS_OSX
+    #if  TARGET_OS_IOS || TARGET_OS_OSX
         #define TTS_PLATFORMS 0 // Building for iOS
     #else
         #define TTS_PLATFORMS 1 // Building for macOS or other non-iOS platforms
@@ -54,6 +54,9 @@
 #include <cstring>
 #include <vector>
 #include <memory>
+#include <thread>
+#include <mutex>
+#include <unistd.h>
 
 // Change to C-style function pointer callbacks
 typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);
@@ -79,6 +82,7 @@ class WhisperTranscriber;
 class LlamaDeviceBase;
 class ESpeakTTS;
 class WhillatsSpeechSynthesizerWrapper;
+class Synthesis;
 
 class WHILLATS_API WhillatsSetResponseCallback {
 public:
@@ -151,10 +155,8 @@ class WHILLATS_API WhillatsTTS {
     WhillatsSetAudioCallback _callback;
 #if TTS_PLATFORMS
     std::unique_ptr<ESpeakTTS> _espeak_tts;
-#else    
-    std::unique_ptr<WhillatsSpeechSynthesizerWrapper> _speech_synthesizer;
-public:
-    void setNotificationName(const char* name);
+#else
+    std::unique_ptr<Synthesis> _synth;
 #endif
 };
 
@@ -191,8 +193,17 @@ class WHILLATS_API WhillatsLlama {
     bool start();
     void stop();
     void askLlama(const char* prompt);
-    void askWithImage(const char *prompt, const YUVData& yuv);
-    void askWithImageFile(const char *prompt, const char *image_file, int width, int height);
+    void askWithImageFile(const char* prompt, const char* image_file, int width, int height);
+    void askWithYUVRaw(
+        const char* prompt,
+        const uint8_t* y_plane,
+        const uint8_t* u_plane,
+        const uint8_t* v_plane,
+        int width,
+        int height,
+        size_t y_size,
+        size_t uv_size);
+
   private:
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;

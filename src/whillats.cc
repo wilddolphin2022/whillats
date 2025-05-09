@@ -12,25 +12,20 @@
 
 #include <memory>
 #include <string>
+#include <thread>
+#include <mutex>
+#include <vector>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <errno.h>
 
 #include "whillats.h"
 #include "whisper_transcription.h"
 #include "llama_device_base.h"
 #include "whillats_utils.h"
-
 #if TTS_PLATFORMS
 #include "espeak_tts.h"
-
-// Temporary fix for non-iOS builds
-// #ifndef TARGET_OS_OSX
-// #pragma message("PLATFORM_DARWIN is not defined")
-// ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback) : _callback(callback) {}
-// ESpeakTTS::~ESpeakTTS() {}
-// const int ESpeakTTS::getSampleRate() { return 16000; }
-// bool ESpeakTTS::start() { return false; }
-// void ESpeakTTS::stop() { }
-// void ESpeakTTS::queueText(const std::string& text, const std::string& language) { }
-// #endif
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback),
@@ -61,44 +56,38 @@ void WhillatsTTS::disableSpeakerphone() {
 }
 
 #else // !TTS_PLATFORMS
+#include "synthesis.h"
 
-#include "whillats_synth.h"
+// Delegate to Synthesis class for process-based synthesis
+WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
+    : _callback(callback),
+      _synth(std::make_unique<Synthesis>(callback)) {}
 
-WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback) : 
-    _callback(callback),
-    _speech_synthesizer(std::make_unique<WhillatsSpeechSynthesizerWrapper>()) { }
+WhillatsTTS::~WhillatsTTS() = default;
 
-WhillatsTTS::~WhillatsTTS() { 
-    _speech_synthesizer.reset();
+bool WhillatsTTS::start() {
+    return _synth->start();
 }
 
-bool WhillatsTTS::start() { 
-    _speech_synthesizer->initialize(&_callback);
-
-    return true; 
-}
-void WhillatsTTS::stop() { 
-    _speech_synthesizer->stop();
-}
-int WhillatsTTS::getSampleRate() { 
-    return 16000; 
+void WhillatsTTS::stop() {
+    _synth->stop();
 }
 
-void WhillatsTTS::queueText(const char* text, const char* language) { 
-    _speech_synthesizer->synthesize(text, language);
+int WhillatsTTS::getSampleRate() {
+    return Synthesis::getSampleRate();
+}
+
+void WhillatsTTS::queueText(const char* text, const char* language) {
+    _synth->queueText(std::string(text), std::string(language));
 }
 
 void WhillatsTTS::enableSpeakerphone() {
-#if TARGET_OS_IOS
-    _speech_synthesizer->enableSpeakerphone();
-#endif
+    // No-op on macOS
 }
 
 void WhillatsTTS::disableSpeakerphone() {
-#if TARGET_OS_IOS
-    _speech_synthesizer->disableSpeakerphone();
-#endif
-}   
+    // No-op on macOS
+}
 
 #endif // !TTS_PLATFORMS
 
@@ -164,12 +153,35 @@ void WhillatsLlama::askLlama(const char* prompt) {
     _llama_device->askLlama(prompt);
 }
 
-void WhillatsLlama::askWithImage(const char *prompt, const YUVData& yuv) {
-    _llama_device->askWithImage(prompt, yuv);
-}
-
 void WhillatsLlama::askWithImageFile(const char *prompt, const char *image_file, int width, int height) {
     YUVData yuv;
     load_yuv(yuv, image_file, width, height);
     _llama_device->askWithImage(prompt, yuv);
+}
+
+// Member method to send raw YUV planes to the llama device
+void WhillatsLlama::askWithYUVRaw(
+    const char* prompt,
+    const uint8_t* y_plane,
+    const uint8_t* u_plane,
+    const uint8_t* v_plane,
+    int width,
+    int height,
+    size_t y_size,
+    size_t uv_size) {
+  if (!prompt || !y_plane || !u_plane || !v_plane) return;
+  // Deep-copy the planes into YUVData
+  YUVData data;
+  data.width = width;
+  data.height = height;
+  data.y_size = y_size;
+  data.uv_size = uv_size;
+  data.y = std::make_unique<uint8_t[]>(y_size);
+  std::memcpy(data.y.get(), y_plane, y_size);
+  data.u = std::make_unique<uint8_t[]>(uv_size);
+  std::memcpy(data.u.get(), u_plane, uv_size);
+  data.v = std::make_unique<uint8_t[]>(uv_size);
+  std::memcpy(data.v.get(), v_plane, uv_size);
+  // Forward to the underlying device
+  _llama_device->askWithImage(prompt, data);
 }

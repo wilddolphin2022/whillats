@@ -18,13 +18,6 @@
 #include "whisper_helpers.h"
 #include "whillats_utils.h"
 
-#ifdef __APPLE__ 
-#define WHILLATS_USE_CF_RUNLOOP 1
-#if WHILLATS_USE_CF_RUNLOOP
-#include <CoreFoundation/CFRunLoop.h> // For CFRunLoopRunInMode
-#endif
-#endif
-
 // Set log level
 void setLogLevel(LogLevel level)
 {
@@ -100,20 +93,15 @@ int main(int argc, char *argv[])
       std::cout << "Testing TTS with text: " << test_text << std::endl;
 
       // Queue and wait for first utterance
-      tts.queueText(test_text, "en");
-#if WHILLATS_USE_CF_RUNLOOP
-      // Run the main run loop until .mm signals CFRunLoopStop
-      CFRunLoopRun();
-#else
+      tts.queueText(test_text, "en-US");
       // Fallback: poll until completion
       while (!tts_done) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
-#endif
 
       // Write accumulated audio for first utterance
       writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
-      // Prepare for next utterance
+      // Prepare for next utterance: clear buffer and flag
       tts_done = false;
       audio_buffer.clear();
 
@@ -122,21 +110,33 @@ int main(int argc, char *argv[])
                                   "We are testing the whisper transcription system. "
                                   "The quick brown fox jumps over the lazy dog. "
                                   "¿Cómo estás? У вас есть меню на английском?";
+      const char *spanish_test_text = "¿Cómo estás? ¿cómo te llamas?";
+      const char *russian_test_text = "У вас есть меню на английском?";
+      // Queue and wait for long English utterance
       std::cout << "Testing TTS with text: " << long_test_text << std::endl;
-      
-      // Queue and wait for second (long) utterance
       tts.queueText(long_test_text, "en");
-#if WHILLATS_USE_CF_RUNLOOP
-      CFRunLoopRun();
-#else
       while (!tts_done) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
-#endif
-
       tts_done = false;
-      // Write accumulated audio for second utterance
+      // Queue and wait for Spanish utterance
+      std::cout << "Testing TTS with text: " << spanish_test_text << std::endl;
+      tts.queueText(spanish_test_text, "es");
+      while (!tts_done) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+      tts_done = false;
+      // Queue and wait for Russian utterance
+      std::cout << "Testing TTS with text: " << russian_test_text << std::endl;
+      tts.queueText(russian_test_text, "ru");
+      while (!tts_done) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+      
+      tts_done = false;
+      // Write accumulated audio for all utterances
       writeWavFile("synthesized_audio_long.wav", audio_buffer, WhillatsTTS::getSampleRate());
+      // Stop TTS after all audio
       tts.stop();
     }
   }
@@ -206,7 +206,10 @@ int main(int argc, char *argv[])
       YUVData grey_yuv;
       load_yuv(grey_yuv, opts.test_image1.c_str(), 300, 300);
 
-      llama.askWithImage("Describe the contents of the image in detail.", grey_yuv);
+      llama.askWithYUVRaw("Describe the contents of the image in detail.", 
+                          grey_yuv.y.get(), grey_yuv.u.get(), grey_yuv.v.get(), 
+                          grey_yuv.width, grey_yuv.height, 
+                          grey_yuv.y_size, grey_yuv.uv_size);
       
       // Wait for the first image processing to complete
       while (!llama_done)
@@ -219,7 +222,10 @@ int main(int argc, char *argv[])
       load_yuv(yuv, opts.test_image2.c_str(), 1754, 1240);
 
       //llama.setImage(*yuv);
-      llama.askWithImage("Describe the contents of the image in detail.", yuv);
+      llama.askWithYUVRaw("Describe the contents of the image in detail.", 
+                          yuv.y.get(), yuv.u.get(), yuv.v.get(), 
+                          yuv.width, yuv.height, 
+                          yuv.y_size, yuv.uv_size);
       
       // Wait for the second image processing to complete
       while (!llama_done)
