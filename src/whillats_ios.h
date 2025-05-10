@@ -13,6 +13,8 @@
 #ifndef WHILLATS_IOS_H_
 #define WHILLATS_IOS_H_
 
+#include "whillats.h"
+
 #if TARGET_OS_IOS
     #import <Foundation/Foundation.h>
     #import <AVFoundation/AVFoundation.h>

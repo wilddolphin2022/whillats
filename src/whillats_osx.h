@@ -15,9 +15,15 @@
 #ifndef WHILLATS_OSX_H
 #define WHILLATS_OSX_H
 
-// Define fixed-width integer and size types for C/C++
-#include <stdint.h>
-#include <stddef.h>
+#include "whillats.h"
+
+#if TARGET_OS_IOS
+    #import <Foundation/Foundation.h>
+    #import <AVFoundation/AVFoundation.h>
+#else
+    #import <AppKit/AppKit.h>
+    #import <AudioToolbox/AudioToolbox.h>
+#endif
 
 #import <AudioToolbox/AudioToolbox.h>
 
@@ -36,6 +42,12 @@ typedef void (*AudioCallback)(bool success, const uint16_t *audioData, size_t le
 
 - (void)synthesizeText:(NSString *)text language:(NSString *)language;
 - (void)stop;
+
+#if TARGET_OS_IOS
+// Speakerphone control
+- (BOOL)enableSpeakerphone;
+- (BOOL)disableSpeakerphone;
+#endif
 
 @property (nonatomic, assign) void *userData;
 

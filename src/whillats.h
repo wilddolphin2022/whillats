@@ -143,7 +143,7 @@ class WHILLATS_API WhillatsTTS {
     WhillatsTTS(WhillatsSetAudioCallback callback);
     ~WhillatsTTS();
 
-    bool start();
+    bool start(bool enableProcessor = true);
     void stop();
     void queueText(const char* text, const char* language);
     void enableSpeakerphone();
@@ -155,6 +155,8 @@ class WHILLATS_API WhillatsTTS {
     WhillatsSetAudioCallback _callback;
 #if TTS_PLATFORMS
     std::unique_ptr<ESpeakTTS> _espeak_tts;
+#elif TARGET_OS_IOS
+    std::unique_ptr<WhillatsSpeechSynthesizerWrapper> _wrapper;
 #else
     std::unique_ptr<Synthesis> _synth;
 #endif

@@ -24,6 +24,7 @@
 #include "whisper_transcription.h"
 #include "llama_device_base.h"
 #include "whillats_utils.h"
+
 #if TTS_PLATFORMS
 #include "espeak_tts.h"
 
@@ -37,7 +38,7 @@ void WhillatsTTS::queueText(const char* text, const char* language) {
     _espeak_tts->queueText(std::string(text), std::string(language));
 }
 
-bool WhillatsTTS::start() {
+bool WhillatsTTS::start(bool) {
     return _espeak_tts->start();
 }
 
@@ -49,15 +50,50 @@ int WhillatsTTS::getSampleRate() {
     return ESpeakTTS::getSampleRate();
 }
 
+void WhillatsTTS::enableSpeakerphone() {}
+
+void WhillatsTTS::disableSpeakerphone() {}
+
+#elif TARGET_OS_IOS
+#import "whillats_synth.h"
+// Delegate to Objective-C AVFoundation wrapper
+WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
+    : _callback(callback),
+      _wrapper(std::make_unique<WhillatsSpeechSynthesizerWrapper>()) {}
+
+WhillatsTTS::~WhillatsTTS() {
+    stop();
+}
+
+bool WhillatsTTS::start(bool enableProcessor) {
+    _wrapper->initialize(&_callback, enableProcessor);
+    return true;
+}
+
+void WhillatsTTS::stop() {
+    _wrapper->stop();
+}
+
+int WhillatsTTS::getSampleRate() {
+    // AVAudioEngine is configured for 16kHz
+    return 16000;
+}
+
+void WhillatsTTS::queueText(const char* text, const char* language) {
+    _wrapper->synthesize(std::string(text), std::string(language));
+}
+
 void WhillatsTTS::enableSpeakerphone() {
+    _wrapper->enableSpeakerphone();
 }
 
 void WhillatsTTS::disableSpeakerphone() {
+    _wrapper->disableSpeakerphone();
 }
 
-#else // !TTS_PLATFORMS
-#include "synthesis.h"
+#elif TARGET_OS_OSX
 
+#include "synthesis.h"
 // Delegate to Synthesis class for process-based synthesis
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback),
@@ -65,7 +101,7 @@ WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
 
 WhillatsTTS::~WhillatsTTS() = default;
 
-bool WhillatsTTS::start() {
+bool WhillatsTTS::start(bool) {
     return _synth->start();
 }
 
@@ -82,14 +118,13 @@ void WhillatsTTS::queueText(const char* text, const char* language) {
 }
 
 void WhillatsTTS::enableSpeakerphone() {
-    // No-op on macOS
+    // No-op
 }
 
 void WhillatsTTS::disableSpeakerphone() {
-    // No-op on macOS
+    // No-op
 }
-
-#endif // !TTS_PLATFORMS
+#endif // TTS_PLATFORMS
 
 WhillatsTranscriber::WhillatsTranscriber(const char* model_path, 
     WhillatsSetResponseCallback callback,

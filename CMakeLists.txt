@@ -90,15 +90,17 @@ set(GGML_METAL OFF CACHE BOOL "Disable ggml Metal backend" FORCE)
 FetchContent_MakeAvailable(whisper)
 
 # llama.cpp (CMake)
-set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-if(UNIX AND NOT APPLE) # Linux specific
-    set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
-else()
-    set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
+if(NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS") AND NOT (CMAKE_OSX_SYSROOT MATCHES ".*iPhoneOS.*"))
+    set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    if(UNIX AND NOT APPLE) # Linux specific
+        set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
+    else()
+        set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
+    endif()
+    FetchContent_MakeAvailable(llama)
 endif()
-FetchContent_MakeAvailable(llama)
 
 # Build pcaudiolib and espeak-ng only on Linux (skip on macOS and iOS)
 if(UNIX AND NOT APPLE)
@@ -204,6 +206,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         src/whillats.cc
         src/whillats_utils.cc
         src/whillats_synth.mm
+        src/whillats_ios.mm
     )
 
     # Ensure espeak data is copied before building the main library (Linux only)
@@ -244,7 +247,6 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # Platform-specific link options
     if(APPLE)
         target_link_libraries(${PROJECT_NAME} PRIVATE
-            "-framework ApplicationServices"
             "-framework Accelerate"
             "-framework Metal"
             "-framework MetalKit"
@@ -269,12 +271,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(WHISPER_STATIC ON CACHE BOOL "Force static whisper build" FORCE)
-    add_subdirectory(${THIRD_PARTY_DIR}/whisper.cpp ${CMAKE_BINARY_DIR}/_deps/whisper-build EXCLUDE_FROM_ALL)
+    # Skip building whisper here to avoid binary dir conflict
+    # add_subdirectory(${THIRD_PARTY_DIR}/whisper.cpp ${CMAKE_BINARY_DIR}/_deps/whisper-build EXCLUDE_FROM_ALL)
     # Build llama for iOS
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static llama build" FORCE)
     set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(llama)
+    # Build llama inline for iOS
+    add_subdirectory(${THIRD_PARTY_DIR}/llama.cpp ${CMAKE_BINARY_DIR}/_deps/llama-ios-build EXCLUDE_FROM_ALL)
     # Build llava from source (no FetchContent) as object and static library
     add_library(llava_obj OBJECT
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/llava.cpp"
@@ -333,7 +337,6 @@ endif()
 # Modify the target compile definitions
 target_compile_definitions(${PROJECT_NAME} 
     PRIVATE 
-        $<$<PLATFORM_ID:Darwin>:PLATFORM_DARWIN>
         WHILLATS_BUILDING_DLL
     PUBLIC
         $<$<PLATFORM_ID:Darwin>:WHILLATS_DLL>
@@ -342,7 +345,6 @@ target_compile_definitions(${PROJECT_NAME}
 if(APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE PLATFORM_DARWIN)
     target_link_libraries(${PROJECT_NAME} PRIVATE
-        "-framework ApplicationServices"
         "-framework Accelerate"
         "-framework Metal"
         "-framework MetalKit"
@@ -395,6 +397,7 @@ target_link_libraries(test_whillats
         ${PROJECT_NAME}
 )
 
+if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
 # Add synthesis process executable
 add_executable(synthesis
     src/synthesis.mm
@@ -411,7 +414,6 @@ set_target_properties(synthesis PROPERTIES
 )
 
 # Keep macOS RPATH settings
-if(APPLE)
     # Ensure test executable loads libwhillats.dylib from ../lib and ../lib/<config>
     set_target_properties(test_whillats PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
@@ -419,11 +421,20 @@ if(APPLE)
     )
 endif()
 
-# Install targets to bin
-install(TARGETS ${PROJECT_NAME} test_whillats synthesis
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION bin
-)
+# Final install block: framework-only on iOS, full on others
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    install(TARGETS ${PROJECT_NAME}
+        FRAMEWORK DESTINATION bin
+    )
+else()
+    install(TARGETS ${PROJECT_NAME} test_whillats synthesis
+        FRAMEWORK DESTINATION bin
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION bin
+    )
+endif()
+
+# Add compile definition for espeak data path to test executable as well
 target_include_directories(test_whillats
     PRIVATE
         ${THIRD_PARTY_DIR}/whisper.cpp/include

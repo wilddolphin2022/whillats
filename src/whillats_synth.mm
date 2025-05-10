@@ -11,12 +11,14 @@
  */
 
 #import <Foundation/Foundation.h>
-#include "whillats_osx.h"
-#include "whillats_synth.h"
-#include "whisper_helpers.h"
 #include <vector>
 #include <memory>
 #include <iostream>
+
+#include "whillats.h"
+#import "whillats_ios.h"
+#include "whillats_synth.h"
+#include "whisper_helpers.h"
 
 #if TARGET_OS_IOS
 
@@ -64,7 +66,7 @@ WhillatsSpeechSynthesizerWrapper::~WhillatsSpeechSynthesizerWrapper() {
     stop();
 }
 
-void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audioCallback) {
+void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audioCallback, bool enableProcessor) {
     // Clean up any prior processor
     if (impl->processor) stop();
     // Store callback pointer
@@ -72,14 +74,19 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
     // Create and populate the shared context
     CallbackContext* context = new CallbackContext();
     context->audioCallbackPtr = impl->audioCallbackPtr;
-    // Initialize the speech processor with audio and completion callbacks
-    impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc]
-                       initWithAudioCallback:AudioCallbackBridge
-                                 userData:context
-                        completionCallback:CompletionCallbackBridge];
-    if (!impl->processor) {
-        NSLog(@"[Whillats]: Failed to create SpeechSynthesizerProcessor");
-        delete context;
+    if (enableProcessor) {
+        // Initialize the speech processor with audio and completion callbacks
+        impl->processor = [[WhillatsSpeechSynthesizerProcessor alloc]
+                           initWithAudioCallback:AudioCallbackBridge
+                                     userData:context
+                            completionCallback:CompletionCallbackBridge];
+        if (!impl->processor) {
+            NSLog(@"[Whillats]: Failed to create SpeechSynthesizerProcessor");
+            delete context;
+        }
+    } else {
+        impl->processor = nil;
+        NSLog(@"[Whillats]: TTS processor disabled, only notifications will be posted");
     }
     [impl->processor enableSpeakerphone];
 }

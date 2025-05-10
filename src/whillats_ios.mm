@@ -13,7 +13,7 @@
 #include "whillats.h"
 #import "whillats_ios.h"
 
-#ifndef PLATFORM_DARWIN
+#if TARGET_OS_IOS
 
 @interface WhillatsSpeechSynthesizerProcessor ()
 @property (nonatomic, strong) AVSpeechSynthesizer *synthesizer;
@@ -273,4 +273,4 @@
 
 @end
 
-#endif // PLATFORM_DARWIN
+#endif // TARGET_OS_IOS
