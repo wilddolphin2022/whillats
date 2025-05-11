@@ -18,7 +18,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(FetchContent)
 include(ExternalProject) # Needed for ExternalProject_Add
 
-# Configure outputs per-configuration (Debug/Release) using generator expressions
+# Configure outputs per-configuration using generator expressions
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/$<CONFIG>)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
@@ -189,7 +189,6 @@ target_compile_features(llava PRIVATE cxx_std_17)
 add_library(llava_shared STATIC $<TARGET_OBJECTS:llava>)
 set_target_properties(llava_shared PROPERTIES
     POSITION_INDEPENDENT_CODE ON
-    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}/$<CONFIG>
 )
 target_compile_definitions(llava_shared PRIVATE LLAMA_BUILD)
 target_link_libraries(llava_shared PRIVATE ggml llama Threads::Threads)
@@ -373,11 +372,6 @@ elseif(UNIX AND NOT APPLE)
     )
 endif()
 
-# Set output directories - all to bin
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
 # Add test executable
 add_executable(test_whillats
     test/test_whillats.cc
@@ -410,14 +404,14 @@ target_link_libraries(synthesis
         "-framework AVFoundation"
 )
 set_target_properties(synthesis PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>
 )
 
 # Keep macOS RPATH settings
     # Ensure test executable loads libwhillats.dylib from ../lib and ../lib/<config>
     set_target_properties(test_whillats PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
-        INSTALL_RPATH "@loader_path/../lib;@loader_path/../lib/$<CONFIG>"
+        INSTALL_RPATH "@loader_path/../../lib;@loader_path/../../lib/$<CONFIG>"
     )
 endif()
 
@@ -427,10 +421,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         FRAMEWORK DESTINATION bin
     )
 else()
-    install(TARGETS ${PROJECT_NAME} test_whillats synthesis
+    install(TARGETS ${PROJECT_NAME} test_whillats
         FRAMEWORK DESTINATION bin
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION bin
+    )
+    install(TARGETS ${PROJECT_NAME} synthesis
+        FRAMEWORK DESTINATION bin
+        RUNTIME DESTINATION lib
+        LIBRARY DESTINATION lib
     )
 endif()
 

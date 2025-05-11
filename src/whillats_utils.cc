@@ -18,6 +18,7 @@
 #include <memory>
 #include <span>
 #include <cstdio>
+#include <dlfcn.h>
 
 #include "whillats.h"
 #include "whillats_utils.h"
@@ -347,4 +348,17 @@ bool save_clip_as_bmp(const clip_image_u8& clip, const char* filename) {
     // Clean up
     fclose(fp);
     return true;
+}
+
+std::string getDylibPath() {
+    Dl_info info;
+    if (dladdr((void *)getDylibPath, &info)) {
+        std::string path = info.dli_fname; // Full path to the .dylib
+        size_t lastSlash = path.find_last_of('/');
+        if (lastSlash != std::string::npos) {
+            return path.substr(0, lastSlash); // Return directory path
+        }
+        return path; // Fallback to full path if no slash found
+    }
+    return ""; // Error case
 }

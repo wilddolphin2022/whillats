@@ -21,5 +21,6 @@ bool load_yuv(YUVData& yuv, const char* filename, int width, int height);
 std::vector<uint8_t> yuv_to_flat_array(const YUVData& yuv);
 std::string compute_image_hash(const clip_image_u8& image);
 bool save_clip_as_bmp(const clip_image_u8& clip, const char* filename);
+std::string getDylibPath();
 
 #endif // WHILLATS_UTILS_H

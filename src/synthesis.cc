@@ -24,7 +24,7 @@
 
 #include "synthesis.h"
 #include "whisper_helpers.h"
-
+#include "whillats_utils.h"
 // Helper to read exactly `size` bytes from fd into buf. Returns false on EOF or error.
 bool Synthesis::readAll(int fd, void* buf, size_t size) {
     uint8_t* ptr = static_cast<uint8_t*>(buf);
@@ -42,6 +42,7 @@ bool Synthesis::readAll(int fd, void* buf, size_t size) {
 
 Synthesis::Synthesis(WhillatsSetAudioCallback callback)
     : _callback(callback),
+      _dylibPath(getDylibPath()),
       _synth_pid(-1),
       _running(false) {
     _pipe_to_synth[0] = _pipe_to_synth[1] = -1;
@@ -54,8 +55,21 @@ Synthesis::~Synthesis() {
 
 bool Synthesis::start() {
     LOG_I("Starting synthesis process");
-    if (_running) return true;
-    if (pipe(_pipe_to_synth) == -1 || pipe(_pipe_from_synth) == -1) return false;
+
+    std::string full = _dylibPath + "/synthesis";
+    LOG_I("Checking if synthesis executable exists at " << full);
+    if (access(full.c_str(), F_OK) == -1) {
+        LOG_E("Synthesis executable not found at " << full);
+        return false;
+    }
+    LOG_I("Synthesis executable found at " << full);
+
+    if (_running) 
+      return true;
+
+    if (pipe(_pipe_to_synth) == -1 || pipe(_pipe_from_synth) == -1) 
+      return false;
+      
     _synth_pid = fork();
     if (_synth_pid < 0) {
         LOG_E("Failed to fork synthesis process");
@@ -68,8 +82,8 @@ bool Synthesis::start() {
         close(_pipe_from_synth[0]);
         dup2(_pipe_from_synth[1], STDOUT_FILENO);
         close(_pipe_from_synth[1]);
-        char cwd[1024]; getcwd(cwd,sizeof(cwd));
-        std::string full = std::string(cwd) + "/build/bin/synthesis";
+
+        std::string full = _dylibPath + "/synthesis";
         LOG_I("Running synthesis: " << full);
         execl(full.c_str(), "synthesis", nullptr);
         _exit(1);
@@ -78,8 +92,6 @@ bool Synthesis::start() {
         close(_pipe_to_synth[0]);
         close(_pipe_from_synth[1]);
         _running = true;
-        // Launch reader thread for asynchronous buffer streaming
-        _reader_thread = std::thread(readerThreadFunction, _pipe_from_synth[0], _callback);
         return true;
     }
 }
@@ -108,15 +120,33 @@ int Synthesis::getSampleRate() {
 
 void Synthesis::queueText(const std::string& text, const std::string& language) {
     if (!_running) return;
-    std::lock_guard<std::mutex> lock(_write_mutex);
     // Send text and language to synthesis process
-    uint32_t sz = static_cast<uint32_t>(text.size());
-    ::write(_pipe_to_synth[1], &sz, sizeof(sz));
-    ::write(_pipe_to_synth[1], text.data(), sz);
-    uint32_t lsz = static_cast<uint32_t>(language.size());
-    ::write(_pipe_to_synth[1], &lsz, sizeof(lsz));
-    ::write(_pipe_to_synth[1], language.data(), lsz);
-    // return immediately; buffers will be delivered by reader thread
+    {
+        std::lock_guard<std::mutex> lock(_write_mutex);
+        uint32_t sz = static_cast<uint32_t>(text.size());
+        ::write(_pipe_to_synth[1], &sz, sizeof(sz));
+        ::write(_pipe_to_synth[1], text.data(), sz);
+        uint32_t lsz = static_cast<uint32_t>(language.size());
+        ::write(_pipe_to_synth[1], &lsz, sizeof(lsz));
+        ::write(_pipe_to_synth[1], language.data(), lsz);
+    }
+    // Read and dispatch audio buffers synchronously
+    while (true) {
+        uint32_t buf_size = 0;
+        if (!readAll(_pipe_from_synth[0], &buf_size, sizeof(buf_size))) {
+            break;
+        }
+        if (buf_size == 0) {
+            _callback.OnSynthesisComplete();
+            break;
+        }
+        size_t samples = buf_size / sizeof(uint16_t);
+        std::vector<uint16_t> buffer(samples);
+        if (!readAll(_pipe_from_synth[0], buffer.data(), buf_size)) {
+            break;
+        }
+        _callback.OnBufferComplete(true, buffer);
+    }
 }
 
 // Stream a batch of text-language pairs continuously

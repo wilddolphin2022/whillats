@@ -37,6 +37,8 @@ public:
 
 private:
     WhillatsSetAudioCallback _callback;
+    std::string _dylibPath;
+    
     std::thread _sender_thread;
     int _pipe_to_synth[2];
     int _pipe_from_synth[2];
