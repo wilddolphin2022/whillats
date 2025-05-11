@@ -108,8 +108,8 @@ int main(int argc, char *argv[])
       const char *long_test_text = "Hello, this is a test of text to speech synthesis. "
                                   "This is a longer test to ensure we have enough audio data. "
                                   "We are testing the whisper transcription system. "
-                                  "The quick brown fox jumps over the lazy dog. "
-                                  "¿Cómo estás? У вас есть меню на английском?";
+                                  "The quick brown fox jumps over the lazy dog";
+                                  
       const char *spanish_test_text = "¿Cómo estás? ¿cómo te llamas?";
       const char *russian_test_text = "У вас есть меню на английском?";
       // Queue and wait for long English utterance

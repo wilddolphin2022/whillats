@@ -54,64 +54,17 @@ Synthesis::~Synthesis() {
 }
 
 bool Synthesis::start() {
-    LOG_I("Starting synthesis process");
-
+    // Ensure the synthesis executable exists
     std::string full = _dylibPath + "/synthesis";
-    LOG_I("Checking if synthesis executable exists at " << full);
     if (access(full.c_str(), F_OK) == -1) {
         LOG_E("Synthesis executable not found at " << full);
         return false;
     }
-    LOG_I("Synthesis executable found at " << full);
-
-    if (_running) 
-      return true;
-
-    if (pipe(_pipe_to_synth) == -1 || pipe(_pipe_from_synth) == -1) 
-      return false;
-      
-    _synth_pid = fork();
-    if (_synth_pid < 0) {
-        LOG_E("Failed to fork synthesis process");
-        return false;
-    } else if (_synth_pid == 0) {
-        // child: connect pipes and exec
-        close(_pipe_to_synth[1]);
-        dup2(_pipe_to_synth[0], STDIN_FILENO);
-        close(_pipe_to_synth[0]);
-        close(_pipe_from_synth[0]);
-        dup2(_pipe_from_synth[1], STDOUT_FILENO);
-        close(_pipe_from_synth[1]);
-
-        std::string full = _dylibPath + "/synthesis";
-        LOG_I("Running synthesis: " << full);
-        execl(full.c_str(), "synthesis", nullptr);
-        _exit(1);
-    } else {
-        LOG_I("Synthesis process started PID: " << _synth_pid);
-        close(_pipe_to_synth[0]);
-        close(_pipe_from_synth[1]);
-        _running = true;
-        return true;
-    }
+    return true;
 }
 
 void Synthesis::stop() {
-    if (!_running) return;
-    // Signal the synthesis process to exit
-    close(_pipe_to_synth[1]);
-    // Join sender thread if batching
-    if (_sender_thread.joinable()) {
-        _sender_thread.join();
-    }
-    int status = 0;
-    waitpid(_synth_pid, &status, 0);
-    // Join reader thread
-    if (_reader_thread.joinable()) {
-        _reader_thread.join();
-    }
-    close(_pipe_from_synth[0]);
-    _running = false;
+    // No persistent process to stop.
 }
 
 int Synthesis::getSampleRate() {
@@ -119,34 +72,56 @@ int Synthesis::getSampleRate() {
 }
 
 void Synthesis::queueText(const std::string& text, const std::string& language) {
-    if (!_running) return;
-    // Send text and language to synthesis process
-    {
-        std::lock_guard<std::mutex> lock(_write_mutex);
-        uint32_t sz = static_cast<uint32_t>(text.size());
-        ::write(_pipe_to_synth[1], &sz, sizeof(sz));
-        ::write(_pipe_to_synth[1], text.data(), sz);
-        uint32_t lsz = static_cast<uint32_t>(language.size());
-        ::write(_pipe_to_synth[1], &lsz, sizeof(lsz));
-        ::write(_pipe_to_synth[1], language.data(), lsz);
+    if (!start()) return;
+    // Spawn a synthesis process for this utterance
+    std::string full = _dylibPath + "/synthesis";
+    int pipe_to[2], pipe_from[2];
+    if (pipe(pipe_to) == -1 || pipe(pipe_from) == -1) {
+        LOG_E("Failed to create pipes for synthesis");
+        return;
     }
-    // Read and dispatch audio buffers synchronously
+    pid_t pid = fork();
+    if (pid < 0) {
+        LOG_E("Failed to fork synthesis process");
+        return;
+    } else if (pid == 0) {
+        // Child: set up pipes and exec
+        close(pipe_to[1]);
+        dup2(pipe_to[0], STDIN_FILENO);
+        close(pipe_to[0]);
+        close(pipe_from[0]);
+        dup2(pipe_from[1], STDOUT_FILENO);
+        close(pipe_from[1]);
+        execl(full.c_str(), full.c_str(), nullptr);
+        _exit(1);
+    }
+    // Parent: close unused ends
+    close(pipe_to[0]);
+    close(pipe_from[1]);
+    // Send text and language
+    uint32_t sz = static_cast<uint32_t>(text.size());
+    ::write(pipe_to[1], &sz, sizeof(sz));
+    ::write(pipe_to[1], text.data(), sz);
+    uint32_t lsz = static_cast<uint32_t>(language.size());
+    ::write(pipe_to[1], &lsz, sizeof(lsz));
+    ::write(pipe_to[1], language.data(), lsz);
+    close(pipe_to[1]); // EOF for child
+    // Read and dispatch audio buffers
     while (true) {
         uint32_t buf_size = 0;
-        if (!readAll(_pipe_from_synth[0], &buf_size, sizeof(buf_size))) {
-            break;
-        }
+        if (!readAll(pipe_from[0], &buf_size, sizeof(buf_size))) break;
         if (buf_size == 0) {
             _callback.OnSynthesisComplete();
             break;
         }
         size_t samples = buf_size / sizeof(uint16_t);
         std::vector<uint16_t> buffer(samples);
-        if (!readAll(_pipe_from_synth[0], buffer.data(), buf_size)) {
-            break;
-        }
+        if (!readAll(pipe_from[0], buffer.data(), buf_size)) break;
         _callback.OnBufferComplete(true, buffer);
     }
+    close(pipe_from[0]);
+    int status = 0;
+    waitpid(pid, &status, 0);
 }
 
 // Stream a batch of text-language pairs continuously

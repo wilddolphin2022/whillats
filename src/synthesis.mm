@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <utility>
 #include <sstream>
 
 // Synthesize text using specified voice; returns PCM samples
@@ -47,15 +48,23 @@ std::vector<int16_t> synthesize_text(const std::string& text, const std::string&
     std::vector<int16_t> samples(num_samples);
     memcpy(samples.data(), bytes + 44, data_bytes);
     
-    // Apply smooth fade-in (Hann window) to reduce click artifact
+    // Apply smooth fade-in and fade-out (Hann window) to reduce click artifact
     size_t out_samples = samples.size();
-    // Fade duration: ~800 samples (~50ms at 16kHz), or fewer if shorter
-    size_t fade_samples = std::min<size_t>(out_samples, 800);
+    // Determine fade duration: up to half utterance or ~50ms (16000/20 = 800 samples)
+    const size_t max_fade = 16000 / 2; // ~50ms at 16kHz
+    size_t fade_samples = std::min(out_samples / 2, max_fade);
     for (size_t i = 0; i < fade_samples; ++i) {
         // Hann window fade-in: 0 at start, ~1 at end
         float phase = static_cast<float>(i) / static_cast<float>(fade_samples - 1);
         float gain = 0.5f * (1.0f - std::cos(static_cast<float>(M_PI) * phase));
         samples[i] = static_cast<int16_t>(samples[i] * gain);
+    }
+    // Apply smooth fade-out (Hann window) to reduce click artifact at end
+    for (size_t i = 0; i < fade_samples; ++i) {
+        float phase = static_cast<float>(i) / static_cast<float>(fade_samples - 1);
+        float gain = 0.5f * (1.0f + std::cos(static_cast<float>(M_PI) * phase));
+        size_t idx = out_samples - fade_samples + i;
+        samples[idx] = static_cast<int16_t>(samples[idx] * gain);
     }
     
     std::cerr << "Synthesis produced " << num_samples << " samples, trimmed to " << samples.size() << "\n";
@@ -85,6 +94,22 @@ int main(int argc, char *argv[]) {
             } 
         }
         pclose(pipe);
+    }
+    // Add short locale mappings for convenience (e.g. "en", "es", "ru")
+    {
+        std::vector<std::pair<std::string, std::string>> additional;
+        for (const auto& kv : voice_map) {
+            auto pos = kv.first.find('-');
+            if (pos != std::string::npos) {
+                std::string short_loc = kv.first.substr(0, pos);
+                if (voice_map.find(short_loc) == voice_map.end()) {
+                    additional.emplace_back(short_loc, kv.second);
+                }
+            }
+        }
+        for (const auto& p : additional) {
+            voice_map[p.first] = p.second;
+        }
     }
     std::cerr << "TTS initialized\n";
     // Main loop: read text and language
