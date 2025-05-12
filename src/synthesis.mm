@@ -13,6 +13,8 @@
 #include <utility>
 #include <sstream>
 
+#define FADE_IN_FADE_OUT 0
+
 // Synthesize text using specified voice; returns PCM samples
 std::vector<int16_t> synthesize_text(const std::string& text, const std::string& voice) {
     std::cerr << "Processing text: " << text << "\n";
@@ -48,23 +50,25 @@ std::vector<int16_t> synthesize_text(const std::string& text, const std::string&
     std::vector<int16_t> samples(num_samples);
     memcpy(samples.data(), bytes + 44, data_bytes);
     
-    // Apply smooth fade-in and fade-out (Hann window) to reduce click artifact
-    size_t out_samples = samples.size();
-    // Determine fade duration: up to half utterance or ~50ms (16000/20 = 800 samples)
-    const size_t max_fade = 16000 / 2; // ~50ms at 16kHz
-    size_t fade_samples = std::min(out_samples / 2, max_fade);
-    for (size_t i = 0; i < fade_samples; ++i) {
-        // Hann window fade-in: 0 at start, ~1 at end
-        float phase = static_cast<float>(i) / static_cast<float>(fade_samples - 1);
-        float gain = 0.5f * (1.0f - std::cos(static_cast<float>(M_PI) * phase));
-        samples[i] = static_cast<int16_t>(samples[i] * gain);
-    }
-    // Apply smooth fade-out (Hann window) to reduce click artifact at end
-    for (size_t i = 0; i < fade_samples; ++i) {
-        float phase = static_cast<float>(i) / static_cast<float>(fade_samples - 1);
-        float gain = 0.5f * (1.0f + std::cos(static_cast<float>(M_PI) * phase));
-        size_t idx = out_samples - fade_samples + i;
-        samples[idx] = static_cast<int16_t>(samples[idx] * gain);
+    if(FADE_IN_FADE_OUT) {
+      // Apply smooth fade-in and fade-out (Hann window) to reduce click artifact
+      size_t out_samples = samples.size();
+      // Determine fade duration: up to half utterance or ~50ms (16000/20 = 800 samples)
+      const size_t max_fade = 16000 / 2; // ~50ms at 16kHz
+      size_t fade_samples = std::min(out_samples / 2, max_fade);
+      for (size_t i = 0; i < fade_samples; ++i) {
+          // Hann window fade-in: 0 at start, ~1 at end
+          float phase = static_cast<float>(i) / static_cast<float>(fade_samples - 1);
+          float gain = 0.5f * (1.0f - std::cos(static_cast<float>(M_PI) * phase));
+          samples[i] = static_cast<int16_t>(samples[i] * gain);
+      }
+      // Apply smooth fade-out (Hann window) to reduce click artifact at end
+      for (size_t i = 0; i < fade_samples; ++i) {
+          float phase = static_cast<float>(i) / static_cast<float>(fade_samples - 1);
+          float gain = 0.5f * (1.0f - std::cos(static_cast<float>(M_PI) * phase));
+          size_t idx = out_samples - fade_samples + i;
+          samples[idx] = static_cast<int16_t>(samples[idx] * gain);
+      }
     }
     
     std::cerr << "Synthesis produced " << num_samples << " samples, trimmed to " << samples.size() << "\n";

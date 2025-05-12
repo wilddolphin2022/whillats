@@ -20,6 +20,8 @@
 #include <memory>
 #include <cstdint>
 #include "whillats.h"
+#include <queue>
+#include <condition_variable>
 
 // Class to manage external speech synthesis process and deliver audio buffers via callback
 class Synthesis {
@@ -31,7 +33,7 @@ public:
     void stop();
     void queueText(const std::string& text, const std::string& language);
     // Enqueue multiple text-language pairs and stream them continuously
-    void synthesizeBatch(const std::vector<std::pair<std::string, std::string>>& items);
+    void synthesizeBatch(const std::vector<std::pair<std::string, std::string> >& items);
 
     static int getSampleRate();
 
@@ -39,16 +41,20 @@ private:
     WhillatsSetAudioCallback _callback;
     std::string _dylibPath;
     
-    std::thread _sender_thread;
+    std::thread _worker_thread;
+    std::queue<std::pair<std::string, std::string> > _text_queue;
+    std::mutex _queue_mutex;
+    std::condition_variable _queue_cv;
+    bool _worker_running;
     int _pipe_to_synth[2];
     int _pipe_from_synth[2];
     pid_t _synth_pid;
     std::thread _reader_thread;
     std::mutex _write_mutex;
-    bool _running{false};
 
     static bool readAll(int fd, void* buf, size_t size);
     static void readerThreadFunction(int read_fd, WhillatsSetAudioCallback callback);
+    void workerFunction();
 };
 
 #endif // SYNTHESIS_H
