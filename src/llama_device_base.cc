@@ -603,101 +603,120 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
         }
     }
 
-    // Generation loop
+    // Generation loop - reuse the existing sampler (smpl_) for consistency with text generation
+    if (smpl_) {
+        llama_sampler_reset(smpl_);
+    }
+
     std::string current_phrase;
     std::string response;
+    std::string recent_text;
+    continue_ = true;
+
+    const int max_response_tokens = 100;
     int generated_tokens = 0;
-    int max_gen_tokens = 100;
-    int min_gen_tokens = 20;
-    auto sparams = llama_sampler_chain_default_params();
-    llama_sampler* sampler = llama_sampler_chain_init(sparams);
-    llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40));
-    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
+    int repetition_count = 0;
+    const int min_gen_tokens = 20;
 
-    for (int i = 0; i < max_gen_tokens && continue_; ++i) {
-        auto start_sample = std::chrono::steady_clock::now();
-        llama_token new_token = llama_sampler_sample(sampler, ctx_, -1);
-        llama_sampler_accept(sampler, new_token);
-        generated_tokens++;
-
-        LOG_V("Raw token ID: " << new_token);
-
-        if (generated_tokens > min_gen_tokens && stopping_token_ids_.find(new_token) != stopping_token_ids_.end()) {
-            LOG_V("Stopping token encountered with ID: " << new_token << " after " << generated_tokens << " tokens");
+    while (continue_ && generated_tokens < max_response_tokens) {
+        if (!smpl_ || !ctx_) {
+            LOG_E("Sampler or context became null during image generation.");
             break;
         }
 
-        char piece_buf[128];
-        int len = llama_token_to_piece(vocab_, new_token, piece_buf, sizeof(piece_buf), 0, true);
-        if (len < 0) {
-            LOG_E("Failed to convert token " << new_token << " to piece");
+        float *logits = llama_get_logits_ith(ctx_, -1);
+        if (!logits) {
+            LOG_E("Failed to get logits for sampling (image).");
             break;
         }
-        piece_buf[std::min(len, (int)sizeof(piece_buf) - 1)] = '\0';
-        std::string piece_str(piece_buf);
-        current_phrase += piece_str;
-        response += piece_str;
+
+        int n_vocab = llama_vocab_n_tokens(vocab_);
+        std::vector<llama_token_data> candidates(n_vocab);
+        for (int i = 0; i < n_vocab; ++i) {
+            candidates[i] = {i, logits[i], 0.0f};
+        }
+        llama_token_data_array cur_p = {candidates.data(), candidates.size(), -1, false};
+        llama_sampler_apply(smpl_, &cur_p);
+
+        if (cur_p.size == 0 || cur_p.selected < 0 || cur_p.selected >= (int64_t)cur_p.size) {
+            LOG_E("Invalid sampling result for image loop.");
+            break;
+        }
+
+        llama_token new_token_id = cur_p.data[cur_p.selected].id;
+        if (generated_tokens > min_gen_tokens && stopping_token_ids_.find(new_token_id) != stopping_token_ids_.end()) {
+            LOG_V("Image generation reached stopping token ID: " << new_token_id);
+            break;
+        }
+
+        char token_text[64];
+        int token_text_len = llama_token_to_piece(vocab_, new_token_id, token_text, sizeof(token_text), 0, true);
+        if (token_text_len < 0) {
+            LOG_E("Failed to convert token " << new_token_id << " to piece (image loop).");
+            break;
+        }
+        std::string piece(token_text, token_text_len);
+        current_phrase += piece;
+        recent_text += piece;
 
         if (generated_tokens > min_gen_tokens) {
-            for (const auto& stop_str : stopping_token_strings_) {
-                if (piece_str.find(stop_str) != std::string::npos) {
-                    LOG_V("Stopping token string '" << stop_str << "' encountered after " << generated_tokens << " tokens");
+            for (const auto &stop_str : stopping_token_strings_) {
+                if (piece.find(stop_str) != std::string::npos) {
+                    LOG_V("Stopping token string '" << stop_str << "' encountered in image loop.");
                     continue_ = false;
                     break;
                 }
             }
-            if (!continue_) {
-                break;
-            }
+            if (!continue_) break;
         }
 
-        LOG_V("Token " << new_token << ": '" << piece_buf << "'");
+        if (recent_text.length() > 50) {
+            recent_text = recent_text.substr(recent_text.length() - 50);
+        }
 
-        if (isCompleteSentence(current_phrase) && current_phrase.length() > 50) {
+        context_tokens_.push_back(new_token_id);
+        llama_sampler_accept(smpl_, new_token_id);
+
+        if (isRepetitive(recent_text, 5)) {
+            repetition_count++;
+            if (repetition_count > 2) {
+                LOG_V("Stopping due to repetitive output during image generation.");
+                break;
+            }
+        } else {
+            repetition_count = 0;
+        }
+
+        if (isCompleteSentence(current_phrase)) {
             callback.OnResponseComplete(true, current_phrase.c_str());
-            LOG_V("Partial image description (" << current_phrase.length() << " chars): " << current_phrase);
+            LOG_V("Partial image description: " << current_phrase);
+            response += current_phrase;
             current_phrase.clear();
         }
 
-        if (response.length() > 3000) {
-            LOG_V("Stopping due to response length (" << response.length() << " chars) after " << generated_tokens << " tokens");
-            break;
-        }
-
-        batch = llama_batch_init(1, 0, 1);
-        batch.n_tokens = 1;
-        batch.token[0] = new_token;
-        batch.pos[0] = n_past_;
-        batch.n_seq_id[0] = 1;
-        batch.seq_id[0][0] = 0;
-        batch.logits[0] = true;
-
-        if (llama_decode(ctx_, batch) != 0) {
-            LOG_E("llama_decode failed during generation after " << generated_tokens << " tokens");
-            llama_batch_free(batch);
+        // feed back token
+        llama_batch batch_tok = llama_batch_get_one(&new_token_id, 1);
+        if (llama_decode(ctx_, batch_tok)) {
+            LOG_E("llama_decode failed during image generation.");
             break;
         }
         n_past_++;
-        llama_batch_free(batch);
-        LOG_V("Sampled and decoded token " << generated_tokens << " in "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(
-                     std::chrono::steady_clock::now() - start_sample).count() << " ms");
+        generated_tokens++;
     }
 
-    llama_sampler_free(sampler);
-
+    // Flush any remaining phrase
     if (!current_phrase.empty() && isCompleteSentence(current_phrase)) {
-        callback.OnResponseComplete(true, current_phrase.c_str());
         response += current_phrase;
-        LOG_V("Final partial image description: " << current_phrase);
+        callback.OnResponseComplete(true, current_phrase.c_str());
     }
+
     std::string full_response = clean_response(response);
     if (!full_response.empty()) {
         callback.OnResponseComplete(true, full_response.c_str());
     } else {
         callback.OnResponseComplete(false, "");
     }
-    LOG_I("Mtmd done: '" << full_response << "' in "
+    LOG_I("Image done: '" << full_response << "' in "
           << std::chrono::duration_cast<std::chrono::milliseconds>(
                  std::chrono::steady_clock::now() - _lastResponseStart).count()
           << " ms");

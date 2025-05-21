@@ -388,6 +388,14 @@ target_link_libraries(test_whillats
         ${PROJECT_NAME}
 )
 
+target_compile_options(test_whillats PRIVATE
+    $<$<CONFIG:Debug>:-g>
+    $<$<CONFIG:Debug>:-O0>
+)
+target_link_options(test_whillats PRIVATE
+    $<$<CONFIG:Debug>:-g>
+)
+
 if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
 # Add synthesis process executable
 add_executable(synthesis

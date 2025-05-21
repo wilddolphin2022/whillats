@@ -93,12 +93,12 @@ Options parseOptions(int argc, char *argv[])
     }
     else if (arg.find("--test_image1=") == 0)
     {
-      opts.test_image1 = arg.substr(15); // Length of "-test_image1="
+      opts.test_image1 = arg.substr(14); // Length of "--test_image1=" is 14
       LOG_I("Test image 1 path: " << opts.test_image1);
     }
     else if (arg.find("--test_image2=") == 0)
     {
-      opts.test_image2 = arg.substr(15); // Length of "-test_image2="
+      opts.test_image2 = arg.substr(14); // Length of "--test_image2=" is 14
       LOG_I("Test image 2 path: " << opts.test_image2);
     }
   }
