@@ -1,14 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
-project(whillats VERSION 1.0.0 LANGUAGES CXX C OBJCXX)
+project(whillats VERSION 1.0.0 LANGUAGES CXX C OBJC OBJCXX)
 
 # Configure Metal backend for ggml on macOS (enable for non-Release, disable for Release)
-if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    if(CMAKE_BUILD_TYPE STREQUAL "Release")
-        message(STATUS "Disabling GGML Metal backend for Release build on macOS to avoid compiler errors.")
-        set(GGML_METAL OFF CACHE BOOL "" FORCE)
-    else()
-        set(GGML_METAL ON CACHE BOOL "" FORCE)
-    endif()
+if(APPLE)
+    set(GGML_METAL ON CACHE BOOL "" FORCE)
 endif()
 
 # Ensure Position Independent Code is used for all targets
@@ -33,13 +28,13 @@ add_compile_options(-Wno-exit-time-destructors -Wno-global-constructors)
 set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 file(MAKE_DIRECTORY ${THIRD_PARTY_DIR}) # Ensure third_party exists
 
-# Make llava headers (clip.h, llava.h) available to all targets
+# Make mtmd headers (clip.h, mtmd.h) available to all targets
 include_directories(${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd)
 
 FetchContent_Declare(
     whisper
     GIT_REPOSITORY https://github.com/ggerganov/whisper.cpp.git
-    GIT_TAG        v1.7.5            # pin to a known release
+    GIT_TAG        master
     SOURCE_DIR     ${THIRD_PARTY_DIR}/whisper.cpp
     GIT_SHALLOW    TRUE              # Faster clone
 )
@@ -75,6 +70,19 @@ endif()
 
 # --- Populate and Build Dependencies ---
 
+# llama.cpp (CMake)
+if(NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS") AND NOT (CMAKE_OSX_SYSROOT MATCHES ".*iPhoneOS.*"))
+    set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    if(UNIX AND NOT APPLE) # Linux specific
+        set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
+    else()
+        set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
+    endif()
+    FetchContent_MakeAvailable(llama)
+endif()
+
 # whisper.cpp (CMake)
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -88,19 +96,6 @@ endif()
 # Disable Metal backend on macOS and iOS
 set(GGML_METAL OFF CACHE BOOL "Disable ggml Metal backend" FORCE)
 FetchContent_MakeAvailable(whisper)
-
-# llama.cpp (CMake)
-if(NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS") AND NOT (CMAKE_OSX_SYSROOT MATCHES ".*iPhoneOS.*"))
-    set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
-    set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    if(UNIX AND NOT APPLE) # Linux specific
-        set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
-    else()
-        set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
-    endif()
-    FetchContent_MakeAvailable(llama)
-endif()
 
 # Build pcaudiolib and espeak-ng only on Linux (skip on macOS and iOS)
 if(UNIX AND NOT APPLE)
@@ -164,19 +159,20 @@ if(UNIX AND NOT APPLE)
     add_custom_target(copy_espeak_data ALL DEPENDS ${ESPEAK_DATA_DEST_DIR}/phontab)
 endif()  # end if(UNIX AND NOT APPLE)
 
-# --- llava example shared library ---
+# --- mtmd example shared library ---
 find_package(Threads REQUIRED)
 
-add_library(llava OBJECT
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/llava.cpp
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/llava.h
+add_library(mtmd OBJECT
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.h
 )
 
-target_link_libraries(llava PRIVATE ggml llama Threads::Threads)
+target_link_libraries(mtmd PRIVATE ggml llama Threads::Threads)
 
-target_include_directories(llava PUBLIC
+target_include_directories(mtmd PUBLIC
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
     ${THIRD_PARTY_DIR}/llama.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/include
@@ -184,15 +180,15 @@ target_include_directories(llava PUBLIC
     ${THIRD_PARTY_DIR}/llama.cpp/ggml/include # Added for ggml.h
 )
 
-target_compile_features(llava PRIVATE cxx_std_17)
+target_compile_features(mtmd PRIVATE cxx_std_17)
 
-add_library(llava_shared STATIC $<TARGET_OBJECTS:llava>)
-set_target_properties(llava_shared PROPERTIES
+add_library(mtmd_shared STATIC $<TARGET_OBJECTS:mtmd>)
+set_target_properties(mtmd_shared PROPERTIES
     POSITION_INDEPENDENT_CODE ON
 )
-target_compile_definitions(llava_shared PRIVATE LLAMA_BUILD)
-target_link_libraries(llava_shared PRIVATE ggml llama Threads::Threads)
-install(TARGETS llava_shared ARCHIVE)
+target_compile_definitions(mtmd_shared PRIVATE LLAMA_BUILD)
+target_link_libraries(mtmd_shared PRIVATE ggml llama Threads::Threads)
+install(TARGETS mtmd_shared ARCHIVE)
 
 
 # --- Main Library Target ---
@@ -227,11 +223,11 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd  # Added for clip.h
     )
 
-    # Link core libraries (MetalOmitted: llama is pulled in by llava_shared)
+    # Link core libraries (MetalOmitted: llama is pulled in by mtmd_shared)
     target_link_libraries(${PROJECT_NAME}
         PRIVATE
             whisper
-            llava_shared
+            mtmd_shared
     )
 
     # Link espeak-ng and pcaudio only on Linux
@@ -278,17 +274,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     # Build llama inline for iOS
     add_subdirectory(${THIRD_PARTY_DIR}/llama.cpp ${CMAKE_BINARY_DIR}/_deps/llama-ios-build EXCLUDE_FROM_ALL)
-    # Build llava from source (no FetchContent) as object and static library
-    add_library(llava_obj OBJECT
-        "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/llava.cpp"
+    # Build mtmd from source (no FetchContent) as object and static library
+    add_library(mtmd_obj OBJECT
+        "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp"
+        ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp"
     )
-    target_include_directories(llava_obj PRIVATE
+    target_include_directories(mtmd_obj PRIVATE
         "${THIRD_PARTY_DIR}/llama.cpp/include"
         "${THIRD_PARTY_DIR}/llama.cpp/common"
         "${THIRD_PARTY_DIR}/llama.cpp/ggml/include"
     )
-    set_target_properties(llava_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    set_target_properties(mtmd_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
     # Define whillats.framework
     add_library(${PROJECT_NAME} SHARED
         src/whisper_transcription.cc
@@ -307,7 +304,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
     )
     target_compile_definitions(${PROJECT_NAME} PRIVATE TTS_PLATFORMS=0 WEBRTC_IOS)
-    target_link_libraries(${PROJECT_NAME} PRIVATE whisper llama $<TARGET_OBJECTS:llava_obj>
+    target_link_libraries(${PROJECT_NAME} PRIVATE whisper llama $<TARGET_OBJECTS:mtmd_obj>
         "-framework AVFoundation" "-framework Foundation" "-framework Accelerate"
         "-framework Metal" "-framework MetalKit" "-framework AudioToolbox"
     )
