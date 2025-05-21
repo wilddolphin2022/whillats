@@ -203,36 +203,42 @@ int main(int argc, char *argv[])
     LOG_I("Initializing Llama with model: " << opts.llama_model);
     if (llama.start()) 
     {
-      YUVData grey_yuv;
-      load_yuv(grey_yuv, opts.test_image1.c_str(), 300, 300);
-
-      llama.askWithYUVRaw("Describe the contents of the image in detail.", 
-                          grey_yuv.y.get(), grey_yuv.u.get(), grey_yuv.v.get(), 
-                          grey_yuv.width, grey_yuv.height, 
-                          grey_yuv.y_size, grey_yuv.uv_size);
-      
-      // Wait for the first image processing to complete
-      while (!llama_done)
+      if(!opts.test_image1.empty())
       {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-      llama_done = false;
-      
-      YUVData yuv;
-      load_yuv(yuv, opts.test_image2.c_str(), 1754, 1240);
+        YUVData grey_yuv;
+        load_yuv(grey_yuv, opts.test_image1.c_str(), 300, 300);
 
-      //llama.setImage(*yuv);
-      llama.askWithYUVRaw("Describe the contents of the image in detail.", 
-                          yuv.y.get(), yuv.u.get(), yuv.v.get(), 
-                          yuv.width, yuv.height, 
-                          yuv.y_size, yuv.uv_size);
-      
-      // Wait for the second image processing to complete
-      while (!llama_done)
-      {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
+        llama.askWithYUVRaw("Describe the contents of the image in detail.", 
+                            grey_yuv.y.get(), grey_yuv.u.get(), grey_yuv.v.get(), 
+                            grey_yuv.width, grey_yuv.height, 
+                            grey_yuv.y_size, grey_yuv.uv_size);
+        
+        // Wait for the first image processing to complete
+        while (!llama_done)
+        {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
       llama_done = false;
+      }
+
+      if(!opts.test_image2.empty())
+      {
+        YUVData yuv;
+        load_yuv(yuv, opts.test_image2.c_str(), 1754, 1240);
+
+        //llama.setImage(*yuv);
+        llama.askWithYUVRaw("Describe the contents of the image in detail.", 
+                            yuv.y.get(), yuv.u.get(), yuv.v.get(), 
+                            yuv.width, yuv.height, 
+                            yuv.y_size, yuv.uv_size);
+        
+        // Wait for the second image processing to complete
+        while (!llama_done)
+        {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        llama_done = false;
+      }
       
       std::string prompt = "What is your name?";
       LOG_I("Testing Llama with prompt: " << prompt);

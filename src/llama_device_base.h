@@ -9,7 +9,7 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
- 
+
 #ifndef LLAMA_DEVICE_BASE_H
 #define LLAMA_DEVICE_BASE_H
 
@@ -28,6 +28,9 @@
 
 #include "whillats.h"
 #include "whisper_helpers.h"
+#include "llama.h"
+#include "clip.h"
+#include "mtmd.h" // Ensure mtmd.h is included
 
 struct llama_model;
 struct llama_context;
@@ -38,50 +41,47 @@ typedef int32_t llama_token;
 class LlamaSimpleChat;
 
 struct Request {
-  std::string              prompt;
-  bool                     withImage;
-  std::shared_ptr<YUVData> yuv;   // nullptr for text-only, deep-copied frame if withImage
+    std::string              prompt;
+    bool                     withImage;
+    std::shared_ptr<YUVData> yuv;   // nullptr for text-only, deep-copied frame if withImage
 };
 
 class LlamaDeviceBase {
 public:
-  LlamaDeviceBase(const char* model_path, const char* mmproj_path, WhillatsSetResponseCallback callback);
-  virtual ~LlamaDeviceBase();
+    LlamaDeviceBase(const char* model_path, const char* mmproj_path, WhillatsSetResponseCallback callback);
+    virtual ~LlamaDeviceBase();
 
-  bool start();
-  void stop();
+    bool start();
+    void stop();
 
-  void askLlama(const char *prompt);
-  void askWithImage(const char *prompt, const YUVData& yuv);
+    void askLlama(const char *prompt);
+    void askWithImage(const char *prompt, const YUVData& yuv);
 
 private:
-  bool _running;
-  std::thread _processingThread;
-  std::string _model_path;
-  std::string _mmproj_path;
+    bool _running;
+    std::thread _processingThread;
+    std::string _model_path;
+    std::string _mmproj_path;
 
-  WhillatsSetResponseCallback _responseCallback;  // Add callback member
-  
-  void processPrompts();
-  bool initialize();
-  bool RunProcessingThread();
+    WhillatsSetResponseCallback _responseCallback;
+    
+    void processPrompts();
+    bool initialize();
+    bool RunProcessingThread();
 
-  std::unique_ptr<LlamaSimpleChat> _llama_chat;
+    std::unique_ptr<LlamaSimpleChat> _llama_chat;
 
-  // Instead, queue up both text-only and image requests here:
-  std::deque<Request>       _requestQueue;
-  std::mutex                _queueMutex;
-  std::condition_variable   _queueCondition;
+    std::deque<Request>       _requestQueue;
+    std::mutex                _queueMutex;
+    std::condition_variable   _queueCondition;
 
-  // Last‐seen YUV hash; skip generateFromImage on duplicates
-  uint64_t                  _lastYuvHash = 0;
-  
-  // Add these new members
-  std::vector<llama_token> context_tokens_;
-  const size_t max_context_tokens_ = 2048; // Adjust based on your model   
-  
-  bool TrimContext();
-  bool AppendToContext(const std::vector<llama_token>& new_tokens);
+    uint64_t                  _lastYuvHash = 0;
+    
+    std::vector<llama_token> context_tokens_;
+    const size_t max_context_tokens_ = 2048;
+    
+    bool TrimContext();
+    bool AppendToContext(const std::vector<llama_token>& new_tokens);
 };
 
 #endif // LLAMA_DEVICE_BASE_H
