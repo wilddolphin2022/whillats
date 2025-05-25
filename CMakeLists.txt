@@ -163,9 +163,11 @@ endif()  # end if(UNIX AND NOT APPLE)
 find_package(Threads REQUIRED)
 
 add_library(mtmd OBJECT
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.h
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.h
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.h
 )
