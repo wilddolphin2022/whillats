@@ -17,6 +17,7 @@
 #include "llama_device_base.h"
 #include "whisper_helpers.h"
 #include "whillats_utils.h"
+#include "mtmd-helper.h"
 
 // Clean response function (unchanged)
 std::string clean_response(const std::string& response) {
