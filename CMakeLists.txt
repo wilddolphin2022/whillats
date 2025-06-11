@@ -165,10 +165,11 @@ find_package(Threads REQUIRED)
 add_library(mtmd OBJECT
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.h
-)
+    )
 
 target_link_libraries(mtmd PRIVATE ggml llama Threads::Threads)
 
@@ -178,6 +179,8 @@ target_include_directories(mtmd PUBLIC
     ${THIRD_PARTY_DIR}/llama.cpp/include
     ${THIRD_PARTY_DIR}/llama.cpp/common
     ${THIRD_PARTY_DIR}/llama.cpp/ggml/include # Added for ggml.h
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+    ${THIRD_PARTY_DIR}/llama.cpp/vendor
 )
 
 target_compile_features(mtmd PRIVATE cxx_std_17)
