@@ -92,6 +92,9 @@ void WhillatsSpeechSynthesizerWrapper::initialize(WhillatsSetAudioCallback* audi
 }
 
 void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const std::string& language) {
+    NSLog(@"Notification posted before synthesis: WhillatsTranscriptionResponseAvailableNotification");
+    NSLog(@"Text: %s", text.c_str());
+    NSLog(@"Language: %s", language.c_str());
     if (impl->processor) {
         NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
         NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
@@ -113,12 +116,38 @@ void WhillatsSpeechSynthesizerWrapper::synthesize(const std::string& text, const
                 [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
                                                                   object:nil
                                                                 userInfo:userInfo];
-                NSLog(@"Notification posted before synthesis: WhillatsTranscriptionResponseAvailableNotification");
+                NSLog(@"Notification posted before synthesis: WhillatsTranscriptionResponseAvailableNotification on main thread, userInfo: %@", userInfo);
             });
             [impl->processor synthesizeText:nsText language:nsLanguage];
         } else {
             NSLog(@"WhillatsSpeechSynthesizerWrapper: Failed to convert text to NSString");
             // Optionally trigger an error state or callback
+        }
+    } else {
+        // Even if processor is disabled, post the notification
+        NSString* nsText = [NSString stringWithUTF8String:text.c_str()];
+        NSString* nsLanguage = [NSString stringWithUTF8String:language.c_str()];
+        if (nsText && nsLanguage) {
+            _lastText = text;
+            _lastLanguage = language;
+            dispatch_async(dispatch_get_main_queue(),^{
+                std::string code = language;
+                std::transform(code.begin(), code.end(), code.begin(), ::toupper);
+
+                NSString* languageCode = 
+                    (language == "en") ? @"en-US" : \
+                    (language == "zh") ? @"zh-CN" : \
+                    (language == "ja") ? @"ja-JP" : \
+                    [NSString stringWithFormat:@"%s-%s", language.c_str(), code.c_str()];
+                NSDictionary* userInfo = @{@"text": nsText, @"language": languageCode, @"spoken_language": languageCode};
+
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"WhillatsTranscriptionResponseAvailableNotification"
+                                                                  object:nil
+                                                                userInfo:userInfo];
+                NSLog(@"Notification posted (processor disabled): WhillatsTranscriptionResponseAvailableNotification on main thread, userInfo: %@", userInfo);
+            });
+        } else {
+            NSLog(@"WhillatsSpeechSynthesizerWrapper: Failed to convert text to NSString even for notification");
         }
     }
 }

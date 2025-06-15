@@ -284,12 +284,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_library(mtmd_obj OBJECT
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp"
         ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
+        ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp        
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp"
     )
     target_include_directories(mtmd_obj PRIVATE
         "${THIRD_PARTY_DIR}/llama.cpp/include"
         "${THIRD_PARTY_DIR}/llama.cpp/common"
         "${THIRD_PARTY_DIR}/llama.cpp/ggml/include"
+        "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd"
+        "${THIRD_PARTY_DIR}/llama.cpp/vendor"
     )
     set_target_properties(mtmd_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
     # Define whillats.framework

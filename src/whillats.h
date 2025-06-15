@@ -138,6 +138,7 @@ private:
     void* user_data_;
 };
 
+
 class WHILLATS_API WhillatsTTS {
   public:
     WhillatsTTS(WhillatsSetAudioCallback callback);
@@ -210,5 +211,8 @@ class WHILLATS_API WhillatsLlama {
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;
 };
+
+// Helper functions
+bool WHILLATS_API save_yuv_as_bmp(const YUVData& yuv, const char* path);
 
 #endif // WHILLATS_H
