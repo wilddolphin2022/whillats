@@ -58,6 +58,7 @@ public:
     bool LoadModel();
     bool InitializeContext();
     void FreeContext();
+    bool ResetContextForImage();
     bool isRepetitive(const std::string &text, size_t minPatternLength = 10);
     bool isCompleteSentence(const std::string &text);
 
@@ -248,6 +249,29 @@ void LlamaSimpleChat::FreeContext() {
         model_ = nullptr;
     }
     llama_backend_free();
+}
+
+bool LlamaSimpleChat::ResetContextForImage() {
+    if (!ctx_) {
+        LOG_E("Context not initialized");
+        return false;
+    }
+    
+    // Clear KV cache to reset conversation state
+    llama_memory_t memory = llama_get_memory(ctx_);
+    llama_memory_clear(memory, true);
+    
+    // Reset our tracking variables
+    context_tokens_.clear();
+    n_past_ = 0;
+    
+    // Reset sampler state
+    if (smpl_) {
+        llama_sampler_reset(smpl_);
+    }
+    
+    LOG_V("Reset context for image processing");
+    return true;
 }
 
 bool LlamaSimpleChat::isRepetitive(const std::string &text, size_t minPatternLength) {
@@ -472,10 +496,14 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
 
     _lastResponseStart = std::chrono::steady_clock::now();
 
-    // Reset context
-    context_tokens_.clear();
-    n_past_ = 0;
-    const std::string system_prompt = "[INST] You are a helpful assistant for image description.";
+    // Reset context state for fresh image processing
+    if (!ResetContextForImage()) {
+        LOG_E("Failed to reset context for image processing");
+        return "";
+    }
+    
+    // Initialize with a simple system prompt for image description
+    const std::string system_prompt = "You are a helpful assistant for image description.";
     int n_ctx = llama_n_ctx(ctx_);
     std::vector<llama_token> tokens(n_ctx);
     int n_tokens = llama_tokenize(vocab_, system_prompt.c_str(), system_prompt.length(), tokens.data(), tokens.size(), true, false);
@@ -486,23 +514,30 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
     tokens.resize(n_tokens);
     context_tokens_ = std::deque<llama_token>(tokens.begin(), tokens.end());
 
-    // Process system prompt
+    // Process system prompt with proper sequence setup
     int max_batch_size = 32; // Reduced for iOS compatibility
     llama_batch batch = llama_batch_init(max_batch_size, 0, 1);
+    if (!batch.token) {
+        LOG_E("Failed to initialize batch");
+        return "";
+    }
+    
     batch.n_tokens = n_tokens;
     for (int i = 0; i < n_tokens; ++i) {
         batch.token[i] = tokens[i];
-        batch.pos[i] = i;
+        batch.pos[i] = i; // Start from position 0 since context is cleared
         batch.n_seq_id[i] = 1;
         batch.seq_id[i][0] = 0;
-        batch.logits[i] = false;
+        batch.logits[i] = (i == n_tokens - 1); // Only last token needs logits
     }
-    if (llama_decode(ctx_, batch) != 0) {
-        LOG_E("Failed to decode system prompt");
+    
+    int decode_result = llama_decode(ctx_, batch);
+    if (decode_result != 0) {
+        LOG_E("Failed to decode system prompt, error code: " << decode_result);
         llama_batch_free(batch);
         return "";
     }
-    n_past_ = n_tokens;
+    n_past_ = n_tokens; // Set to the number of tokens processed, not add
     LOG_I("Initialized context with system prompt, n_past_=" << n_past_);
 
     // Convert YUV to clip_image_u8
@@ -767,50 +802,257 @@ void LlamaSimpleChat::DetectStoppingTokens() {
     }
 }
 
-// LlamaDeviceBase implementation (unchanged from provided)
+// LlamaDeviceBase implementation
 LlamaDeviceBase::LlamaDeviceBase(
     const char* model_path,
     const char* mmproj_path, 
     WhillatsSetResponseCallback callback)
     : _model_path(model_path),
       _mmproj_path(mmproj_path),
-      _responseCallback(callback)
+      _responseCallback(callback),
+      _hasMultimodalModel(false), // Will be detected after model loading
+      _imageRetentionMs(5000) // Keep images for 5 seconds
 {
+    LOG_I("LlamaDeviceBase initialized - Model: " << _model_path 
+          << ", MMProj: " << (_mmproj_path.empty() ? "none" : _mmproj_path)
+          << ", Multimodal support: " << (_hasMultimodalModel ? "enabled" : "will be detected")
+          << ", Image retention: " << _imageRetentionMs << "ms");
 }
 
 LlamaDeviceBase::~LlamaDeviceBase() { stop(); }
 
-void LlamaDeviceBase::askLlama(const char *prompt)
-{
-    std::unique_lock<std::mutex> lock(_queueMutex);
-    if (prompt && *prompt)
-    {
-        LOG_I("Asking llama: " << prompt);
-        _requestQueue.emplace_back(Request{std::string(prompt), false, nullptr});
-        _queueCondition.notify_one();
+void LlamaDeviceBase::receiveVideoFrame(const YUVData& yuv) {
+    uint64_t hash = fnv1a_hash_yuv(yuv);
+    
+    // Debug logging to diagnose the issue
+    LOG_V("receiveVideoFrame called - hasMultimodalModel: " << _hasMultimodalModel 
+          << ", frame hash: " << hash);
+    
+    // Allow temporary storage even if multimodal support not confirmed yet
+    // This helps with the chicken-and-egg problem during initialization
+    std::unique_lock<std::mutex> lock(_imageMutex);
+    
+    // Don't store duplicate frames
+    if (!_imageQueue.empty() && _imageQueue.back().hash == hash) {
+        return;
+    }
+    
+    // Create a copy of the YUV data
+    YUVData copy;
+    copy.width   = yuv.width;
+    copy.height  = yuv.height;
+    copy.y_size  = yuv.y_size;
+    copy.uv_size = yuv.uv_size;
+    copy.y       = std::make_unique<uint8_t[]>(copy.y_size);
+    copy.u       = std::make_unique<uint8_t[]>(copy.uv_size);
+    copy.v       = std::make_unique<uint8_t[]>(copy.uv_size);
+    std::memcpy(copy.y.get(), yuv.y.get(), copy.y_size);
+    std::memcpy(copy.u.get(), yuv.u.get(), copy.uv_size);
+    std::memcpy(copy.v.get(), yuv.v.get(), copy.uv_size);
+    
+    auto framePtr = std::make_shared<YUVData>(std::move(copy));
+    
+    TimestampedImage timestampedImage;
+    timestampedImage.yuv = framePtr;
+    timestampedImage.timestamp = std::chrono::steady_clock::now();
+    timestampedImage.hash = hash;
+    
+    _imageQueue.push_back(timestampedImage);
+    
+    // Keep only the most recent images (limit to 3 frames)
+    while (_imageQueue.size() > 3) {
+        _imageQueue.pop_front();
+    }
+    
+    LOG_V("Stored video frame with hash: " << hash << ", queue size: " << _imageQueue.size()
+          << ", hasMultimodalModel: " << _hasMultimodalModel);
+}
+
+void LlamaDeviceBase::cleanupOldImages() {
+    std::unique_lock<std::mutex> lock(_imageMutex);
+    auto now = std::chrono::steady_clock::now();
+    auto retention_duration = std::chrono::milliseconds(_imageRetentionMs);
+    
+    while (!_imageQueue.empty()) {
+        auto& front = _imageQueue.front();
+        if (now - front.timestamp > retention_duration) {
+            LOG_V("Removing expired image with hash: " << front.hash);
+            _imageQueue.pop_front();
+        } else {
+            break; // Images are stored in chronological order
+        }
     }
 }
 
-void LlamaDeviceBase::askWithImage(const char *prompt, const YUVData& yuv) {
-    std::unique_lock<std::mutex> lock(_queueMutex);
-    if (prompt && *prompt)
-    {
-        LOG_I("Asking llama with image: " << prompt);
-        YUVData copy;
-        copy.width   = yuv.width;
-        copy.height  = yuv.height;
-        copy.y_size  = yuv.y_size;
-        copy.uv_size = yuv.uv_size;
-        copy.y       = std::make_unique<uint8_t[]>(copy.y_size);
-        copy.u       = std::make_unique<uint8_t[]>(copy.uv_size);
-        copy.v       = std::make_unique<uint8_t[]>(copy.uv_size);
-        std::memcpy(copy.y.get(), yuv.y.get(), copy.y_size);
-        std::memcpy(copy.u.get(), yuv.u.get(), copy.uv_size);
-        std::memcpy(copy.v.get(), yuv.v.get(), copy.uv_size);
-        auto framePtr = std::make_shared<YUVData>(std::move(copy));
-        _requestQueue.emplace_back(Request{std::string(prompt), true, framePtr});
-        _queueCondition.notify_one();
+std::shared_ptr<YUVData> LlamaDeviceBase::getRecentImage() {
+    std::unique_lock<std::mutex> lock(_imageMutex);
+    
+    if (_imageQueue.empty()) {
+        return nullptr;
     }
+    
+    auto now = std::chrono::steady_clock::now();
+    auto retention_duration = std::chrono::milliseconds(_imageRetentionMs);
+    
+    // Get the most recent image that's still valid
+    auto& latest = _imageQueue.back();
+    if (now - latest.timestamp <= retention_duration) {
+        LOG_V("Using recent image with hash: " << latest.hash);
+        return latest.yuv;
+    }
+    
+    return nullptr;
+}
+
+size_t LlamaDeviceBase::getImageQueueSize() const {
+    std::unique_lock<std::mutex> lock(_imageMutex);
+    return _imageQueue.size();
+}
+
+bool LlamaDeviceBase::detectMultimodalSupport() {
+    LOG_I("detectMultimodalSupport called - mmproj_path: '" << _mmproj_path << "'");
+    
+    // Check if we have mmproj path provided
+    if (_mmproj_path.empty()) {
+        LOG_V("No MMProj path provided - multimodal support disabled");
+        return false;
+    }
+    
+    LOG_I("Checking LlamaSimpleChat state - _llama_chat: " << (_llama_chat ? "valid" : "nullptr"));
+    if (_llama_chat) {
+        LOG_I("LlamaSimpleChat details - model_: " << (_llama_chat->model_ ? "loaded" : "not loaded")
+              << ", ctx_mtmd_: " << (_llama_chat->ctx_mtmd_ ? "loaded" : "not loaded"));
+    }
+    
+    // Primary check: verify that the LlamaSimpleChat has successfully loaded multimodal context
+    // and that it actually supports vision input using the proper mtmd API
+    if (_llama_chat && _llama_chat->ctx_mtmd_) {
+        bool supportsVision = mtmd_support_vision(_llama_chat->ctx_mtmd_.get());
+        bool supportsAudio = mtmd_support_audio(_llama_chat->ctx_mtmd_.get());
+        LOG_I("mtmd context loaded - vision support: " << (supportsVision ? "yes" : "no") 
+              << ", audio support: " << (supportsAudio ? "yes" : "no"));
+        
+        if (supportsVision) {
+            LOG_I("Multimodal support confirmed - vision is supported");
+            return true;
+        } else {
+            LOG_W("mtmd context loaded but vision not supported - multimodal disabled");
+            return false;
+        }
+    }
+    
+    // Secondary check: verify model is loaded and mmproj file exists
+    if (_llama_chat && _llama_chat->model_) {
+        // Verify that mmproj file exists and is readable
+        FILE* test_file = fopen(_mmproj_path.c_str(), "rb");
+        if (test_file) {
+            fclose(test_file);
+            LOG_W("MMProj file exists but mtmd context not loaded - multimodal may be partially supported");
+            return false; // Conservative approach - require successful mtmd loading
+        } else {
+            LOG_E("MMProj file not accessible: " << _mmproj_path);
+            return false;
+        }
+    }
+    
+    // Check if at least mmproj file exists for potential future loading
+    FILE* test_file = fopen(_mmproj_path.c_str(), "rb");
+    if (test_file) {
+        fclose(test_file);
+        LOG_V("MMProj file exists, but model not yet loaded - multimodal support pending");
+        return false; // Will be re-evaluated after model loading
+    }
+    
+    LOG_E("MMProj file not found: " << _mmproj_path << " - multimodal support disabled");
+    return false;
+}
+
+void LlamaDeviceBase::recheckMultimodalSupport() {
+    bool previousState = _hasMultimodalModel;
+    _hasMultimodalModel = detectMultimodalSupport();
+    
+    if (previousState != _hasMultimodalModel) {
+        LOG_I("Multimodal support status changed: " << (previousState ? "enabled" : "disabled") 
+              << " -> " << (_hasMultimodalModel ? "enabled" : "disabled"));
+        
+        // Clear image queue if multimodal support was disabled
+        if (!_hasMultimodalModel && !_imageQueue.empty()) {
+            std::unique_lock<std::mutex> lock(_imageMutex);
+            _imageQueue.clear();
+            LOG_I("Cleared image queue due to multimodal support being disabled");
+        }
+    }
+}
+
+void LlamaDeviceBase::askLlama(const char *prompt)
+{
+    if (!prompt || !*prompt) {
+        return;
+    }
+    
+    // Stop any ongoing generation before processing new request
+    if (_llama_chat) {
+        _llama_chat->StopGeneration();
+        LOG_I("Stopped ongoing generation for new request");
+    }
+    
+    // Clean up old images first
+    cleanupOldImages();
+    
+    // Debug logging for troubleshooting
+    size_t queueSize = getImageQueueSize();
+    LOG_I("askLlama called - prompt: '" << prompt << "', hasMultimodalModel: " << _hasMultimodalModel 
+          << ", image queue size: " << queueSize);
+    
+    // Check if we have a recent image and multimodal model
+    std::shared_ptr<YUVData> recentImage = nullptr;
+    if (_hasMultimodalModel) {
+        recentImage = getRecentImage();
+        LOG_I("Multimodal model available, getRecentImage returned: " << (recentImage ? "valid image" : "nullptr"));
+    } else {
+        LOG_I("Multimodal model not available - forcing text-only mode");
+    }
+    
+    std::unique_lock<std::mutex> lock(_queueMutex);
+    
+    if (recentImage) {
+        LOG_I("Asking llama with recent image: " << prompt);
+        _requestQueue.emplace_back(Request{std::string(prompt), true, recentImage});
+    } else {
+        LOG_I("Asking llama (text-only): " << prompt);
+        _requestQueue.emplace_back(Request{std::string(prompt), false, nullptr});
+    }
+    
+    _queueCondition.notify_one();
+}
+
+void LlamaDeviceBase::askWithImage(const char *prompt, const YUVData& yuv) {
+    if (!prompt || !*prompt) {
+        return;
+    }
+    
+    // Stop any ongoing generation before processing new image request
+    if (_llama_chat) {
+        _llama_chat->StopGeneration();
+        LOG_I("Stopped ongoing generation for new image request");
+    }
+    
+    std::unique_lock<std::mutex> lock(_queueMutex);
+    LOG_I("Asking llama with image: " << prompt);
+    YUVData copy;
+    copy.width   = yuv.width;
+    copy.height  = yuv.height;
+    copy.y_size  = yuv.y_size;
+    copy.uv_size = yuv.uv_size;
+    copy.y       = std::make_unique<uint8_t[]>(copy.y_size);
+    copy.u       = std::make_unique<uint8_t[]>(copy.uv_size);
+    copy.v       = std::make_unique<uint8_t[]>(copy.uv_size);
+    std::memcpy(copy.y.get(), yuv.y.get(), copy.y_size);
+    std::memcpy(copy.u.get(), yuv.u.get(), copy.uv_size);
+    std::memcpy(copy.v.get(), yuv.v.get(), copy.uv_size);
+    auto framePtr = std::make_shared<YUVData>(std::move(copy));
+    _requestQueue.emplace_back(Request{std::string(prompt), true, framePtr});
+    _queueCondition.notify_one();
 }
 
 bool LlamaDeviceBase::start() {
@@ -819,6 +1061,10 @@ bool LlamaDeviceBase::start() {
         _llama_chat->SetModelPaths(_model_path, _mmproj_path);
         if (_llama_chat && _llama_chat->Initialize()) {
             LOG_V("Llama chat initialized!");
+            
+            // Detect multimodal support after successful initialization
+            _hasMultimodalModel = detectMultimodalSupport();
+            LOG_I("Multimodal support detection result: " << (_hasMultimodalModel ? "enabled" : "disabled"));
         } else {
             LOG_E("Failed to initialize Llama chat");
             return false;
@@ -839,35 +1085,84 @@ void LlamaDeviceBase::stop()
     if (_running)
     {
         _running = false;
+        _queueCondition.notify_all(); // Wake up the processing thread
         if (_processingThread.joinable())
         {
             _processingThread.join();
+        }
+        
+        // Clear image queue
+        {
+            std::unique_lock<std::mutex> lock(_imageMutex);
+            _imageQueue.clear();
+            LOG_V("Cleared image queue during shutdown");
         }
     }
 }
 
 bool LlamaDeviceBase::RunProcessingThread()
 {
+    auto lastCleanup = std::chrono::steady_clock::now();
+    const auto cleanupInterval = std::chrono::seconds(1); // Clean up every second
+    
     while (_running) {
         Request req;
+        bool hasRequest = false;
+        
         {
             std::unique_lock<std::mutex> lock(_queueMutex);
-            _queueCondition.wait(lock, [&]{ return !_requestQueue.empty() || !_running; });
+            auto waitResult = _queueCondition.wait_for(lock, std::chrono::milliseconds(100), 
+                [&]{ return !_requestQueue.empty() || !_running; });
+            
             if (!_running && _requestQueue.empty()) break;
-            req = std::move(_requestQueue.front());
-            _requestQueue.pop_front();
-        }
-
-        if (req.withImage && req.yuv) {
-            uint64_t h = fnv1a_hash_yuv(*req.yuv);
-            if (h != _lastYuvHash) {
-                _lastYuvHash = h;
-                _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
-                _llama_chat->generateFromImage(req.yuv.get(), req.prompt, _responseCallback);
+            
+            if (waitResult && !_requestQueue.empty()) {
+                req = std::move(_requestQueue.front());
+                _requestQueue.pop_front();
+                hasRequest = true;
             }
-        } else {
-            _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
-            _llama_chat->generate(req.prompt, _responseCallback);
+        }
+        
+        // Periodic cleanup of old images and multimodal status check
+        auto now = std::chrono::steady_clock::now();
+        if (now - lastCleanup > cleanupInterval) {
+            cleanupOldImages();
+            
+            // Periodically recheck multimodal support (in case it changes after model loading)
+            if (!_hasMultimodalModel && !_mmproj_path.empty()) {
+                recheckMultimodalSupport();
+            }
+            
+            lastCleanup = now;
+        }
+        
+        // Process request if we have one
+        if (hasRequest) {
+            if (req.withImage && req.yuv && _hasMultimodalModel) {
+                uint64_t h = fnv1a_hash_yuv(*req.yuv);
+                if (h != _lastYuvHash) {
+                    // Stop any ongoing generation before starting new image processing
+                    if (_llama_chat) {
+                        _llama_chat->StopGeneration();
+                        LOG_I("Stopped ongoing generation for new frame processing");
+                    }
+                    
+                    _lastYuvHash = h;
+                    _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
+                    _llama_chat->generateFromImage(req.yuv.get(), req.prompt, _responseCallback);
+                } else {
+                    LOG_V("Skipping duplicate image with hash: " << h);
+                }
+            } else {
+                // Stop any ongoing generation before starting new text processing
+                if (_llama_chat) {
+                    _llama_chat->StopGeneration();
+                    LOG_I("Stopped ongoing generation for new text processing");
+                }
+                
+                _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
+                _llama_chat->generate(req.prompt, _responseCallback);
+            }
         }
     }
     return true;
