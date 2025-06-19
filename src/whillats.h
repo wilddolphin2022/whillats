@@ -206,6 +206,7 @@ class WHILLATS_API WhillatsLlama {
         int height,
         size_t y_size,
         size_t uv_size);
+    void receiveVideoFrame(const YUVData& yuv);
 
   private:
     WhillatsSetResponseCallback _callback;

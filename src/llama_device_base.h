@@ -25,6 +25,7 @@
 #include <deque>
 #include <algorithm>
 #include <memory>
+#include <chrono>
 
 #include "whillats.h"
 #include "whisper_helpers.h"
@@ -56,6 +57,14 @@ public:
 
     void askLlama(const char *prompt);
     void askWithImage(const char *prompt, const YUVData& yuv);
+    
+    // New method to receive video frames
+    void receiveVideoFrame(const YUVData& yuv);
+    
+    // Debug/monitoring methods
+    size_t getImageQueueSize() const;
+    bool hasMultimodalSupport() const { return _hasMultimodalModel; }
+    void recheckMultimodalSupport();
 
 private:
     bool _running;
@@ -80,8 +89,24 @@ private:
     std::vector<llama_token> context_tokens_;
     const size_t max_context_tokens_ = 2048;
     
+    // Image management for video frames
+    struct TimestampedImage {
+        std::shared_ptr<YUVData> yuv;
+        std::chrono::steady_clock::time_point timestamp;
+        uint64_t hash;
+    };
+    
+    std::deque<TimestampedImage> _imageQueue;
+    mutable std::mutex           _imageMutex;
+    bool                         _hasMultimodalModel;
+    int                          _imageRetentionMs;
+    
+    // Helper methods
     bool TrimContext();
     bool AppendToContext(const std::vector<llama_token>& new_tokens);
+    void cleanupOldImages();
+    std::shared_ptr<YUVData> getRecentImage();
+    bool detectMultimodalSupport();
 };
 
 #endif // LLAMA_DEVICE_BASE_H

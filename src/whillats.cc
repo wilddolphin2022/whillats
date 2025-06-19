@@ -222,6 +222,10 @@ void WhillatsLlama::askWithYUVRaw(
   _llama_device->askWithImage(prompt, data);
 }
 
+void WhillatsLlama::receiveVideoFrame(const YUVData& yuv) {
+    _llama_device->receiveVideoFrame(yuv);
+}
+
 bool WHILLATS_API save_yuv_as_bmp(const YUVData& yuv, const char* path) {
     clip_image_u8* img_clip = yuv_to_clip(yuv);
     save_clip_as_bmp(*img_clip, path); 
