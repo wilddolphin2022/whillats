@@ -18,6 +18,10 @@
 #include <memory>
 #include <span>
 #include <cstdio>
+#include <cmath>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 #include <dlfcn.h>
 
 #include "whillats.h"

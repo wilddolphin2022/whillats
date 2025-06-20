@@ -52,6 +52,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 #include <memory>
 #include <thread>
@@ -178,7 +179,7 @@ class WHILLATS_API WhillatsTranscriber {
 
     void setLanguage(const std::string& language);
     void setDetectLanguage(bool detectLanguage);
-    std::string getLanguage();
+    const char* getLanguage();
     void setVADThreshold(float threshold);
     float getVADThreshold();
 

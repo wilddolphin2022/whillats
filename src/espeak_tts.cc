@@ -12,6 +12,7 @@
 
 #include <thread>
 #include <cstring>
+#include <cstdlib>
 
 #include "whillats.h"
 #include "espeak_tts.h"
@@ -28,7 +29,17 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
       _audioBuffer(new AudioRingBuffer<uint16_t>(kRingBufferSizeIncrement)) {   
     espeak_AUDIO_OUTPUT output = AUDIO_OUTPUT_SYNCHRONOUS;
     int Buflength = 500;
-    const char* path = NULL;
+    
+    // Set espeak data path from environment variable
+    const char* path = nullptr;
+    const char* env_path = getenv("ESPEAK_DATA_PATH");
+    if (env_path) {
+        path = env_path;
+        LOG_I("Using espeak data path from environment: " << path);
+    } else {
+        LOG_W("No espeak data path defined in environment, using default");
+    }
+    
     int Options = 0;
     char Voice[] = {"English"};
 
@@ -43,13 +54,13 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
     memset(&voice, 0, sizeof(espeak_VOICE));
     voice.languages = langNativeString;
     voice.name = "US";
-    voice.variant = 1;
-    voice.gender = 2;
+    voice.variant = 5;
+    voice.gender = 1;
     espeak_SetVoiceByProperties(&voice);
 
     espeak_SetParameter(espeakRATE, 180, 0);
-    espeak_SetParameter(espeakVOLUME, 75, 0);
-    espeak_SetParameter(espeakPITCH, 200, 0);
+    espeak_SetParameter(espeakVOLUME, 80, 0);
+    espeak_SetParameter(espeakPITCH, 100, 0);
     espeak_SetParameter(espeakRANGE, 100, 0);
     espeak_SetParameter((espeak_PARAMETER)11, 0, 0);
 
@@ -59,7 +70,17 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
 void ESpeakTTS::synthesize(const char* text, const char* language) {
     if (!text) return;
     std::string lang = std::string(language);
-    espeak_SetVoiceByName(lang == "en" ? "English" : ("ru" ? "Russian" : "English"));
+    
+    // Set voice based on language
+    if (lang == "en" || lang == "en-US") {
+        espeak_SetVoiceByName("English");
+    } else if (lang == "es") {
+        espeak_SetVoiceByName("Spanish");
+    } else if (lang == "ru") {
+        espeak_SetVoiceByName("Russian");
+    } else {
+        espeak_SetVoiceByName("English");  // Default to English
+    }
 
     // Clear output buffer and ring buffer
     _buffer.clear();
@@ -205,6 +226,9 @@ bool ESpeakTTS::RunProcessingThread() {
         } else {
             LOG_W("No audio data generated for text: " << textToSynth);
         }
+        
+        // Signal synthesis completion
+        _callback.OnSynthesisComplete();
     }
 
     return true;

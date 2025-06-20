@@ -155,8 +155,8 @@ void WhillatsTranscriber::setDetectLanguage(bool detectLanguage) {
     _whisper_transcriber->setDetectLanguage(detectLanguage);
 }
 
-std::string WhillatsTranscriber::getLanguage() { 
-    return _whisper_transcriber->getLanguage(); 
+const char* WhillatsTranscriber::getLanguage() { 
+    return _whisper_transcriber->getLanguage().c_str(); 
 }
 
 void WhillatsTranscriber::setVADThreshold(float threshold) { 

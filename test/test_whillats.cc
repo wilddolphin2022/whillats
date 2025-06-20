@@ -12,6 +12,10 @@
 
 #include <iostream>
 #include <vector>
+#include <cstdlib>
+#include <string>
+#include <unistd.h>
+#include <sys/stat.h>
 #include "whillats.h"
 
 #include "test_utils.h"
@@ -65,8 +69,44 @@ void languageChangedCallback(bool success, const char* language, void* user_data
     language_changed = true;
 }
 
+// Auto-detect and set espeak data path if not already set
+void setupEspeakDataPath() {
+    if (getenv("ESPEAK_DATA_PATH")) {
+        return; // Already set
+    }
+    
+    // Try to find espeak-ng-data directory relative to executable
+    char exe_path[1024];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len != -1) {
+        exe_path[len] = '\0';
+        
+        // Find the last '/' to get directory
+        std::string bin_dir(exe_path);
+        size_t last_slash = bin_dir.find_last_of('/');
+        if (last_slash != std::string::npos) {
+            bin_dir = bin_dir.substr(0, last_slash);
+            std::string data_path = bin_dir + "/espeak-ng-data";
+            
+            // Check if directory exists
+            struct stat st;
+            if (stat(data_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+                setenv("ESPEAK_DATA_PATH", data_path.c_str(), 1);
+                LOG_I("Auto-detected espeak data path: " << data_path);
+            } else {
+                LOG_W("Could not find espeak-ng-data directory at: " << data_path);
+            }
+        }
+    } else {
+        LOG_W("Could not auto-detect espeak data path. Please set ESPEAK_DATA_PATH environment variable.");
+    }
+}
+
 int main(int argc, char *argv[])
 {
+  // Setup espeak data path first
+  setupEspeakDataPath();
+  
   Options opts = parseOptions(argc, argv);
 
   if (argc == 1 || opts.help)

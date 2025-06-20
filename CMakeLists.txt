@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(whillats VERSION 1.0.0 LANGUAGES CXX C OBJC OBJCXX)
+
+# Set project languages conditionally based on platform
+if(APPLE)
+    project(whillats VERSION 1.0.0 LANGUAGES CXX C OBJC OBJCXX)
+else()
+    project(whillats VERSION 1.0.0 LANGUAGES CXX C)
+endif()
 
 # Configure Metal backend for ggml on macOS (enable for non-Release, disable for Release)
 if(APPLE)
@@ -153,7 +159,7 @@ if(UNIX AND NOT APPLE)
     add_custom_command(
         OUTPUT ${ESPEAK_DATA_DEST_DIR}/phontab
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${ESPEAK_DATA_SOURCE_DIR} ${ESPEAK_DATA_DEST_DIR}
-        DEPENDS espeak-ng-proj
+        DEPENDS espeak-ng
         COMMENT "Copying espeak-ng-data to ${ESPEAK_DATA_DEST_DIR}"
     )
     add_custom_target(copy_espeak_data ALL DEPENDS ${ESPEAK_DATA_DEST_DIR}/phontab)
@@ -199,26 +205,41 @@ install(TARGETS mtmd_shared ARCHIVE)
 
 # --- Main Library Target ---
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    add_compile_options(-fobjc-arc)
-    add_library(${PROJECT_NAME} SHARED
+    # Add Objective-C ARC flag only on Apple platforms
+    if(APPLE)
+        add_compile_options(-fobjc-arc)
+    endif()
+    # Define source files conditionally based on platform
+    set(WHILLATS_SOURCES
         src/whisper_transcription.cc
         src/llama_device_base.cc
         src/synthesis.cc
         src/whillats.cc
         src/whillats_utils.cc
-        src/whillats_synth.mm
-        src/whillats_ios.mm
     )
+    
+    # Add espeak TTS implementation only on Linux
+    if(UNIX AND NOT APPLE)
+        list(APPEND WHILLATS_SOURCES src/espeak_tts.cc)
+    endif()
+    
+    # Add Objective-C++ sources only on Apple platforms
+    if(APPLE)
+        list(APPEND WHILLATS_SOURCES
+            src/whillats_synth.mm
+            src/whillats_ios.mm
+        )
+    endif()
+    
+    add_library(${PROJECT_NAME} SHARED ${WHILLATS_SOURCES})
 
     # Ensure espeak data is copied before building the main library (Linux only)
     if(UNIX AND NOT APPLE)
         add_dependencies(${PROJECT_NAME} copy_espeak_data)
     endif()
 
-    # Add compile definition for espeak data path
-    target_compile_definitions(${PROJECT_NAME} PRIVATE
-        ESPEAK_DATA_PATH="\"${ESPEAK_DATA_DEST_DIR}\""
-    )
+    # Note: We use environment variable ESPEAK_DATA_PATH instead of compile-time definition
+    # to avoid path issues. The environment variable should be set to: ${ESPEAK_DATA_DEST_DIR}
 
     # Add additional include directories
     target_include_directories(${PROJECT_NAME}
@@ -389,8 +410,7 @@ target_include_directories(test_whillats PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_compile_definitions(test_whillats PRIVATE
-    ESPEAK_DATA_PATH="\"${ESPEAK_DATA_DEST_DIR}\"")
+# Note: test_whillats uses environment variable ESPEAK_DATA_PATH
 
 target_link_libraries(test_whillats
     PRIVATE
@@ -440,11 +460,12 @@ else()
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION bin
     )
-    install(TARGETS ${PROJECT_NAME} synthesis
-        FRAMEWORK DESTINATION bin
-        RUNTIME DESTINATION lib
-        LIBRARY DESTINATION lib
-    )
+    # Install synthesis target only on macOS where it exists
+    if(APPLE)
+        install(TARGETS synthesis
+            RUNTIME DESTINATION lib
+        )
+    endif()
 endif()
 
 # Add compile definition for espeak data path to test executable as well
