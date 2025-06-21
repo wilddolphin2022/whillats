@@ -250,12 +250,22 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd  # Added for clip.h
     )
 
-    # Link core libraries (MetalOmitted: llama is pulled in by mtmd_shared)
+    # Link core libraries (explicitly link llama to avoid undefined references)
     target_link_libraries(${PROJECT_NAME}
         PRIVATE
             whisper
             mtmd_shared
+            llama
+            ggml-base
+            ggml-cuda
     )
+    
+    # Add CUDA include directories if CUDA is enabled
+    if(GGML_CUDA)
+        find_package(CUDAToolkit REQUIRED)
+        target_include_directories(${PROJECT_NAME} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+        target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
+    endif()
 
     # Link espeak-ng and pcaudio only on Linux
     if(UNIX AND NOT APPLE)
@@ -390,12 +400,18 @@ elseif(UNIX AND NOT APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE
         gomp
         stdc++
+        pthread
+        dl
+        m
     )
     target_link_directories(${PROJECT_NAME} PRIVATE
         /usr/lib/x86_64-linux-gnu
+        ${CMAKE_BINARY_DIR}/lib/Debug
     )
     target_link_options(${PROJECT_NAME} PRIVATE
         -Wl,--allow-shlib-undefined
+        -Wl,-rpath,$ORIGIN
+        -Wl,-rpath,${CMAKE_BINARY_DIR}/lib/Debug
     )
 endif()
 

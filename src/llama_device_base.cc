@@ -19,6 +19,10 @@
 #include "whillats_utils.h"
 #include "mtmd-helper.h"
 
+#ifdef GGML_USE_CUDA
+#include <cuda_runtime.h>
+#endif
+
 // Clean response function (unchanged)
 std::string clean_response(const std::string& response) {
     std::string cleaned = response;
@@ -64,7 +68,7 @@ public:
 
     std::string model_path_;
     std::string mmproj_path_;
-    int ngl_ = 100;
+    int ngl_ = 10;  // Default GPU layers (will be capped per platform)
     int n_predict_ = 4096;
     std::string prompt_ = "You are a helpful assistant.";
     bool continue_ = false;
@@ -153,8 +157,48 @@ bool LlamaSimpleChat::LoadModel() {
     }
 
     llama_model_params model_params = llama_model_default_params();
+#ifdef GGML_USE_METAL
+    // Metal on macOS/iOS can handle more GPU layers
     model_params.n_gpu_layers = std::min(ngl_, 100);
+#elif defined(GGML_USE_CUDA)
+    // CUDA on Linux - dynamically detect available memory
+    size_t free_mem, total_mem;
+    cudaError_t cuda_err = cudaMemGetInfo(&free_mem, &total_mem);
+    
+    int max_layers = 0;
+    if (cuda_err == cudaSuccess) {
+        size_t available_mb = free_mem / (1024 * 1024);
+        size_t total_mb = total_mem / (1024 * 1024);
+        
+        LOG_I("CUDA Memory: " << available_mb << "MB free, " << total_mb << "MB total");
+        
+        // For RTX 3050 (4GB VRAM) and similar cards, force CPU-only for large models
+        // This prevents CUDA allocation failures
+        if (total_mb <= 4096) {  // 4GB or less VRAM
+            LOG_I("Detected low VRAM GPU (" << total_mb << "MB), forcing CPU-only mode for stability");
+            max_layers = 0;
+        } else if (available_mb >= 6000) {
+            max_layers = 10;  // Higher-end cards with more VRAM
+        } else if (available_mb >= 4000) {
+            max_layers = 5;   // Mid-range cards
+        } else if (available_mb >= 2000) {
+            max_layers = 2;   // Conservative for lower VRAM
+        } else {
+            max_layers = 0;   // Force CPU-only if very low memory
+        }
+        LOG_I("Setting max GPU layers to " << max_layers << " (total VRAM: " << total_mb << "MB, available: " << available_mb << "MB)");
+    } else {
+        LOG_W("Failed to query CUDA memory, falling back to CPU-only mode");
+        max_layers = 0;  // Conservative fallback - CPU only
+    }
+    
+    model_params.n_gpu_layers = std::min(ngl_, max_layers);
     model_params.main_gpu = 0;
+    model_params.split_mode = LLAMA_SPLIT_MODE_LAYER;  // Split by layer for better memory management
+#else
+    // CPU-only mode when no GPU backend available
+    model_params.n_gpu_layers = 0;
+#endif
     
     model_ = llama_model_load_from_file(model_path_.c_str(), model_params);
     if (!model_) {
@@ -191,8 +235,8 @@ bool LlamaSimpleChat::InitializeContext() {
     }
 
     llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx = n_predict_;
-    ctx_params.n_batch = 512;
+    ctx_params.n_ctx = std::min(n_predict_, 2048);  // Reduce context size for RTX 3050
+    ctx_params.n_batch = 256;  // Reduce batch size to save memory
     ctx_params.no_perf = false;
     ctx_params.n_threads = std::min((int)4, (int)std::thread::hardware_concurrency());
 

@@ -179,7 +179,8 @@ class WHILLATS_API WhillatsTranscriber {
 
     void setLanguage(const std::string& language);
     void setDetectLanguage(bool detectLanguage);
-    const char* getLanguage();
+    const char* getLanguage();  // Keep old signature for compatibility
+    std::string getLanguageString();  // New function returning std::string
     void setVADThreshold(float threshold);
     float getVADThreshold();
 
