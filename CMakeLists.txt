@@ -257,9 +257,12 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             mtmd_shared
             llama
             ggml-base
-            ggml-cuda
     )
     
+    if(GGML_CUDA)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ggml-cuda)
+    endif()
+
     # Add CUDA include directories if CUDA is enabled
     if(GGML_CUDA)
         find_package(CUDAToolkit REQUIRED)
