@@ -82,7 +82,11 @@ if(NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS") AND NOT (CMAKE_OSX_SYSROOT MATCHES ".*
     set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if(UNIX AND NOT APPLE) # Linux specific
-        set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
+        if(LLAMA_CUDA)
+            set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
+        else()
+            set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
+        endif()
     else()
         set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
     endif()
@@ -108,9 +112,7 @@ if(UNIX AND NOT APPLE)
     # pcaudiolib (Autotools)
     FetchContent_GetProperties(pcaudiolib-proj)
     if(NOT pcaudiolib-proj_POPULATED)
-        cmake_policy(SET CMP0169 OLD)
-        FetchContent_Populate(pcaudiolib-proj)
-        cmake_policy(SET CMP0169 NEW)
+        FetchContent_MakeAvailable(pcaudiolib-proj)
         message(STATUS "pcaudiolib source downloaded to ${pcaudiolib-proj_SOURCE_DIR}")
     endif()
     
@@ -259,15 +261,18 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             ggml-base
     )
     
-    if(GGML_CUDA)
+    if(LLAMA_CUDA)
         target_link_libraries(${PROJECT_NAME} PRIVATE ggml-cuda)
-    endif()
+        if(GGML_CUDA)
+            target_link_libraries(${PROJECT_NAME} PRIVATE ggml-cuda)
+        endif()
 
-    # Add CUDA include directories if CUDA is enabled
-    if(GGML_CUDA)
-        find_package(CUDAToolkit REQUIRED)
-        target_include_directories(${PROJECT_NAME} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-        target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
+        # Add CUDA include directories if CUDA is enabled
+        if(GGML_CUDA)
+            find_package(CUDAToolkit REQUIRED)
+            target_include_directories(${PROJECT_NAME} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+            target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
+        endif()
     endif()
 
     # Link espeak-ng and pcaudio only on Linux
