@@ -147,8 +147,10 @@ void WhillatsTranscriber::stop() {
     _whisper_transcriber->stop();
 } 
 
-void WhillatsTranscriber::setLanguage(const std::string& language) { 
-    _whisper_transcriber->setLanguage(language); 
+void WhillatsTranscriber::setLanguage(const char* language) { 
+    if(language && strlen(language) > 0) {
+        _whisper_transcriber->setLanguage(language); 
+    }
 }
 
 void WhillatsTranscriber::setDetectLanguage(bool detectLanguage) { 

@@ -177,7 +177,7 @@ class WHILLATS_API WhillatsTranscriber {
 
     void processAudioBuffer(uint8_t* playoutBuffer, const size_t playoutBufferSize);
 
-    void setLanguage(const std::string& language);
+    void setLanguage(const char* language);
     void setDetectLanguage(bool detectLanguage);
     const char* getLanguage();  // Keep old signature for compatibility
     std::string getLanguageString();  // New function returning std::string
