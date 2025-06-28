@@ -177,8 +177,10 @@ bool LlamaSimpleChat::LoadModel() {
         if (total_mb <= 4096) {  // 4GB or less VRAM
             LOG_I("Detected low VRAM GPU (" << total_mb << "MB), forcing CPU-only mode for stability");
             max_layers = 0;
+        } else if (available_mb >= 7000) {
+            max_layers = 30;  // ~8 GiB+ free, offload almost entire model
         } else if (available_mb >= 6000) {
-            max_layers = 10;  // Higher-end cards with more VRAM
+            max_layers = 20;  // 6–7 GiB free
         } else if (available_mb >= 4000) {
             max_layers = 5;   // Mid-range cards
         } else if (available_mb >= 2000) {
@@ -236,7 +238,7 @@ bool LlamaSimpleChat::InitializeContext() {
 
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = std::min(n_predict_, 2048);  // Reduce context size for RTX 3050
-    ctx_params.n_batch = 256;  // Reduce batch size to save memory
+    ctx_params.n_batch = 512;  // Allow larger batches (up to 512 tokens) so that image chunks can be
     ctx_params.no_perf = false;
     ctx_params.n_threads = std::min((int)4, (int)std::thread::hardware_concurrency());
 
@@ -608,8 +610,13 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
     bitmap.set_id(bitmap_id.c_str());
     LOG_V("Created mtmd_bitmap with ID: " << bitmap_id);
 
-    // Prepare prompt with image marker
-    std::string full_prompt = "[INST] " + std::string(MTMD_DEFAULT_IMAGE_MARKER) + " USER: " + prompt + " ASSISTANT: ";
+    // Compose the prompt using the same chat-template that llama.cpp employs.
+    // <|start_header_id|>user<|end_header_id|>  <image + question>  <|eot_id|>
+    // <|start_header_id|>assistant<|end_header_id|>
+    const std::string header_user      = "<|start_header_id|>user<|end_header_id|>\n\n";
+    const std::string header_assistant = "<|start_header_id|>assistant<|end_header_id|>\n\n";
+
+    std::string full_prompt = header_user + std::string(MTMD_DEFAULT_IMAGE_MARKER) + " " + prompt + "<|eot_id|>" + header_assistant;
     mtmd_input_text input_text = { full_prompt.c_str(), true, false };
     std::vector<const mtmd_bitmap*> bitmaps = { bitmap.ptr.get() };
 
@@ -796,9 +803,10 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
     } else {
         callback.OnResponseComplete(false, "");
     }
-    LOG_I("Image done: '" << full_response << "' in "
+    auto t0 = std::chrono::steady_clock::now();
+    LOG_I("Image+answer in "
           << std::chrono::duration_cast<std::chrono::milliseconds>(
-                 std::chrono::steady_clock::now() - _lastResponseStart).count()
+                 std::chrono::steady_clock::now()-t0).count()
           << " ms");
 
     return full_response;
@@ -1103,6 +1111,8 @@ bool LlamaDeviceBase::start() {
     if (!_running) {
         _llama_chat.reset(new LlamaSimpleChat());
         _llama_chat->SetModelPaths(_model_path, _mmproj_path);
+        // Off-load as many layers as the GPU can take (8 GiB RTX 4060 handles the full 32-layer model)
+        _llama_chat->SetNGL(32);
         if (_llama_chat && _llama_chat->Initialize()) {
             LOG_V("Llama chat initialized!");
             
@@ -1193,7 +1203,12 @@ bool LlamaDeviceBase::RunProcessingThread()
                     
                     _lastYuvHash = h;
                     _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
+                    auto t0 = std::chrono::steady_clock::now();
                     _llama_chat->generateFromImage(req.yuv.get(), req.prompt, _responseCallback);
+                    LOG_I("Image+answer in "
+                          << std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::steady_clock::now()-t0).count()
+                          << " ms");
                 } else {
                     LOG_V("Skipping duplicate image with hash: " << h);
                 }
