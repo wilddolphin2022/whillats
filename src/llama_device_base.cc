@@ -177,14 +177,14 @@ bool LlamaSimpleChat::LoadModel() {
         if (total_mb <= 4096) {  // 4GB or less VRAM
             LOG_I("Detected low VRAM GPU (" << total_mb << "MB), forcing CPU-only mode for stability");
             max_layers = 0;
+        } else if (available_mb >= 11000) {
+            max_layers = 30;  // 11+ GiB free
+        } else if (available_mb >= 9000) {
+            max_layers = 20;  // 9–11 GiB free
         } else if (available_mb >= 7000) {
-            max_layers = 30;  // ~8 GiB+ free, offload almost entire model
-        } else if (available_mb >= 6000) {
-            max_layers = 20;  // 6–7 GiB free
-        } else if (available_mb >= 4000) {
-            max_layers = 5;   // Mid-range cards
-        } else if (available_mb >= 2000) {
-            max_layers = 2;   // Conservative for lower VRAM
+            max_layers = 5;   // 7–9 GiB free
+        } else if (available_mb >= 5000) {
+            max_layers = 2;   // 5–7 GiB free
         } else {
             max_layers = 0;   // Force CPU-only if very low memory
         }
