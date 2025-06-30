@@ -138,21 +138,36 @@ void Synthesis::workerFunction() {
         ::write(pipe_to[1], item.second.data(), lsz);
         close(pipe_to[1]); // EOF for child
         // Read and dispatch audio buffers
+        bool synthesis_completed = false;
         while (true) {
             uint32_t buf_size = 0;
-            if (!readAll(pipe_from[0], &buf_size, sizeof(buf_size))) break;
+            if (!readAll(pipe_from[0], &buf_size, sizeof(buf_size))) {
+                // Premature EOF or error – make sure the client is notified.
+                break;
+            }
             if (buf_size == 0) {
+                // Proper end-of-utterance marker.
+                synthesis_completed = true;
                 _callback.OnSynthesisComplete();
                 break;
             }
             size_t samples = buf_size / sizeof(uint16_t);
             std::vector<uint16_t> buffer(samples);
-            if (!readAll(pipe_from[0], buffer.data(), buf_size)) break;
+            if (!readAll(pipe_from[0], buffer.data(), buf_size)) {
+                // Failed while reading payload – abort.
+                break;
+            }
             _callback.OnBufferComplete(true, buffer);
         }
         close(pipe_from[0]);
         int status = 0;
         waitpid(pid, &status, 0);
+
+        // Guarantee that the client always receives a completion callback, even
+        // if the loop above exited due to an I/O error or unexpected EOF.
+        if (!synthesis_completed) {
+            _callback.OnSynthesisComplete();
+        }
     }
 }
 

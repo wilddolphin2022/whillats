@@ -305,7 +305,24 @@ bool LlamaSimpleChat::InitializeContext() {
     ctx_params.n_batch = 512;  // Keep the original value for other back-ends
 #endif
     ctx_params.no_perf = false;
-    ctx_params.n_threads = std::min((int)4, (int)std::thread::hardware_concurrency());
+    // Use as many physical cores as are available on the machine instead of
+    // the previous hard-cap of 4.  On Apple Silicon machines like the M4 Mac
+    // mini this unlocks the additional high-performance cores and noticeably
+    // reduces the per-batch evaluation latency for image decoding.
+#if defined(__APPLE__)
+    // macOS exposes both performance and efficiency cores via sysctl.  Query
+    // the "hw.perflevel0.logicalcpu" key first; if that fails, fall back to
+    // the generic std::thread::hardware_concurrency().
+    int perf_cores = 0;
+    size_t len = sizeof(perf_cores);
+    if (sysctlbyname("hw.perflevel0.logicalcpu", &perf_cores, &len, NULL, 0) == 0 && perf_cores > 0) {
+        ctx_params.n_threads = perf_cores;
+    } else {
+        ctx_params.n_threads = std::max(1u, std::thread::hardware_concurrency());
+    }
+#else
+    ctx_params.n_threads = std::max(1u, std::thread::hardware_concurrency());
+#endif
 
     ctx_ = llama_init_from_model(model_, ctx_params);
     if (!ctx_) {
