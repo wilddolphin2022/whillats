@@ -627,6 +627,10 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
 
     // Process system prompt with proper sequence setup
     int max_batch_size = 512;
+    #ifdef GGML_USE_METAL
+    // Match ctx_params.n_batch to avoid n_tokens_batch > n_batch assertion
+    max_batch_size = 256;
+    #endif
     llama_batch batch = llama_batch_init(max_batch_size, 0, 1);
     if (!batch.token) {
         LOG_E("Failed to initialize batch");
