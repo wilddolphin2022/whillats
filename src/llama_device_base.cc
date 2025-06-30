@@ -10,6 +10,11 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <cstdlib>
+
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
 
 #include "llama.h"
 #include "clip.h"
@@ -158,8 +163,60 @@ bool LlamaSimpleChat::LoadModel() {
 
     llama_model_params model_params = llama_model_default_params();
 #ifdef GGML_USE_METAL
-    // Metal on macOS/iOS can handle more GPU layers
-    model_params.n_gpu_layers = std::min(ngl_, 100);
+    // On Apple Silicon we use the Metal backend. While the unified memory pool is
+    // large, the per-command-buffer memory available to the GPU is noticeably
+    // lower than on discrete GPUs.  Trying to off-load the full model (all 32
+    // layers for an 8B model) regularly causes `command buffer … out of memory`
+    // errors on machines such as the Mac mini M4.
+
+    // Allow the user to override the number of GPU layers through the
+    // environment variable `LLAMA_METAL_GPU_LAYERS`.  If it is present and
+    // parses to a non-negative integer, use that value *exactly*.
+    const char *env_ngl = std::getenv("LLAMA_METAL_GPU_LAYERS");
+    bool env_valid = false;
+    if (env_ngl) {
+        int env_val = std::atoi(env_ngl);
+        if (env_val >= 0) {
+            model_params.n_gpu_layers = env_val;
+            env_valid = true;
+            LOG_I("[Metal] n_gpu_layers overridden by env → " << env_val);
+        }
+    }
+
+    // If the env var wasn't provided, or contained an invalid value, apply a
+    // memory-based heuristic.
+    if (!env_valid) {
+        // Heuristic: cap the number of GPU layers based on the amount of
+        // physical memory.  The unified memory size is an upper bound – we use
+        // conservative limits to keep peak GPU working-set under ~6 GiB which
+        // has proven stable on 8-10 GiB GPUs.
+
+        size_t mem_bytes = 0;
+#ifdef __APPLE__
+        size_t len = sizeof(mem_bytes);
+        sysctlbyname("hw.memsize", &mem_bytes, &len, nullptr, 0);
+#endif
+
+        size_t mem_gb = mem_bytes / (1024ULL * 1024ULL * 1024ULL);
+
+        int max_layers = 0;
+        if (mem_gb >= 32) {
+            max_layers = 32; // Plenty of memory – allow full offload
+        } else if (mem_gb >= 24) {
+            max_layers = 24;
+        } else if (mem_gb >= 16) {
+            max_layers = 16;
+        } else if (mem_gb >= 12) {
+            max_layers = 12;
+        } else if (mem_gb >= 8) {
+            max_layers = 8;
+        } else {
+            max_layers = 0; // fall back to CPU-only if very low memory
+        }
+
+        model_params.n_gpu_layers = std::min(ngl_, max_layers);
+        LOG_I("[Metal] hw.memsize=" << mem_gb << " GiB, limiting GPU layers to " << model_params.n_gpu_layers);
+    }
 #elif defined(GGML_USE_CUDA)
     // CUDA on Linux - dynamically detect available memory
     size_t free_mem, total_mem;
@@ -238,7 +295,15 @@ bool LlamaSimpleChat::InitializeContext() {
 
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = std::min(n_predict_, 2048);  // Reduce context size for RTX 3050
-    ctx_params.n_batch = 512;  // Allow larger batches (up to 512 tokens) so that image chunks can be
+    // Large batch sizes produce bigger compute graphs which may trigger
+    // `Insufficient Memory` errors on the Metal backend – especially on
+    // integrated GPUs.  Use a smaller, yet still efficient batch size when
+    // running on Metal.
+#ifdef GGML_USE_METAL
+    ctx_params.n_batch = 256;
+#else
+    ctx_params.n_batch = 512;  // Keep the original value for other back-ends
+#endif
     ctx_params.no_perf = false;
     ctx_params.n_threads = std::min((int)4, (int)std::thread::hardware_concurrency());
 
