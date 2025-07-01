@@ -294,15 +294,15 @@ bool LlamaSimpleChat::InitializeContext() {
     }
 
     llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx = std::min(n_predict_, 2048);  // Reduce context size for RTX 3050
-    // Large batch sizes produce bigger compute graphs which may trigger
-    // `Insufficient Memory` errors on the Metal backend – especially on
-    // integrated GPUs.  Use a smaller, yet still efficient batch size when
-    // running on Metal.
+    // Use a smaller context window on Metal to reduce memory traffic and speed
+    // up evaluation.  1k tokens is more than enough for a single image + prompt
+    // interaction and halves KV-cache bandwidth compared to 2k.
 #ifdef GGML_USE_METAL
+    ctx_params.n_ctx = std::min(n_predict_, 1024);
     ctx_params.n_batch = 256;
 #else
-    ctx_params.n_batch = 512;  // Keep the original value for other back-ends
+    ctx_params.n_ctx = std::min(n_predict_, 2048);  // Default for other back-ends
+    ctx_params.n_batch = 512;
 #endif
     ctx_params.no_perf = false;
     // Use as many physical cores as are available on the machine instead of
@@ -797,10 +797,10 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
     std::string recent_text;
     continue_ = true;
 
-    const int max_response_tokens = 100;
+    const int max_response_tokens = 64;
     int generated_tokens = 0;
     int repetition_count = 0;
-    const int min_gen_tokens = 20;
+    const int min_gen_tokens = 10;
 
     while (continue_ && generated_tokens < max_response_tokens) {
         if (!smpl_ || !ctx_) {
