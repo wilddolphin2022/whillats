@@ -577,8 +577,7 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         }
 
         if (isCompleteSentence(current_phrase)) {
-            // Interim chunk – mark as non-final so the caller treats it as streaming
-            callback.OnResponseComplete(false, current_phrase.c_str());
+            callback.OnResponseComplete(true, current_phrase.c_str());
             LOG_I("Llama says: '" << current_phrase << "' in "
                   << std::chrono::duration_cast<std::chrono::milliseconds>(
                          std::chrono::steady_clock::now() - _lastResponseStart).count()
@@ -598,13 +597,9 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     }
 
     if (!current_phrase.empty()) {
-        // Treat the tail as interim as well (it may or may not be a full sentence)
         response += current_phrase;
-        callback.OnResponseComplete(false, current_phrase.c_str());
+        callback.OnResponseComplete(true, current_phrase.c_str());
     }
-
-    // Signal that generation is finished; no extra text to avoid duplicating
-    callback.OnResponseComplete(true, "");
 
     std::string full_response = clean_response(response);
     auto t0 = std::chrono::steady_clock::now();
@@ -869,7 +864,7 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
         }
 
         if (isCompleteSentence(current_phrase)) {
-            callback.OnResponseComplete(false, current_phrase.c_str());
+            callback.OnResponseComplete(true, current_phrase.c_str());
             LOG_V("Partial image description: " << current_phrase);
             response += current_phrase;
             current_phrase.clear();
@@ -885,14 +880,10 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
         generated_tokens++;
     }
 
-    // Flush any remaining phrase
     if (!current_phrase.empty()) {
         response += current_phrase;
-        callback.OnResponseComplete(false, current_phrase.c_str());
+        callback.OnResponseComplete(true, current_phrase.c_str());
     }
-
-    // Notify completion
-    callback.OnResponseComplete(true, "");
 
     std::string full_response = clean_response(response);
     auto t0 = std::chrono::steady_clock::now();
