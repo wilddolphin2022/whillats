@@ -596,16 +596,27 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         generated_tokens++;
     }
 
-    if (!current_phrase.empty() && isCompleteSentence(current_phrase)) {
-        callback.OnResponseComplete(true, current_phrase.c_str());
+    if (!current_phrase.empty()) {
+        bool complete = isCompleteSentence(current_phrase);
         response += current_phrase;
-        LOG_I("Llama says: '" << current_phrase << "' in "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(
-                     std::chrono::steady_clock::now() - _lastResponseStart).count()
-              << " ms");
+        callback.OnResponseComplete(complete, current_phrase.c_str());
     }
 
-    return response;
+    std::string full_response = clean_response(response);
+    if (!full_response.empty()) {
+        callback.OnResponseComplete(true, full_response.c_str());
+    } else if (!response.empty()) {
+        callback.OnResponseComplete(false, response.c_str());
+    } else {
+        callback.OnResponseComplete(false, "");
+    }
+    auto t0 = std::chrono::steady_clock::now();
+    LOG_I("Image+answer in "
+          << std::chrono::duration_cast<std::chrono::milliseconds>(
+                 std::chrono::steady_clock::now()-t0).count()
+          << " ms");
+
+    return full_response;
 }
 
 std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& prompt, WhillatsSetResponseCallback callback) {
@@ -878,14 +889,17 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
     }
 
     // Flush any remaining phrase
-    if (!current_phrase.empty() && isCompleteSentence(current_phrase)) {
+    if (!current_phrase.empty()) {
+        bool complete = isCompleteSentence(current_phrase);
         response += current_phrase;
-        callback.OnResponseComplete(true, current_phrase.c_str());
+        callback.OnResponseComplete(complete, current_phrase.c_str());
     }
 
     std::string full_response = clean_response(response);
     if (!full_response.empty()) {
         callback.OnResponseComplete(true, full_response.c_str());
+    } else if (!response.empty()) {
+        callback.OnResponseComplete(false, response.c_str());
     } else {
         callback.OnResponseComplete(false, "");
     }
@@ -1153,6 +1167,12 @@ void LlamaDeviceBase::askLlama(const char *prompt)
     
     std::unique_lock<std::mutex> lock(_queueMutex);
     
+    // Cancel any requests that are still waiting so the new one pre-empts them.
+    if (!_requestQueue.empty()) {
+        LOG_V("Clearing " << _requestQueue.size() << " pending request(s) from the queue");
+        _requestQueue.clear();
+    }
+
     if (recentImage) {
         LOG_I("Asking llama with recent image: " << prompt);
         _requestQueue.emplace_back(Request{std::string(prompt), true, recentImage});
@@ -1176,6 +1196,13 @@ void LlamaDeviceBase::askWithImage(const char *prompt, const YUVData& yuv) {
     }
     
     std::unique_lock<std::mutex> lock(_queueMutex);
+    
+    // Cancel any requests that are still waiting so the new one pre-empts them.
+    if (!_requestQueue.empty()) {
+        LOG_V("Clearing " << _requestQueue.size() << " pending request(s) from the queue");
+        _requestQueue.clear();
+    }
+
     LOG_I("Asking llama with image: " << prompt);
     YUVData copy;
     copy.width   = yuv.width;
