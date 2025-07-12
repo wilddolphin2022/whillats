@@ -76,6 +76,9 @@ private:
     std::thread _processingThread;
     bool _running;
 
+    // Guards _processingThread and _running to prevent races in start/stop
+    mutable std::mutex _threadMutex;
+
     struct {
         float noise_level = 0.001f;
     } noise_profile;

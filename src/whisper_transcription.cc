@@ -266,25 +266,54 @@ bool WhisperTranscriber::start() {
         return false;
     }
 
-    if (!_running) {
-        _running = true;
-        _processingThread = std::thread([this] {
-            while (_running && RunProcessingThread()) {
-            }
-        });
+    std::lock_guard<std::mutex> lock(_threadMutex);
+
+    if (_running) {
+        return true; // already running
     }
+
+    // Ensure any previous thread is cleaned up
+    if (_processingThread.joinable()) {
+        if (std::this_thread::get_id() == _processingThread.get_id()) {
+            LOG_V("start() called from inside previous processing thread – detaching");
+            _processingThread.detach();
+        } else {
+            _processingThread.join();
+        }
+        _processingThread = std::thread();
+    }
+
+    _running = true;
+    _processingThread = std::thread([this] {
+        while (_running && RunProcessingThread()) {
+        }
+    });
 
     return _running;
 }
 
 void WhisperTranscriber::stop() {
-    if (_running) {
-        _running = false;
-        if (_processingThread.joinable()) {
+    std::lock_guard<std::mutex> lock(_threadMutex);
+
+    if (!_running) {
+        return;
+    }
+
+    _running = false;
+
+    if (_processingThread.joinable()) {
+        if (std::this_thread::get_id() == _processingThread.get_id()) {
+            LOG_V("stop() called from processing thread – detaching instead of joining");
+            _processingThread.detach();
+        } else {
             _processingThread.join();
         }
-        ProcessRemainingAudio();
     }
+
+    // Reset thread handle for safe restart later
+    _processingThread = std::thread();
+
+    ProcessRemainingAudio();
 }
 
 bool WhisperTranscriber::RunProcessingThread() {

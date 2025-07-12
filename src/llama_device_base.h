@@ -68,6 +68,8 @@ public:
 
 private:
     bool _running;
+    std::atomic<bool> _destructing_ {false};
+
     std::thread _processingThread;
     std::string _model_path;
     std::string _mmproj_path;

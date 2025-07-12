@@ -954,7 +954,12 @@ LlamaDeviceBase::LlamaDeviceBase(
           << ", Image retention: " << _imageRetentionMs << "ms");
 }
 
-LlamaDeviceBase::~LlamaDeviceBase() { stop(); }
+LlamaDeviceBase::~LlamaDeviceBase() {
+    if (_destructing_.exchange(true)) {
+       return;
+    }
+    stop();
+}
 
 void LlamaDeviceBase::receiveVideoFrame(const YUVData& yuv) {
     uint64_t hash = fnv1a_hash_yuv(yuv);
@@ -1232,21 +1237,33 @@ bool LlamaDeviceBase::start() {
 
 void LlamaDeviceBase::stop()
 {
-    if (_running)
-    {
-        _running = false;
-        _queueCondition.notify_all(); // Wake up the processing thread
-        if (_processingThread.joinable())
-        {
+    // Ensure only one thread performs shutdown logic at a time.
+    static std::mutex stop_mutex;
+    std::lock_guard<std::mutex> stop_lock(stop_mutex);
+
+    if (!_running) {
+        return;  // already stopped – idempotent
+    }
+
+    _running = false;
+    _queueCondition.notify_all();  // wake worker so it can exit
+
+    if (_processingThread.joinable()) {
+        if (std::this_thread::get_id() == _processingThread.get_id()) {
+            // We are *inside* the worker thread – we cannot join ourselves.
+            // Simply return; the thread will fall out of its loop and finish
+            // after this call returns.
+            LOG_V("stop() invoked from inside processing thread – not joining");
+        } else {
+            LOG_V("stop() joining processing thread");
             _processingThread.join();
         }
-        
-        // Clear image queue
-        {
-            std::unique_lock<std::mutex> lock(_imageMutex);
-            _imageQueue.clear();
-            LOG_V("Cleared image queue during shutdown");
-        }
+    }
+
+    // Clear any pending data once the thread is done.
+    {
+        std::unique_lock<std::mutex> lock(_imageMutex);
+        _imageQueue.clear();
     }
 }
 
