@@ -12,6 +12,7 @@
 
 #include "whisper_transcription.h"
 #include "whisper_helpers.h"
+#include "whillats_utils.h"
 
 #include <cstring>
 #include <algorithm>
@@ -21,11 +22,14 @@
 
 #include <whisper.h>
 
-WhisperTranscriber::WhisperTranscriber(const char* modelPath, WhillatsSetResponseCallback callback)
+WhisperTranscriber::WhisperTranscriber(const char* modelPath, 
+    WhillatsSetResponseCallback callback,
+    WhillatsSetLanguageCallback languageCallback)
     : _audioBuffer(std::make_unique<AudioRingBuffer<float>>(WHISPER_SAMPLE_RATE * 60)),
       _ctx(nullptr),
       _state(nullptr),
       _responseCallback(callback),
+      _languageCallback(languageCallback),
       _segmentComplete(false),
       _nPast(0),
       _maxContext(224),
@@ -70,7 +74,7 @@ bool WhisperTranscriber::InitializeWhisperModel(const std::string& modelPath) {
     return true;
 }
 
-void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSizeInBytes) {
+void WhisperTranscriber::processAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSizeInBytes) {
     // Assuming kPlayoutBufferSizeInBytes is the size in BYTES
     // and the data is 16-bit signed PCM, little-endian.
     if(kPlayoutBufferSizeInBytes == 0) {
@@ -99,9 +103,9 @@ void WhisperTranscriber::ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlay
     }
 
     // Ensure normalization is correct, clip if necessary (though ideally shouldn't be needed if input is proper 16-bit PCM)
-    // for (size_t i = 0; i < numSamples; ++i) {
-    //     samples[i] = std::max(-1.0f, std::min(1.0f, samples[i]));
-    // }
+    for (size_t i = 0; i < numSamples; ++i) {
+        samples[i] = std::max(-1.0f, std::min(1.0f, samples[i]));
+    }
 
     if (!_audioBuffer->write(samples.data(), samples.size())) {
         LOG_W("Failed to write " << samples.size() << " samples to audio buffer");
@@ -144,6 +148,8 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     wparams.temperature = 0.8f;
     wparams.no_speech_thold = 0.4f;
     wparams.logprob_thold = -1.0f;
+    wparams.language = "auto";
+    wparams.detect_language = false;
 
     {
         std::lock_guard<std::mutex> lock(_state_mutex);
@@ -194,6 +200,17 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     } else {
         LOG_V("No tokens decoded");
     }
+
+    // After processing, retrieve and log the detected language
+    int lang_id = whisper_full_lang_id_from_state(_state);
+    const char* detected_lang = whisper_lang_str(lang_id);
+    LOG_I("Auto-detected language by whisper_full_with_state: " << detected_lang);
+    if(_language != detected_lang) {
+        LOG_I("Detected language mismatch, updating from " << _language << " to " << detected_lang);
+        _language = detected_lang;
+        _languageCallback.OnLanguageDetected(true, detected_lang);
+    }
+
     return true;
 }
 
@@ -249,25 +266,54 @@ bool WhisperTranscriber::start() {
         return false;
     }
 
-    if (!_running) {
-        _running = true;
-        _processingThread = std::thread([this] {
-            while (_running && RunProcessingThread()) {
-            }
-        });
+    std::lock_guard<std::mutex> lock(_threadMutex);
+
+    if (_running) {
+        return true; // already running
     }
+
+    // Ensure any previous thread is cleaned up
+    if (_processingThread.joinable()) {
+        if (std::this_thread::get_id() == _processingThread.get_id()) {
+            LOG_V("start() called from inside previous processing thread – detaching");
+            _processingThread.detach();
+        } else {
+            _processingThread.join();
+        }
+        _processingThread = std::thread();
+    }
+
+    _running = true;
+    _processingThread = std::thread([this] {
+        while (_running && RunProcessingThread()) {
+        }
+    });
 
     return _running;
 }
 
 void WhisperTranscriber::stop() {
-    if (_running) {
-        _running = false;
-        if (_processingThread.joinable()) {
+    std::lock_guard<std::mutex> lock(_threadMutex);
+
+    if (!_running) {
+        return;
+    }
+
+    _running = false;
+
+    if (_processingThread.joinable()) {
+        if (std::this_thread::get_id() == _processingThread.get_id()) {
+            LOG_V("stop() called from processing thread – detaching instead of joining");
+            _processingThread.detach();
+        } else {
             _processingThread.join();
         }
-        ProcessRemainingAudio();
     }
+
+    // Reset thread handle for safe restart later
+    _processingThread = std::thread();
+
+    ProcessRemainingAudio();
 }
 
 bool WhisperTranscriber::RunProcessingThread() {
@@ -276,7 +322,7 @@ bool WhisperTranscriber::RunProcessingThread() {
         if (_audioBuffer->availableToRead() >= kMinPhraseSamples) {
             _audioBuffer->read(chunk.data(), kMinPhraseSamples);
             if (kDebug) {LOG_V("Read chunk size: " << kMinPhraseSamples << " samples. Buffer remaining: " << _audioBuffer->availableToRead());}
-            if (vad_simple(chunk, WHISPER_SAMPLE_RATE, 600, 0.75f, 50.0f, true)) {
+            if (vad_simple(chunk, WHISPER_SAMPLE_RATE, 600, kVADThreshold, 50.0f, true)) {
                 TranscribeAudioNonBlocking(chunk);
             }
         } else {

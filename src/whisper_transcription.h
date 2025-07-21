@@ -1,3 +1,15 @@
+/*
+ *  (c) 2025, wilddolphin2022 
+ *  For WebRTCsays.ai project
+ *  https://github.com/wilddolphin2022
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
 #ifndef WHISPER_TRANSCRIPTION_H
 #define WHISPER_TRANSCRIPTION_H
 
@@ -15,12 +27,22 @@
 
 class WhisperTranscriber {
 public:
-    WhisperTranscriber(const char* modelPath, WhillatsSetResponseCallback callback);
+    WhisperTranscriber(const char* modelPath, 
+        WhillatsSetResponseCallback callback,
+        WhillatsSetLanguageCallback languageCallback);
     ~WhisperTranscriber();
 
-    void ProcessAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSize);
     bool start();
     void stop();
+
+    void processAudioBuffer(uint8_t* playoutBuffer, size_t kPlayoutBufferSize);
+
+    void setLanguage(const std::string& language) { _language = language; }
+    void setDetectLanguage(bool detectLanguage) { _detectLanguage = detectLanguage; }
+    std::string getLanguage() { return _language; }
+
+    void setVADThreshold(float threshold) { kVADThreshold = threshold; }
+    float getVADThreshold() { return kVADThreshold; }
 
 private:
     bool InitializeWhisperModel(const std::string& modelPath);
@@ -40,9 +62,12 @@ private:
     whisper_state* _state;
     std::mutex _state_mutex;
     WhillatsSetResponseCallback _responseCallback;
+    WhillatsSetLanguageCallback _languageCallback;
     std::string _fullTranscription; // Accumulate text for current segment
     bool _segmentComplete;          // Flag to reset transcription
     std::string _model_path;
+    std::string _language = "auto";
+    bool _detectLanguage = false;
 
     std::vector<whisper_token> _pastTokens;
     int _nPast = 0;
@@ -51,14 +76,20 @@ private:
     std::thread _processingThread;
     bool _running;
 
+    // Guards _processingThread and _running to prevent races in start/stop
+    mutable std::mutex _threadMutex;
+
     struct {
         float noise_level = 0.001f;
     } noise_profile;
+
+    float kVADThreshold = 0.75;
 
     static const size_t kMinPhraseSamples = 32000;  // 200ms at 16kHz
     static const size_t kMaxPhraseSamples = 64000; // 1s at 16kHz
 
     static const size_t kRingBufferSizeIncrement = 60 * WHISPER_SAMPLE_RATE; 
+
 
     static const bool kDebug = false;
 };

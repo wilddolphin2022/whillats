@@ -71,10 +71,11 @@ private:
 #define ENABLE_LOGGING 1
 
 #if ENABLE_LOGGING
-    #define LOG_V(...) do { if (g_currentLogLevel <= LogLevel::VERBOSE) { LogMessage("VERBOSE", __FILE__, __LINE__).stream() << __VA_ARGS__ << std::endl; } } while(0)
-    #define LOG_I(...) do { if (g_currentLogLevel <= LogLevel::INFO) { LogMessage("INFO", __FILE__, __LINE__).stream() << __VA_ARGS__ << std::endl; } } while(0)
-    #define LOG_W(...) do { if (g_currentLogLevel <= LogLevel::WARNING) { LogMessage("WARNING", __FILE__, __LINE__).stream() << __VA_ARGS__ << std::endl; } } while(0)
-    #define LOG_E(...) do { if (g_currentLogLevel <= LogLevel::ERROR) { LogMessage("ERROR", __FILE__, __LINE__).stream() << __VA_ARGS__ << std::endl; } } while(0)
+    #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+    #define LOG_V(...) do { if (g_currentLogLevel <= LogLevel::VERBOSE) { LogMessage("VERBOSE", __FILENAME__, __LINE__).stream() << __VA_ARGS__ << std::endl; } } while(0)
+    #define LOG_I(...) do { if (g_currentLogLevel <= LogLevel::INFO) { LogMessage("INFO", __FILENAME__, __LINE__).stream() << __VA_ARGS__ << std::endl; } } while(0)
+    #define LOG_W(...) do { if (g_currentLogLevel <= LogLevel::WARNING) { LogMessage("WARNING", __FILENAME__, __LINE__).stream() << __VA_ARGS__ << std::endl; } } while(0)
+    #define LOG_E(...) do { if (g_currentLogLevel <= LogLevel::ERROR) { LogMessage("ERROR", __FILENAME__, __LINE__).stream() << __VA_ARGS__ << std::endl; } } while(0)
 #else
     #define LOG_V(...) ((void)0)
     #define LOG_I(...) ((void)0)

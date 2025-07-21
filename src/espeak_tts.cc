@@ -12,6 +12,7 @@
 
 #include <thread>
 #include <cstring>
+#include <cstdlib>
 
 #include "whillats.h"
 #include "espeak_tts.h"
@@ -28,7 +29,17 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
       _audioBuffer(new AudioRingBuffer<uint16_t>(kRingBufferSizeIncrement)) {   
     espeak_AUDIO_OUTPUT output = AUDIO_OUTPUT_SYNCHRONOUS;
     int Buflength = 500;
-    const char* path = NULL;
+    
+    // Set espeak data path from environment variable
+    const char* path = nullptr;
+    const char* env_path = getenv("ESPEAK_DATA_PATH");
+    if (env_path) {
+        path = env_path;
+        LOG_I("Using espeak data path from environment: " << path);
+    } else {
+        LOG_W("No espeak data path defined in environment, using default");
+    }
+    
     int Options = 0;
     char Voice[] = {"English"};
 
@@ -43,22 +54,34 @@ ESpeakTTS::ESpeakTTS(WhillatsSetAudioCallback callback)
     memset(&voice, 0, sizeof(espeak_VOICE));
     voice.languages = langNativeString;
     voice.name = "US";
-    voice.variant = 1;
+    voice.variant = 5;
     voice.gender = 1;
     espeak_SetVoiceByProperties(&voice);
 
     espeak_SetParameter(espeakRATE, 180, 0);
-    espeak_SetParameter(espeakVOLUME, 75, 0);
-    espeak_SetParameter(espeakPITCH, 150, 0);
+    espeak_SetParameter(espeakVOLUME, 80, 0);
+    espeak_SetParameter(espeakPITCH, 100, 0);
     espeak_SetParameter(espeakRANGE, 100, 0);
     espeak_SetParameter((espeak_PARAMETER)11, 0, 0);
 
     espeak_SetSynthCallback(&ESpeakTTS::internalSynthCallback);
 }
 
-void ESpeakTTS::synthesize(const char* text) {
+void ESpeakTTS::synthesize(const char* text, const char* language) {
     if (!text) return;
+    std::string lang = std::string(language);
     
+    // Set voice based on language
+    if (lang == "en" || lang == "en-US") {
+        espeak_SetVoiceByName("English");
+    } else if (lang == "es") {
+        espeak_SetVoiceByName("Spanish");
+    } else if (lang == "ru") {
+        espeak_SetVoiceByName("Russian");
+    } else {
+        espeak_SetVoiceByName("English");  // Default to English
+    }
+
     // Clear output buffer and ring buffer
     _buffer.clear();
     _audioBuffer->clear();  // Clear ring buffer before new synthesis
@@ -158,11 +181,11 @@ void ESpeakTTS::stop() {
     }
 }
 
-void ESpeakTTS::queueText(const std::string& text) {
+void ESpeakTTS::queueText(const std::string& text, const std::string& language) {
     if (!text.empty()) {
         {
             std::lock_guard<std::mutex> lock(_queueMutex);
-            _textQueue.push(text);
+            _textQueue.push(std::make_pair(text, language));
         }
         _queueCondition.notify_one();
     }
@@ -170,6 +193,7 @@ void ESpeakTTS::queueText(const std::string& text) {
 
 bool ESpeakTTS::RunProcessingThread() {
     std::string textToSynth;
+    std::string language;
     bool shouldSynth = false;
 
     {
@@ -180,7 +204,8 @@ bool ESpeakTTS::RunProcessingThread() {
             if (!_running) return false;
             
             if (!_textQueue.empty()) {
-                textToSynth = _textQueue.front();
+                textToSynth = _textQueue.front().first;
+                language = _textQueue.front().second;
                 _textQueue.pop();
                 shouldSynth = true;
             }
@@ -192,7 +217,7 @@ bool ESpeakTTS::RunProcessingThread() {
         _buffer.clear();
         
         // Synthesize the text
-        synthesize(textToSynth.c_str());
+        synthesize(textToSynth.c_str(), language.c_str());
         
         // Only send callback if we have data
         if (!_buffer.empty()) {
@@ -201,6 +226,9 @@ bool ESpeakTTS::RunProcessingThread() {
         } else {
             LOG_W("No audio data generated for text: " << textToSynth);
         }
+        
+        // Signal synthesis completion
+        _callback.OnSynthesisComplete();
     }
 
     return true;

@@ -22,6 +22,9 @@ struct Options {
     std::string help_string;
     std::string whisper_model;
     std::string llama_model;
+    std::string llama_mmproj;
+    std::string test_image1;
+    std::string test_image2;
 };
 
 // Function to parse command line string to above options

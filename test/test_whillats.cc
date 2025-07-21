@@ -12,10 +12,15 @@
 
 #include <iostream>
 #include <vector>
+#include <cstdlib>
+#include <string>
+#include <unistd.h>
+#include <sys/stat.h>
 #include "whillats.h"
 
 #include "test_utils.h"
 #include "whisper_helpers.h"
+#include "whillats_utils.h"
 
 // Set log level
 void setLogLevel(LogLevel level)
@@ -27,15 +32,23 @@ std::vector<uint16_t> audio_buffer;
 bool tts_done = false;
 bool whisper_done = false;
 bool llama_done = false;
+bool language_changed = false;
+
+static size_t bufferCount = 0;
 
 void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data) {
-    // Handle audio buffer here
-    LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
-    audio_buffer = std::vector<uint16_t>(buffer, buffer + buffer_size);
-    if(success) {
-      writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
+    // Only handle actual audio data
+    if (success) 
+    {
+        LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
+        if(buffer && buffer_size > 0) {
+            audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
+        }
+    } else {
+        // Signal end of synthesis
+        LOG_I("TTS done");
+        tts_done = true;
     }
-    tts_done = true; 
 }
 
 void whisperResponseCallback(bool success, const char* response, void* user_data) {
@@ -50,8 +63,50 @@ void llamaResponseCallback(bool success, const char* response, void* user_data) 
     llama_done = true;   
 }
 
+void languageChangedCallback(bool success, const char* language, void* user_data) {
+    // Handle response here
+    std::cout << "Language changed via callback: " << language << std::endl;
+    language_changed = true;
+}
+
+// Auto-detect and set espeak data path if not already set
+void setupEspeakDataPath() {
+    if (getenv("ESPEAK_DATA_PATH")) {
+        return; // Already set
+    }
+    
+    // Try to find espeak-ng-data directory relative to executable
+    char exe_path[1024];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len != -1) {
+        exe_path[len] = '\0';
+        
+        // Find the last '/' to get directory
+        std::string bin_dir(exe_path);
+        size_t last_slash = bin_dir.find_last_of('/');
+        if (last_slash != std::string::npos) {
+            bin_dir = bin_dir.substr(0, last_slash);
+            std::string data_path = bin_dir + "/espeak-ng-data";
+            
+            // Check if directory exists
+            struct stat st;
+            if (stat(data_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+                setenv("ESPEAK_DATA_PATH", data_path.c_str(), 1);
+                LOG_I("Auto-detected espeak data path: " << data_path);
+            } else {
+                LOG_W("Could not find espeak-ng-data directory at: " << data_path);
+            }
+        }
+    } else {
+        LOG_W("Could not auto-detect espeak data path. Please set ESPEAK_DATA_PATH environment variable.");
+    }
+}
+
 int main(int argc, char *argv[])
 {
+  // Setup espeak data path first
+  setupEspeakDataPath();
+  
   Options opts = parseOptions(argc, argv);
 
   if (argc == 1 || opts.help)
@@ -67,6 +122,8 @@ int main(int argc, char *argv[])
   setLogLevel(LogLevel::VERBOSE);
 
   if (opts.tts) {
+    // Clear buffer before starting TTS
+    audio_buffer.clear();
     WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
     WhillatsTTS tts(callback); 
       
@@ -75,27 +132,51 @@ int main(int argc, char *argv[])
       const char *test_text = "Hello, this is a test of text to speech synthesis.";
       std::cout << "Testing TTS with text: " << test_text << std::endl;
 
-      tts.queueText(test_text);
-      while (!tts_done)
-      {
+      // Queue and wait for first utterance
+      tts.queueText(test_text, "en-US");
+      // Fallback: poll until completion
+      while (!tts_done) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
 
+      // Write accumulated audio for first utterance
+      writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
+      // Prepare for next utterance: clear buffer and flag
       tts_done = false;
+      audio_buffer.clear();
 
       const char *long_test_text = "Hello, this is a test of text to speech synthesis. "
                                   "This is a longer test to ensure we have enough audio data. "
                                   "We are testing the whisper transcription system. "
-                                  "The quick brown fox jumps over the lazy dog.";
+                                  "The quick brown fox jumps over the lazy dog";
+                                  
+      const char *spanish_test_text = "¿Cómo estás? ¿cómo te llamas?";
+      const char *russian_test_text = "У вас есть меню на английском?";
+      // Queue and wait for long English utterance
       std::cout << "Testing TTS with text: " << long_test_text << std::endl;
-      
-      tts.queueText(long_test_text);
-
-      while (!tts_done)
-      {
+      tts.queueText(long_test_text, "en");
+      while (!tts_done) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
-
+      tts_done = false;
+      // Queue and wait for Spanish utterance
+      std::cout << "Testing TTS with text: " << spanish_test_text << std::endl;
+      tts.queueText(spanish_test_text, "es");
+      while (!tts_done) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+      tts_done = false;
+      // Queue and wait for Russian utterance
+      std::cout << "Testing TTS with text: " << russian_test_text << std::endl;
+      tts.queueText(russian_test_text, "ru");
+      while (!tts_done) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+      
+      tts_done = false;
+      // Write accumulated audio for all utterances
+      writeWavFile("synthesized_audio_long.wav", audio_buffer, WhillatsTTS::getSampleRate());
+      // Stop TTS after all audio
       tts.stop();
     }
   }
@@ -103,7 +184,8 @@ int main(int argc, char *argv[])
   if (opts.whisper) {
     // Test WhisperTranscription
     WhillatsSetResponseCallback callback(whisperResponseCallback, nullptr);
-    WhillatsTranscriber whisper(opts.whisper_model.c_str(), callback);
+    WhillatsSetLanguageCallback language_callback(languageChangedCallback, nullptr);
+    WhillatsTranscriber whisper(opts.whisper_model.c_str(), callback, language_callback);
 
     // Start the transcriber before processing audio
     if (!whisper.start()) 
@@ -156,20 +238,59 @@ int main(int argc, char *argv[])
   if (opts.llama) {
     //  Test LlamaDeviceBase
     WhillatsSetResponseCallback callback(llamaResponseCallback, nullptr);
-    WhillatsLlama llama(opts.llama_model.c_str(), callback);
+    WhillatsLlama llama(opts.llama_model.c_str(), opts.llama_mmproj.c_str(), callback);
 
     LOG_I("Initializing Llama with model: " << opts.llama_model);
     if (llama.start()) 
     {
+      if(!opts.test_image1.empty())
+      {
+        YUVData grey_yuv;
+        load_yuv(grey_yuv, opts.test_image1.c_str(), 300, 300);
 
-      std::string prompt = "What will be 2+2?";
+        llama.askWithYUVRaw("Describe the contents of the image in detail.", 
+                            grey_yuv.y.get(), grey_yuv.u.get(), grey_yuv.v.get(), 
+                            grey_yuv.width, grey_yuv.height, 
+                            grey_yuv.y_size, grey_yuv.uv_size);
+        
+        // Wait for the first image processing to complete
+        while (!llama_done)
+        {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+      llama_done = false;
+      }
+
+      if(!opts.test_image2.empty())
+      {
+        YUVData yuv;
+        load_yuv(yuv, opts.test_image2.c_str(), 1754, 1240);
+
+        //llama.setImage(*yuv);
+        llama.askWithYUVRaw("Describe the contents of the image in detail.", 
+                            yuv.y.get(), yuv.u.get(), yuv.v.get(), 
+                            yuv.width, yuv.height, 
+                            yuv.y_size, yuv.uv_size);
+        
+        // Wait for the second image processing to complete
+        while (!llama_done)
+        {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        llama_done = false;
+      }
+      
+      std::string prompt = "What is your name?";
       LOG_I("Testing Llama with prompt: " << prompt);
       llama.askLlama(prompt.c_str());
-
+      
+      // Wait for the text query response
       while (!llama_done)
       {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
+      llama_done = false;
+      
       llama.stop();
     }
     else
