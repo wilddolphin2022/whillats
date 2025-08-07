@@ -5,15 +5,15 @@ build:
 	cmake -B build -DGGML_METAL=ON
 
 debug: build
-	cmake --build build --config Debug
+	cmake --build build --config debug
 
 release:
-	cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=OFF
-	cmake --build build --config Release
+	cmake -B build -DCMAKE_BUILD_TYPE=release -DGGML_METAL=OFF
+	cmake --build build --config release
 
-# Default test target (uses Debug build)
+# Default test target (uses debug build)
 test: debug
-	@echo "Running Debug Test..."
+	@echo "Running debug est..."
 	@if [ -f ./build/bin/test_whillats ]; then \
 	    ./build/bin/test_whillats; \
 	else \
@@ -22,7 +22,7 @@ test: debug
 
 # Release test target
 test_release: release
-	@echo "Running Release Test..."
+	@echo "Running release test..."
 	@if [ -f ./build/bin/test_whillats ]; then \
 	    ./build/bin/test_whillats; \
 	else \
@@ -30,9 +30,9 @@ test_release: release
 	fi
 
 # Note: Example targets will only work if built on Linux
-# Default example target (uses Debug build)
+# Default example target (uses debug build)
 example: debug
-	@echo "Running Debug Example (Linux Only)..."
+	@echo "Running debug example (Linux Only)..."
 	@if [ -f ./build/bin/transceiver_yuv_pcm ]; then \
 	    ./build/bin/transceiver_yuv_pcm; \
 	else \
@@ -41,7 +41,7 @@ example: debug
 
 # Release example target
 example_release: release
-	@echo "Running Release Example (Linux Only)..."
+	@echo "Running release example (Linux Only)..."
 	@if [ -f ./build/bin/transceiver_yuv_pcm ]; then \
 	    ./build/bin/transceiver_yuv_pcm; \
 	else \
@@ -83,8 +83,8 @@ ios: deps-ios
 	      -DCMAKE_OSX_DEPLOYMENT_TARGET=$(IOS_DEPLOYMENT_TARGET) \
 	      -DCMAKE_TOOLCHAIN_FILE=$(IOS_TOOLCHAIN_FILE) \
 	      -DPLATFORM=$(IOS_PLATFORM)
-	@echo "Building iOS framework (Release)..."
-	cmake --build build-ios --config Release
+	@echo "Building iOS framework (release)..."
+	cmake --build build-ios --config release
 
 clean:
 	rm -rf build build-ios
