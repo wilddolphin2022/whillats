@@ -20,10 +20,10 @@ include(FetchContent)
 include(ExternalProject) # Needed for ExternalProject_Add
 
 # Configure outputs per-configuration using generator expressions
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/$<CONFIG>)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
-set(CMAKE_FRAMEWORK_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Frameworks/$<CONFIG>)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/$<LOWER_CASE:$<CONFIG>>)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<LOWER_CASE:$<CONFIG>>)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<LOWER_CASE:$<CONFIG>>)
+set(CMAKE_FRAMEWORK_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Frameworks/$<LOWER_CASE:$<CONFIG>>)
 
 # Additional compiler and linker flags
 set(CMAKE_CXX_STANDARD 14)
@@ -414,12 +414,12 @@ elseif(UNIX AND NOT APPLE)
     )
     target_link_directories(${PROJECT_NAME} PRIVATE
         /usr/lib/x86_64-linux-gnu
-        ${CMAKE_BINARY_DIR}/lib/Debug
+        ${CMAKE_BINARY_DIR}/lib/$<LOWER_CASE:$<CONFIG>>
     )
     target_link_options(${PROJECT_NAME} PRIVATE
         -Wl,--allow-shlib-undefined
         -Wl,-rpath,$ORIGIN
-        -Wl,-rpath,${CMAKE_BINARY_DIR}/lib/Debug
+        -Wl,-rpath,${CMAKE_BINARY_DIR}/lib/$<LOWER_CASE:$<CONFIG>>
     )
 endif()
 
@@ -462,14 +462,14 @@ target_link_libraries(synthesis
         "-framework AVFoundation"
 )
 set_target_properties(synthesis PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<LOWER_CASE:$<CONFIG>>
 )
 
 # Keep macOS RPATH settings
     # Ensure test executable loads libwhillats.dylib from ../lib and ../lib/<config>
     set_target_properties(test_whillats PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
-        INSTALL_RPATH "@loader_path/../../lib;@loader_path/../../lib/$<CONFIG>"
+        INSTALL_RPATH "@loader_path/../../lib;@loader_path/../../lib/$<LOWER_CASE:$<CONFIG>>"
     )
 endif()
 
