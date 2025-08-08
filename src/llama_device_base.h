@@ -41,12 +41,6 @@ typedef int32_t llama_token;
 
 class LlamaSimpleChat;
 
-<<<<<<< HEAD
-struct Request {
-    std::string              prompt;
-    bool                     withImage;
-    std::shared_ptr<YUVData> yuv;   // nullptr for text-only, deep-copied frame if withImage
-=======
 class LlamaSimpleChat {
 public:
   LlamaSimpleChat();
@@ -88,7 +82,12 @@ public:
 
   std::chrono::steady_clock::time_point _lastResponseStart;
   std::chrono::steady_clock::time_point _lastResponseEnd;
->>>>>>> 33f2ea7 (build port to ios)
+};
+
+struct Request {
+    std::string              prompt;
+    bool                     withImage;
+    std::shared_ptr<YUVData> yuv;   // nullptr for text-only, deep-copied frame if withImage
 };
 
 class LlamaDeviceBase {
