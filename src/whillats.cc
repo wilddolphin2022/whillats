@@ -41,7 +41,7 @@ class WhisperTranscriber {
 #include "llama_device_base.h"
 #include "whillats_utils.h"
 
-#if TTS_PLATFORMS
+#if !defined(__APPLE__)
 #include "espeak_tts.h"
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
@@ -96,7 +96,7 @@ void WhillatsTTS::enableSpeakerphone() {}
 
 void WhillatsTTS::disableSpeakerphone() {}
 
-#elif TARGET_OS_IOS
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
 #import "whillats_synth.h"
 // Delegate to Objective-C AVFoundation wrapper
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
@@ -133,7 +133,7 @@ void WhillatsTTS::disableSpeakerphone() {
     _wrapper->disableSpeakerphone();
 }
 
-#elif TARGET_OS_OSX
+#elif defined(__APPLE__) && TARGET_OS_OSX
 
 #include "synthesis.h"
 // Delegate to Synthesis class for process-based synthesis
@@ -167,6 +167,13 @@ void WhillatsTTS::disableSpeakerphone() {
     // No-op
 }
 #endif // TTS_PLATFORMS
+
+#if defined(__APPLE__)
+// Provide a default no-arg start() on Apple that forwards to start(bool)
+bool WhillatsTTS::start() {
+    return start(true);
+}
+#endif
 
 WhillatsTranscriber::WhillatsTranscriber(const char* model_path, 
     WhillatsSetResponseCallback callback,
@@ -206,11 +213,11 @@ void WhillatsTranscriber::setLanguage(const char* language) {
 
 WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback callback) 
     : _callback(callback),
-      _llama_device(std::make_unique<LlamaDeviceBase>(model_path, "", callback)) {}
+      _llama_device(std::make_unique<LlamaDeviceBase>(model_path, "", _callback)) {}
 
-WhillatsLlama::WhillatsLlama(const char* model_path, const char* /*mmproj_path*/, WhillatsSetResponseCallback callback)
+WhillatsLlama::WhillatsLlama(const char* model_path, const char* mmproj_path, WhillatsSetResponseCallback callback)
     : _callback(callback),
-      _llama_device(std::make_unique<LlamaDeviceBase>(model_path, callback)) {}
+      _llama_device(std::make_unique<LlamaDeviceBase>(model_path, mmproj_path, _callback)) {}
 
 WhillatsLlama::~WhillatsLlama() {}
 

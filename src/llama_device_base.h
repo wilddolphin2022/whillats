@@ -23,6 +23,7 @@
 #include <functional>
 #include <condition_variable>
 #include <deque>
+#include <set>
 #include <algorithm>
 #include <memory>
 #include <chrono>
@@ -52,13 +53,15 @@ public:
   LlamaSimpleChat(LlamaSimpleChat&&) = delete;
   LlamaSimpleChat& operator=(LlamaSimpleChat&&) = delete;
 
-  bool SetModelPath(const std::string& path);
+  // Unified setters
+  bool SetModelPaths(const std::string &path, const std::string &mmproj_path);
   bool SetNGL(int layers);
   bool SetContextSize(int size);
   void StopGeneration();
 
   bool Initialize();
   std::string generate(const std::string& request, WhillatsSetResponseCallback callback);
+  std::string generateFromImage(YUVData* yuv, const std::string& prompt, WhillatsSetResponseCallback callback);
 
   bool InitializeContext();
   void FreeContext();
@@ -66,22 +69,32 @@ public:
   bool LoadModel();
 
   std::string model_path_;
-  int ngl_ = 99; // Number of GPU layers to offload
-  int n_predict_ = 2048; // Number of tokens to predict
-  std::string prompt_;
+  std::string mmproj_path_;
+  int ngl_ = 10;
+  int n_predict_ = 4096;
+  std::string prompt_ = "You are a helpful assistant.";
 
   llama_model* model_ = nullptr;
   const llama_vocab* vocab_ = nullptr;
   llama_context* ctx_ = nullptr;
   llama_sampler* smpl_ = nullptr;
   
-  std::atomic<bool> continue_{true};
+  std::atomic<bool> continue_{false};
 
   bool isRepetitive(const std::string& text, size_t minPatternLength = 4);
-  bool hasConfirmationPattern(const std::string& text);
+  bool isCompleteSentence(const std::string &text);
 
   std::chrono::steady_clock::time_point _lastResponseStart;
   std::chrono::steady_clock::time_point _lastResponseEnd;
+
+  // Vision via mtmd
+  mtmd::context_ptr ctx_mtmd_;
+  void DetectStoppingTokens();
+  std::deque<llama_token> context_tokens_;
+  int n_past_ = 0;
+  std::set<llama_token> stopping_token_ids_;
+  std::vector<std::string> stopping_token_strings_;
+  bool ResetContextForImage();
 };
 
 struct Request {

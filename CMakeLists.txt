@@ -22,16 +22,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<LOWER_CASE:$<CONFIG
 # Make mtmd headers available
 include_directories(${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd)
 
-# Patch mtmd-audio.cpp template param if needed
-set(MTMD_AUDIO_CPP "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp")
-if(EXISTS ${MTMD_AUDIO_CPP})
-    file(READ ${MTMD_AUDIO_CPP} MTMD_AUDIO_SRC)
-    string(REPLACE "std::vector data(" "std::vector<float> data(" MTMD_AUDIO_FIXED "${MTMD_AUDIO_SRC}")
-    if(NOT "${MTMD_AUDIO_SRC}" STREQUAL "${MTMD_AUDIO_FIXED}")
-        file(WRITE ${MTMD_AUDIO_CPP} "${MTMD_AUDIO_FIXED}")
-        message(STATUS "Patched mtmd-audio.cpp to use std::vector<float>")
-    endif()
-endif()
+# (moved below llama fetch) patch mtmd-audio.cpp template param after llama.cpp is available
 
 # llama.cpp
 set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
@@ -45,6 +36,17 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(llama)
+
+# Patch mtmd-audio.cpp template param if needed (after llama is fetched)
+set(MTMD_AUDIO_CPP "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp")
+if(EXISTS ${MTMD_AUDIO_CPP})
+    file(READ ${MTMD_AUDIO_CPP} MTMD_AUDIO_SRC)
+    string(REPLACE "std::vector data(" "std::vector<float> data(" MTMD_AUDIO_FIXED "${MTMD_AUDIO_SRC}")
+    if(NOT "${MTMD_AUDIO_SRC}" STREQUAL "${MTMD_AUDIO_FIXED}")
+        file(WRITE ${MTMD_AUDIO_CPP} "${MTMD_AUDIO_FIXED}")
+        message(STATUS "Patched mtmd-audio.cpp to use std::vector<float>")
+    endif()
+endif()
 
 # whisper.cpp only for non-iOS
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -109,7 +111,14 @@ else()
         list(APPEND WHILLATS_SOURCES src/espeak_tts.cc)
     endif()
     if(APPLE)
-        list(APPEND WHILLATS_SOURCES src/whillats_synth.mm src/whillats_ios.mm)
+        list(APPEND WHILLATS_SOURCES src/whillats_synth.mm src/whillats_ios.mm src/synthesis.cc)
+        # Link mtmd sources on macOS for multimodal support
+        list(APPEND WHILLATS_SOURCES
+            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp
+            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
+            # ensure patched std::vector<float> line below is applied before compiling
+            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp
+            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp)
     endif()
 
     add_library(${PROJECT_NAME} SHARED ${WHILLATS_SOURCES})
@@ -117,7 +126,8 @@ else()
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/include
         ${THIRD_PARTY_DIR}/llama.cpp/include
-        ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd)
+        ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+        ${THIRD_PARTY_DIR}/llama.cpp/vendor)
     target_link_libraries(${PROJECT_NAME} PRIVATE llama)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         target_link_libraries(${PROJECT_NAME} PRIVATE whisper)

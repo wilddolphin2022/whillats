@@ -51,49 +51,7 @@ uint64_t fnv1a_hash_yuv(const YUVData &yuv) {
     return h;
 }
 
-class LlamaSimpleChat {
-public:
-    LlamaSimpleChat();
-    ~LlamaSimpleChat();
-    bool SetModelPaths(const std::string &path, const std::string &mmproj_path);
-    bool SetNGL(int layers);
-    bool SetContextSize(int size);
-    void StopGeneration();
-    bool Initialize();
-
-    std::string generate(const std::string &prompt, WhillatsSetResponseCallback callback);
-    std::string generateFromImage(YUVData* yuv, const std::string& prompt, WhillatsSetResponseCallback callback);
-
-    bool LoadModel();
-    bool InitializeContext();
-    void FreeContext();
-    bool ResetContextForImage();
-    bool isRepetitive(const std::string &text, size_t minPatternLength = 10);
-    bool isCompleteSentence(const std::string &text);
-
-    std::string model_path_;
-    std::string mmproj_path_;
-    int ngl_ = 10;  // Default GPU layers (will be capped per platform)
-    int n_predict_ = 4096;
-    std::string prompt_ = "You are a helpful assistant.";
-    bool continue_ = false;
-
-    llama_model *model_ = nullptr;
-    llama_context *ctx_ = nullptr;
-    llama_sampler *smpl_ = nullptr;
-    const llama_vocab *vocab_ = nullptr;
-    std::deque<llama_token> context_tokens_;
-    int n_past_ = 0;
-    std::set<llama_token> stopping_token_ids_;
-    std::vector<std::string> stopping_token_strings_;
-
-    mtmd::context_ptr ctx_mtmd_; // Correct member name
-
-    std::chrono::steady_clock::time_point _lastResponseStart;
-    std::chrono::steady_clock::time_point _lastResponseEnd;
-
-    void DetectStoppingTokens();
-};
+// Implementation of LlamaSimpleChat declared in llama_device_base.h
 
 LlamaSimpleChat::LlamaSimpleChat() = default;
 

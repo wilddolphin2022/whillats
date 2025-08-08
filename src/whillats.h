@@ -101,6 +101,11 @@ public:
         }
     }
 
+    // Backward compatibility shim
+    void OnLanguageDetected(bool success, const std::string& language) {
+        OnLanguageChanged(success, language.c_str());
+    }
+
 private:
     LanguageCallback callback_;
     void* user_data_;
@@ -116,16 +121,20 @@ class WHILLATS_API WhillatsTTS {
     void stop();
     void queueText(const char* text);
     void queueText(const char* text, const char* language);
+    void enableSpeakerphone();
+    void disableSpeakerphone();
 
     static int getSampleRate();
 
   private:
     WhillatsSetAudioCallback _callback;
-#if !defined(__APPLE__) || !TARGET_OS_IPHONE
-    std::unique_ptr<ESpeakTTS> _espeak_tts; 
+#if !defined(__APPLE__)
+    std::unique_ptr<ESpeakTTS> _espeak_tts;
 #endif
 #if defined(__APPLE__) && TARGET_OS_IPHONE
     std::unique_ptr<WhillatsSpeechSynthesizerWrapper> _wrapper;
+#elif defined(__APPLE__) && TARGET_OS_OSX
+    std::unique_ptr<Synthesis> _synth;
 #endif
 };
 
@@ -160,6 +169,16 @@ class WHILLATS_API WhillatsLlama {
     bool start();
     void stop();
     void askLlama(const char* prompt);
+    void askWithImageFile(const char* prompt, const char* image_file, int width, int height);
+    void askWithYUVRaw(
+        const char* prompt,
+        const uint8_t* y_plane,
+        const uint8_t* u_plane,
+        const uint8_t* v_plane,
+        int width,
+        int height,
+        size_t y_size,
+        size_t uv_size);
 
     // Accept a video frame for multimodal prompts (no-op on iOS)
     void receiveVideoFrame(const YUVData& yuv);
