@@ -7,6 +7,19 @@ else()
     project(whillats VERSION 1.0.0 LANGUAGES CXX C)
 endif()
 
+# Patch upstream mtmd-audio.cpp after fresh clone to fix missing template parameter
+set(MTMD_AUDIO_CPP "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp")
+if(EXISTS ${MTMD_AUDIO_CPP})
+    file(READ ${MTMD_AUDIO_CPP} MTMD_AUDIO_SRC)
+    set(MTMD_AUDIO_OLD "std::vector data(")
+    set(MTMD_AUDIO_NEW "std::vector<float> data(")
+    string(REPLACE "${MTMD_AUDIO_OLD}" "${MTMD_AUDIO_NEW}" MTMD_AUDIO_FIXED "${MTMD_AUDIO_SRC}")
+    if(NOT "${MTMD_AUDIO_SRC}" STREQUAL "${MTMD_AUDIO_FIXED}")
+        file(WRITE ${MTMD_AUDIO_CPP} "${MTMD_AUDIO_FIXED}")
+        message(STATUS "Patched mtmd-audio.cpp to use std::vector<float>")
+    endif()
+endif()
+
 # Configure Metal backend for ggml on macOS (enable for non-Release, disable for Release)
 if(APPLE)
     set(GGML_METAL ON CACHE BOOL "" FORCE)
@@ -76,22 +89,20 @@ endif()
 
 # --- Populate and Build Dependencies ---
 
-# llama.cpp (CMake)
-if(NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS") AND NOT (CMAKE_OSX_SYSROOT MATCHES ".*iPhoneOS.*"))
-    set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
-    set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    if(UNIX AND NOT APPLE) # Linux specific
-        if(GGML_CUDA)
-            set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
-        else()
-            set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
-        endif()
+# llama.cpp (CMake) - always fetch and make available (also for iOS)
+set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+if(UNIX AND NOT APPLE) # Linux specific
+    if(GGML_CUDA)
+        set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
     else()
         set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
     endif()
-    FetchContent_MakeAvailable(llama)
+else()
+    set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
 endif()
+FetchContent_MakeAvailable(llama)
 
 # whisper.cpp (CMake)
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -103,9 +114,18 @@ if(UNIX AND NOT APPLE) # Linux specific
 else()
     set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
 endif()
-# Disable Metal backend on macOS and iOS
-set(GGML_METAL OFF CACHE BOOL "Disable ggml Metal backend" FORCE)
 FetchContent_MakeAvailable(whisper)
+
+# Ensure ggml Metal sources build without ARC (they use manual retain/release)
+if(APPLE)
+    if(TARGET ggml-metal)
+        target_compile_options(ggml-metal PRIVATE "-fno-objc-arc")
+        set_source_files_properties(
+            ${THIRD_PARTY_DIR}/llama.cpp/ggml/src/ggml-metal/ggml-metal.m
+            PROPERTIES COMPILE_FLAGS "-fno-objc-arc"
+        )
+    endif()
+endif()
 
 # Build pcaudiolib and espeak-ng only on Linux (skip on macOS and iOS)
 if(UNIX AND NOT APPLE)
@@ -317,8 +337,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static llama build" FORCE)
     set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    # Build llama inline for iOS
-    add_subdirectory(${THIRD_PARTY_DIR}/llama.cpp ${CMAKE_BINARY_DIR}/_deps/llama-ios-build EXCLUDE_FROM_ALL)
+    # llama is already made available above via FetchContent for all platforms
     # Build mtmd from source (no FetchContent) as object and static library
     add_library(mtmd_obj OBJECT
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp"

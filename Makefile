@@ -69,9 +69,11 @@ deps-ios:
 	      -DCMAKE_OSX_DEPLOYMENT_TARGET=$(IOS_DEPLOYMENT_TARGET) \
 	      -DCMAKE_TOOLCHAIN_FILE=$(IOS_TOOLCHAIN_FILE) \
 	      -DPLATFORM=$(IOS_PLATFORM) || echo "Initial CMake configure complete (ignore potential plist/link errors)."
-	@echo "Building iOS dependencies (XCFrameworks)..."
-	@(cd third_party/llama.cpp && ./build-xcframework.sh)
-	@(cd third_party/whisper.cpp && ./build-xcframework.sh)
+	@# Patch upstream mtmd-audio.cpp if needed (fresh clone case)
+	@if [ -f third_party/llama.cpp/tools/mtmd/mtmd-audio.cpp ]; then \
+	  sed -i '' 's/std::vector data(\(filters.n_mel \* filters.n_fft, 0.0f\));/std::vector<float> data(\1);/' third_party/llama.cpp/tools/mtmd/mtmd-audio.cpp; \
+	fi
+	@echo "Skipping external XCFramework scripts; dependencies will be built via CMake targets."
 
 ios: deps-ios
 	@echo "--- Current directory for make: $(shell pwd) ---"
