@@ -13,6 +13,7 @@
 #ifndef WHILLATS_H
 #define WHILLATS_H
 
+<<<<<<< HEAD
 // Include TargetConditionals for TARGET_OS_IOS macro
 #if defined(__APPLE__)
     #include <TargetConditionals.h>
@@ -50,14 +51,24 @@
     #define WHILLATS_API WHILLATS_IMPORT
 #endif
 
+=======
+#include "whillats_export.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+>>>>>>> 33f2ea7 (build port to ios)
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
 #include <memory>
+<<<<<<< HEAD
 #include <thread>
 #include <mutex>
 #include <unistd.h>
+=======
+#include <string>
+>>>>>>> 33f2ea7 (build port to ios)
 
 // Change to C-style function pointer callbacks
 typedef void (*ResponseCallback)(bool success, const char* response, void* user_data);
@@ -123,6 +134,7 @@ private:
     void* user_data_;
 };
 
+<<<<<<< HEAD
 class WHILLATS_API WhillatsSetLanguageCallback {
 public:
     WhillatsSetLanguageCallback(ResponseCallback callback, void* user_data)
@@ -131,30 +143,73 @@ public:
     void OnLanguageDetected(bool success, const std::string& language) {
         if (callback_) {
             callback_(success, language.c_str(), user_data_);
+=======
+// Language change callback (success + language)
+typedef void (*LanguageCallback)(bool success, const char* language, void* user_data);
+
+class WHILLATS_API WhillatsSetLanguageCallback {
+public:
+    WhillatsSetLanguageCallback(LanguageCallback callback, void* user_data)
+        : callback_(callback), user_data_(user_data) {}
+
+    void OnLanguageChanged(bool success, const char* language) {
+        if (callback_) {
+            callback_(success, language, user_data_);
+>>>>>>> 33f2ea7 (build port to ios)
         }
     }
 
 private:
+<<<<<<< HEAD
     ResponseCallback callback_;
     void* user_data_;
 };
 
+=======
+    LanguageCallback callback_;
+    void* user_data_;
+};
+
+// Simple YUV frame container used by llama video ingest
+struct YUVData {
+    int width = 0;
+    int height = 0;
+    size_t y_size = 0;
+    size_t uv_size = 0;
+    std::unique_ptr<uint8_t[]> y;
+    std::unique_ptr<uint8_t[]> u;
+    std::unique_ptr<uint8_t[]> v;
+};
+
+class ESpeakTTS;
+class WhisperTranscriber;
+class LlamaDeviceBase;
+>>>>>>> 33f2ea7 (build port to ios)
 
 class WHILLATS_API WhillatsTTS {
   public:
     WhillatsTTS(WhillatsSetAudioCallback callback);
     ~WhillatsTTS();
 
+<<<<<<< HEAD
     bool start(bool enableProcessor = true);
     void stop();
     void queueText(const char* text, const char* language);
     void enableSpeakerphone();
     void disableSpeakerphone();
+=======
+    bool start();
+    bool start(bool withAudio);
+    void stop();
+    void queueText(const char* text);
+    void queueText(const char* text, const char* language);
+>>>>>>> 33f2ea7 (build port to ios)
 
     static int getSampleRate();
 
   private:
     WhillatsSetAudioCallback _callback;
+<<<<<<< HEAD
 #if TTS_PLATFORMS
     std::unique_ptr<ESpeakTTS> _espeak_tts;
 #elif TARGET_OS_IOS
@@ -162,14 +217,24 @@ class WHILLATS_API WhillatsTTS {
 #else
     std::unique_ptr<Synthesis> _synth;
 #endif
+=======
+    #if !defined(__APPLE__) || !TARGET_OS_IPHONE
+    std::unique_ptr<ESpeakTTS> _espeak_tts; 
+    #endif
+>>>>>>> 33f2ea7 (build port to ios)
 };
 
 class WHILLATS_API WhillatsTranscriber {
   public:
+<<<<<<< HEAD
     WhillatsTranscriber(const char* model_path, 
         WhillatsSetResponseCallback callback,
         WhillatsSetLanguageCallback language_callback);
 
+=======
+    WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback);
+    WhillatsTranscriber(const char* model_path, WhillatsSetResponseCallback callback, WhillatsSetLanguageCallback languageCallback);
+>>>>>>> 33f2ea7 (build port to ios)
     ~WhillatsTranscriber();
 
     bool start();
@@ -177,27 +242,41 @@ class WHILLATS_API WhillatsTranscriber {
 
     void processAudioBuffer(uint8_t* playoutBuffer, const size_t playoutBufferSize);
 
+<<<<<<< HEAD
     void setLanguage(const char* language);
     void setDetectLanguage(bool detectLanguage);
     const char* getLanguage();  // Keep old signature for compatibility
     std::string getLanguageString();  // New function returning std::string
     void setVADThreshold(float threshold);
     float getVADThreshold();
+=======
+    // Language control used by factory
+    std::string getLanguage() const;
+    void setLanguage(const char* language);
+>>>>>>> 33f2ea7 (build port to ios)
 
   private:
     WhillatsSetResponseCallback _callback; 
     WhillatsSetLanguageCallback _language_callback;
     std::unique_ptr<WhisperTranscriber> _whisper_transcriber; 
+    std::string _language = "en";
+    WhillatsSetLanguageCallback _language_callback{nullptr, nullptr};
 };
 
 class WHILLATS_API WhillatsLlama {
   public:
+<<<<<<< HEAD
     WhillatsLlama(const char* model_path, const char* mmproj_path, WhillatsSetResponseCallback callback);
+=======
+    WhillatsLlama(const char*model_path, WhillatsSetResponseCallback callback);
+    WhillatsLlama(const char*model_path, const char* mmproj_path, WhillatsSetResponseCallback callback);
+>>>>>>> 33f2ea7 (build port to ios)
     ~WhillatsLlama();
 
     bool start();
     void stop();
     void askLlama(const char* prompt);
+<<<<<<< HEAD
     void askWithImageFile(const char* prompt, const char* image_file, int width, int height);
     void askWithYUVRaw(
         const char* prompt,
@@ -210,6 +289,11 @@ class WHILLATS_API WhillatsLlama {
         size_t uv_size);
     void receiveVideoFrame(const YUVData& yuv);
 
+=======
+
+    // Accept a video frame for multimodal prompts (no-op on iOS)
+    void receiveVideoFrame(const YUVData& yuv);
+>>>>>>> 33f2ea7 (build port to ios)
   private:
     WhillatsSetResponseCallback _callback;
     std::unique_ptr<LlamaDeviceBase> _llama_device;

@@ -20,34 +20,93 @@
 #include <sys/wait.h>
 #include <errno.h>
 
+<<<<<<< HEAD
 #include "whillats.h"
 #include "whisper_transcription.h"
 #include "llama_device_base.h"
 #include "whillats_utils.h"
+=======
+#include "silence_finder.h"
+#include "whillats.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+// iOS stub for WhisperTranscriber to satisfy symbols when whisper is excluded
+class WhisperTranscriber {
+ public:
+  WhisperTranscriber(const char*, WhillatsSetResponseCallback) {}
+  ~WhisperTranscriber() = default;
+  bool start() { return false; }
+  void stop() {}
+  void ProcessAudioBuffer(uint8_t*, size_t) {}
+};
+#else
+#include "whisper_transcription.h"
+#endif
+#include "llama_device_base.h"
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
+#include "espeak_tts.h"
+#endif
+>>>>>>> 33f2ea7 (build port to ios)
 
 #if TTS_PLATFORMS
 #include "espeak_tts.h"
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
-    : _callback(callback),
-      _espeak_tts(std::make_unique<ESpeakTTS>(callback)) {}
+    : _callback(callback)
+{
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
+      _espeak_tts = std::make_unique<ESpeakTTS>(callback);
+#endif
+}
 
 WhillatsTTS::~WhillatsTTS() {}
 
+<<<<<<< HEAD
 void WhillatsTTS::queueText(const char* text, const char* language) {
     _espeak_tts->queueText(std::string(text), std::string(language));
 }
 
 bool WhillatsTTS::start(bool) {
+=======
+void WhillatsTTS::queueText(const char* text) {
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
+    _espeak_tts->queueText(std::string(text));
+#else
+    (void)text;
+#endif
+}
+
+void WhillatsTTS::queueText(const char* text, const char* /*language*/) {
+    queueText(text);
+}
+
+bool WhillatsTTS::start() {
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
+>>>>>>> 33f2ea7 (build port to ios)
     return _espeak_tts->start();
+#else
+    return false;
+#endif
+}
+
+bool WhillatsTTS::start(bool /*withAudio*/) {
+    return start();
 }
 
 void WhillatsTTS::stop() {
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
     _espeak_tts->stop();
+#endif
 }
 
 int WhillatsTTS::getSampleRate() {
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
     return ESpeakTTS::getSampleRate();
+#else
+    return 16000;
+#endif
 }
 
 void WhillatsTTS::enableSpeakerphone() {}
@@ -133,6 +192,13 @@ WhillatsTranscriber::WhillatsTranscriber(const char* model_path,
     _language_callback(language_callback),
     _whisper_transcriber(std::make_unique<WhisperTranscriber>(model_path, callback, language_callback)) {}
 
+WhillatsTranscriber::WhillatsTranscriber(const char* model_path,
+                                         WhillatsSetResponseCallback callback,
+                                         WhillatsSetLanguageCallback languageCallback)
+    : _callback(callback),
+      _whisper_transcriber(std::make_unique<WhisperTranscriber>(model_path, callback)),
+      _language_callback(languageCallback) {}
+
 WhillatsTranscriber::~WhillatsTranscriber() {}
 
 void WhillatsTranscriber::processAudioBuffer(uint8_t* playoutBuffer, const size_t playoutBufferSize) {
@@ -147,6 +213,7 @@ void WhillatsTranscriber::stop() {
     _whisper_transcriber->stop();
 } 
 
+<<<<<<< HEAD
 void WhillatsTranscriber::setLanguage(const char* language) { 
     if(language && strlen(language) > 0) {
         _whisper_transcriber->setLanguage(language); 
@@ -179,8 +246,25 @@ WhillatsLlama::WhillatsLlama(
     const char* model_path, 
     const char* mmproj_path,
     WhillatsSetResponseCallback callback) 
+=======
+std::string WhillatsTranscriber::getLanguage() const {
+    return _language;
+}
+
+void WhillatsTranscriber::setLanguage(const char* language) {
+    if (language) {
+        _language = language;
+    }
+}
+
+WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback callback) 
+>>>>>>> 33f2ea7 (build port to ios)
     : _callback(callback),
       _llama_device(std::make_unique<LlamaDeviceBase>(model_path, mmproj_path, callback)) {}
+
+WhillatsLlama::WhillatsLlama(const char* model_path, const char* /*mmproj_path*/, WhillatsSetResponseCallback callback)
+    : _callback(callback),
+      _llama_device(std::make_unique<LlamaDeviceBase>(model_path, callback)) {}
 
 WhillatsLlama::~WhillatsLlama() {}
 
@@ -196,6 +280,7 @@ void WhillatsLlama::askLlama(const char* prompt) {
     _llama_device->askLlama(prompt);
 }
 
+<<<<<<< HEAD
 void WhillatsLlama::askWithImageFile(const char *prompt, const char *image_file, int width, int height) {
     YUVData yuv;
     load_yuv(yuv, image_file, width, height);
@@ -240,3 +325,8 @@ bool WHILLATS_API save_yuv_as_bmp(const YUVData& yuv, const char* path) {
     free_clip(img_clip);
     return true;
 }
+=======
+void WhillatsLlama::receiveVideoFrame(const YUVData& /*yuv*/) {
+    // TODO: route to LLaVA when available; noop for now
+}
+>>>>>>> 33f2ea7 (build port to ios)

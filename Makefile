@@ -1,4 +1,4 @@
-.PHONY: build clean debug release test test_release example example_release deps-ios ios
+.PHONY: build clean debug release test test_release example example_release deps-ios ios ios-clean
 
 # --- Standard Linux/macOS Build ---
 build:
@@ -13,7 +13,7 @@ release:
 
 # Default test target (uses debug build)
 test: debug
-	@echo "Running debug est..."
+	@echo "Running debug test..."
 	@if [ -f ./build/bin/test_whillats ]; then \
 	    ./build/bin/test_whillats; \
 	else \
@@ -75,18 +75,37 @@ deps-ios:
 	fi
 	@echo "Skipping external XCFramework scripts; dependencies will be built via CMake targets."
 
+# iOS build using Xcode generator. Produces whillats.framework under build-ios/bin/release (normalized lowercase)
+IOS_ARCHS?=arm64
 ios: deps-ios
 	@echo "--- Current directory for make: $(shell pwd) ---"
-	@echo "Re-configuring iOS build with dependencies present..."
-	@# Re-run CMake configure. FetchContent won't re-download.
-	@# The if(EXISTS...) check should now find frameworks and enable linking.
+	@echo "Configuring iOS build (SDK target $(IOS_DEPLOYMENT_TARGET), arch $(IOS_ARCHS))..."
+	rm -rf build-ios
 	cmake -S . -B build-ios -G Xcode \
 	      -DCMAKE_SYSTEM_NAME=iOS \
+	      -DCMAKE_OSX_ARCHITECTURES=$(IOS_ARCHS) \
 	      -DCMAKE_OSX_DEPLOYMENT_TARGET=$(IOS_DEPLOYMENT_TARGET) \
-	      -DCMAKE_TOOLCHAIN_FILE=$(IOS_TOOLCHAIN_FILE) \
-	      -DPLATFORM=$(IOS_PLATFORM)
-	@echo "Building iOS framework (release)..."
-	cmake --build build-ios --config release
+	      -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+	      -U CMAKE_TOOLCHAIN_FILE \
+	      -DGGML_METAL=ON -DGGML_OPENMP=OFF -DLLAMA_OPENMP=OFF -DWHISPER_OPENMP=OFF
+	@# Patch upstream mtmd-audio.cpp if needed (fresh clone case)
+	@if [ -f third_party/llama.cpp/tools/mtmd/mtmd-audio.cpp ]; then \
+	  sed -i '' 's/std::vector data(\(filters.n_mel \* filters.n_fft, 0.0f\));/std::vector<float> data(\1);/' third_party/llama.cpp/tools/mtmd/mtmd-audio.cpp; \
+	fi
+	@echo "Building iOS release configuration..."
+	cmake --build build-ios --config release --target whillats --parallel 4
+	@# Normalize directories to lowercase for GN lookups
+	@mkdir -p build-ios/bin/release build-ios/bin/debug
+	@if [ -d build-ios/bin/Release ]; then \
+	  rsync -a --delete build-ios/bin/Release/ build-ios/bin/release/; \
+	fi
+	@if [ -d build-ios/bin/Debug ]; then \
+	  rsync -a --delete build-ios/bin/Debug/ build-ios/bin/debug/; \
+	fi
+	@echo "iOS build complete. Output (framework expected): build-ios/bin/release"
 
 clean:
 	rm -rf build build-ios
+
+ios-clean:
+	rm -rf build-ios

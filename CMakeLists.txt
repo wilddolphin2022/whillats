@@ -43,13 +43,21 @@ set(CMAKE_CXX_STANDARD 14)
 add_compile_options(-Wno-incompatible-pointer-types-discards-qualifiers)
 add_compile_options(-Wno-exit-time-destructors -Wno-global-constructors)
 
+<<<<<<< HEAD
 # --- Dependency Declarations ---
 set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 file(MAKE_DIRECTORY ${THIRD_PARTY_DIR}) # Ensure third_party exists
+=======
+# Add whisper.cpp (skip on iOS to avoid ggml header conflicts)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    add_subdirectory(third_party/whisper.cpp EXCLUDE_FROM_ALL)
+endif()
+>>>>>>> 33f2ea7 (build port to ios)
 
 # Make mtmd headers (clip.h, mtmd.h) available to all targets
 include_directories(${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd)
 
+<<<<<<< HEAD
 FetchContent_Declare(
     whisper
     GIT_REPOSITORY https://github.com/ggerganov/whisper.cpp.git
@@ -224,6 +232,46 @@ target_compile_definitions(mtmd_shared PRIVATE LLAMA_BUILD)
 target_link_libraries(mtmd_shared PRIVATE ggml llama Threads::Threads)
 install(TARGETS mtmd_shared ARCHIVE)
 
+=======
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Add espeak-ng and its components (not for iOS)
+    add_library(espeak-ng STATIC IMPORTED)
+    set_target_properties(espeak-ng PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/espeak-ng/src/include
+        IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a
+    )
+
+    add_library(speechPlayer STATIC IMPORTED)
+    set_target_properties(speechPlayer PROPERTIES
+        IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/espeak-ng/build/src/speechPlayer/libspeechPlayer.a
+    )
+
+    add_library(ucd STATIC IMPORTED)
+    set_target_properties(ucd PROPERTIES
+        IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/espeak-ng/build/src/ucd-tools/libucd.a
+    )
+
+    # Add pcaudio
+    add_library(pcaudio STATIC IMPORTED)
+    set_target_properties(pcaudio PROPERTIES
+        IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/.libs/libpcaudio.a
+        INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/include
+    )
+endif()
+
+# Create library target
+# Configure sources conditionally (exclude whisper/espeak on iOS)
+set(WHILLATS_SOURCES
+    src/llama_device_base.cc
+    src/whillats.cc
+    src/whillats_utils.cc)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    list(APPEND WHILLATS_SOURCES src/whisper_transcription.cc)
+    list(APPEND WHILLATS_SOURCES src/espeak_tts.cc)
+endif()
+
+add_library(${PROJECT_NAME} SHARED ${WHILLATS_SOURCES})
+>>>>>>> 33f2ea7 (build port to ios)
 
 # --- Main Library Target ---
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -377,6 +425,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     )
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+<<<<<<< HEAD
         ${CMAKE_CURRENT_SOURCE_DIR}/src/include
         ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd # Added for clip.h
     )
@@ -390,6 +439,46 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 target_link_options(${PROJECT_NAME} PRIVATE
     $<$<CONFIG:Debug>:-g>
 )
+=======
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_include_directories(${PROJECT_NAME}
+        PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/whisper.cpp/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/whisper.cpp/ggml/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/espeak-ng/src/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src/include)
+endif()
+
+# Add library directories
+link_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/whisper.cpp/build/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp/build/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp/build/bin
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp/build/ggml/src
+)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    link_directories(
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/espeak-ng/build/src/libespeak-ng
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/espeak-ng/build/src/speechPlayer
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/espeak-ng/build/src/ucd-tools
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pcaudiolib/src)
+endif()
+
+target_link_libraries(${PROJECT_NAME}
+    PUBLIC
+        llama
+        ggml
+        ggml-base
+        ggml-cpu)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_link_libraries(${PROJECT_NAME} PUBLIC whisper)
+    target_link_libraries(${PROJECT_NAME} PUBLIC espeak-ng speechPlayer ucd pcaudio)
+endif()
+>>>>>>> 33f2ea7 (build port to ios)
 
 # Add after project() declaration, before other settings
 if(APPLE)
@@ -406,6 +495,8 @@ target_compile_definitions(${PROJECT_NAME}
 )
 
 if(APPLE)
+    # Mark as framework when generating with Xcode for iOS/macOS
+    set_target_properties(${PROJECT_NAME} PROPERTIES FRAMEWORK TRUE FRAMEWORK_VERSION A)
     target_compile_definitions(${PROJECT_NAME} PRIVATE PLATFORM_DARWIN)
     target_link_libraries(${PROJECT_NAME} PRIVATE
         "-framework Accelerate"
@@ -492,6 +583,7 @@ set_target_properties(synthesis PROPERTIES
     )
 endif()
 
+<<<<<<< HEAD
 # Final install block: framework-only on iOS, full on others
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     install(TARGETS ${PROJECT_NAME}
@@ -520,3 +612,31 @@ target_include_directories(test_whillats
         ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
         ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
 )
+=======
+# Install targets
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Framework install location for iOS
+    install(TARGETS ${PROJECT_NAME}
+        FRAMEWORK DESTINATION lib
+    )
+else()
+    install(TARGETS ${PROJECT_NAME}
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION bin
+    )
+    # test_whillats headers and install only on non-iOS
+    target_include_directories(test_whillats
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    if(APPLE)
+        set_target_properties(test_whillats PROPERTIES
+            BUILD_WITH_INSTALL_RPATH TRUE
+            INSTALL_RPATH "@executable_path"
+        )
+    endif()
+    install(TARGETS test_whillats
+        RUNTIME DESTINATION bin
+    )
+endif()
+>>>>>>> 33f2ea7 (build port to ios)
