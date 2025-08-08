@@ -2,6 +2,7 @@
  *  (c) 2025, wilddolphin2022 
  *  For WebRTCsays.ai project
  *  https://github.com/wilddolphin2022
+<<<<<<< HEAD
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -366,3 +367,44 @@ std::string getDylibPath() {
     }
     return ""; // Error case
 }
+=======
+ */
+
+#include "whillats_utils.h"
+#include "whillats.h"
+
+#include <cstdio>
+#include <memory>
+
+bool load_yuv(YUVData& out, const char* filepath, int width, int height) {
+    if (!filepath || width <= 0 || height <= 0) return false;
+    const size_t y_size = static_cast<size_t>(width) * static_cast<size_t>(height);
+    const size_t uv_size = (static_cast<size_t>(width) / 2) * (static_cast<size_t>(height) / 2);
+
+    FILE* f = std::fopen(filepath, "rb");
+    if (!f) return false;
+
+    std::unique_ptr<uint8_t[]> y(new (std::nothrow) uint8_t[y_size]);
+    std::unique_ptr<uint8_t[]> u(new (std::nothrow) uint8_t[uv_size]);
+    std::unique_ptr<uint8_t[]> v(new (std::nothrow) uint8_t[uv_size]);
+    if (!y || !u || !v) { std::fclose(f); return false; }
+
+    size_t r1 = std::fread(y.get(), 1, y_size, f);
+    size_t r2 = std::fread(u.get(), 1, uv_size, f);
+    size_t r3 = std::fread(v.get(), 1, uv_size, f);
+    std::fclose(f);
+
+    if (r1 != y_size || r2 != uv_size || r3 != uv_size) return false;
+
+    out.width = width;
+    out.height = height;
+    out.y_size = y_size;
+    out.uv_size = uv_size;
+    out.y = std::move(y);
+    out.u = std::move(u);
+    out.v = std::move(v);
+    return true;
+}
+
+
+>>>>>>> 61fe38f (build port to ios)
