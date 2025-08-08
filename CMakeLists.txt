@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
+set(LLAMA_TAG "b6119")
+set(WHISPER_TAG "v1.7.6")
+
+# Set project languages conditionally based on platform
 if(APPLE)
     project(whillats VERSION 1.0.0 LANGUAGES CXX C OBJC OBJCXX)
 else()
@@ -22,16 +26,17 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<LOWER_CASE:$<CONFIG
 # Make mtmd headers available
 include_directories(${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd)
 
-# (moved below llama fetch) patch mtmd-audio.cpp template param after llama.cpp is available
-
-# llama.cpp
-set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GGML_CUDA OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    whisper
+    GIT_REPOSITORY https://github.com/ggerganov/whisper.cpp.git
+    GIT_TAG        ${WHISPER_TAG}
+    SOURCE_DIR     ${THIRD_PARTY_DIR}/whisper.cpp
+    GIT_SHALLOW    TRUE              # Faster clone
+)
 FetchContent_Declare(
     llama
     GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
+    GIT_TAG        ${LLAMA_TAG}
     SOURCE_DIR ${THIRD_PARTY_DIR}/llama.cpp
     GIT_SHALLOW TRUE
 )
