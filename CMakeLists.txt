@@ -102,31 +102,36 @@ string(REPLACE
 file(WRITE "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp" "${MTMD_AUDIO_CONTENT}")
 
 # Fix ARC incompatibility issues in ggml-metal.m
-file(READ "${THIRD_PARTY_DIR}/llama.cpp/ggml/src/ggml-metal/ggml-metal.m" GGML_METAL_CONTENT)
-string(REPLACE "[ctx->mtl_lock release];" "// [ctx->mtl_lock release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[ctx->mtl_library release];" "// [ctx->mtl_library release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[ctx->mtl_device release];" "// [ctx->mtl_device release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[desc release];" "// [desc release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[buf release];" "// [buf release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[heap->obj  release];" "// [heap->obj  release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[heap->bufs release];" "// [heap->bufs release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[ptr release];" "// [ptr release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[mem_pool->heaps           release];" "// [mem_pool->heaps           release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[mem_pool->heaps_to_remove release];" "// [mem_pool->heaps_to_remove release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-string(REPLACE "[metal_function release];" "// [metal_function release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
-file(WRITE "${THIRD_PARTY_DIR}/llama.cpp/ggml/src/ggml-metal/ggml-metal.m" "${GGML_METAL_CONTENT}")
+# file(READ "${THIRD_PARTY_DIR}/llama.cpp/ggml/src/ggml-metal/ggml-metal.m" GGML_METAL_CONTENT)
+# string(REPLACE "[ctx->mtl_lock release];" "// [ctx->mtl_lock release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[ctx->mtl_library release];" "// [ctx->mtl_library release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[ctx->mtl_device release];" "// [ctx->mtl_device release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[desc release];" "// [desc release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[buf release];" "// [buf release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[heap->obj  release];" "// [heap->obj  release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[heap->bufs release];" "// [heap->bufs release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[ptr release];" "// [ptr release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[mem_pool->heaps           release];" "// [mem_pool->heaps           release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[mem_pool->heaps_to_remove release];" "// [mem_pool->heaps_to_remove release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# string(REPLACE "[metal_function release];" "// [metal_function release]; // ARC handles this" GGML_METAL_CONTENT "${GGML_METAL_CONTENT}")
+# file(WRITE "${THIRD_PARTY_DIR}/llama.cpp/ggml/src/ggml-metal/ggml-metal.m" "${GGML_METAL_CONTENT}")
+set_source_files_properties(
+    ${THIRD_PARTY_DIR}/llama.cpp/ggml/src/ggml-metal/ggml-metal.m
+    PROPERTIES COMPILE_FLAGS "-fno-objc-arc"
+)
 
-# Fix Clang bracket nesting level limit for iOS Metal compilation
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_OSX_SYSROOT MATCHES ".*iPhoneOS.*")
+# Fix Clang bracket nesting level limit for Metal compilation on Apple platforms
+if(APPLE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fbracket-depth=2048")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fbracket-depth=2048")
     set(CMAKE_OBJC_FLAGS "${CMAKE_OBJC_FLAGS} -fbracket-depth=2048")
-    set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} -fbracket-depth=2048")
-    # Also set it globally for all targets
-    add_compile_options(-fbracket-depth=2048)
+    # Also set it globally for all targets using C and Objective-C
+    add_compile_options($<$<COMPILE_LANGUAGE:C>:-fbracket-depth=2048>)
+    add_compile_options($<$<COMPILE_LANGUAGE:OBJC>:-fbracket-depth=2048>)
     # Force set for Objective-C Metal files specifically
     set_source_files_properties("${THIRD_PARTY_DIR}/llama.cpp/ggml/src/ggml-metal/ggml-metal.m"
         PROPERTIES COMPILE_FLAGS "-fbracket-depth=2048")
+    # Also set for the ggml-metal target
+    set_target_properties(ggml-metal PROPERTIES COMPILE_FLAGS "-fbracket-depth=2048")
 endif()
 
 # whisper.cpp (CMake)
