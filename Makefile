@@ -1,4 +1,4 @@
-.PHONY: build clean debug release test test_release example example_release deps-ios ios ios-clean
+.PHONY: build clean debug release test test_release example example_release deps-ios ios ios-debug ios-clean
 
 # --- Standard Linux/macOS Build ---
 build:
@@ -93,16 +93,43 @@ ios: deps-ios
 	  sed -i '' 's/std::vector data(\(filters.n_mel \* filters.n_fft, 0.0f\));/std::vector<float> data(\1);/' third_party/llama.cpp/tools/mtmd/mtmd-audio.cpp; \
 	fi
 	@echo "Building iOS release configuration..."
-	cmake --build build-ios --config release --target whillats --parallel 4
+	cmake --build build-ios --config Release --target whillats --parallel 4
 	@# Normalize directories to lowercase for GN lookups
 	@mkdir -p build-ios/bin/release build-ios/bin/debug
-	@if [ -d build-ios/bin/Release ]; then \
-	  rsync -a --delete build-ios/bin/Release/ build-ios/bin/release/; \
+	@if [ -d build-ios/lib/Release ]; then \
+	  rsync -a --delete build-ios/lib/Release/ build-ios/bin/release/; \
 	fi
-	@if [ -d build-ios/bin/Debug ]; then \
-	  rsync -a --delete build-ios/bin/Debug/ build-ios/bin/debug/; \
+	@if [ -d build-ios/lib/Debug ]; then \
+	  rsync -a --delete build-ios/lib/Debug/ build-ios/bin/debug/; \
 	fi
 	@echo "iOS build complete. Output (framework expected): build-ios/bin/release"
+
+ios-debug: deps-ios
+	@echo "--- Current directory for make: $(shell pwd) ---"
+	@echo "Configuring iOS build (SDK target $(IOS_DEPLOYMENT_TARGET), arch $(IOS_ARCHS))..."
+	rm -rf build-ios
+	cmake -S . -B build-ios -G Xcode \
+	      -DCMAKE_SYSTEM_NAME=iOS \
+	      -DCMAKE_OSX_ARCHITECTURES=$(IOS_ARCHS) \
+	      -DCMAKE_OSX_DEPLOYMENT_TARGET=$(IOS_DEPLOYMENT_TARGET) \
+	      -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+	      -U CMAKE_TOOLCHAIN_FILE \
+	      -DGGML_METAL=ON -DGGML_OPENMP=OFF -DLLAMA_OPENMP=OFF -DWHISPER_OPENMP=OFF
+	@# Patch upstream mtmd-audio.cpp if needed (fresh clone case)
+	@if [ -f third_party/llama.cpp/tools/mtmd/mtmd-audio.cpp ]; then \
+	  sed -i '' 's/std::vector data(\(filters.n_mel \* filters.n_fft, 0.0f\));/std::vector<float> data(\1);/' third_party/llama.cpp/tools/mtmd/mtmd-audio.cpp; \
+	fi
+	@echo "Building iOS debug configuration..."
+	cmake --build build-ios --config Debug --target whillats --parallel 4
+	@# Normalize directories to lowercase for GN lookups
+	@mkdir -p build-ios/bin/release build-ios/bin/debug
+	@if [ -d build-ios/lib/Release ]; then \
+	  rsync -a --delete build-ios/lib/Release/ build-ios/bin/release/; \
+	fi
+	@if [ -d build-ios/lib/Debug ]; then \
+	  rsync -a --delete build-ios/lib/Debug/ build-ios/bin/debug/; \
+	fi
+	@echo "iOS debug build complete. Output (framework expected): build-ios/bin/debug"
 
 clean:
 	rm -rf build build-ios
