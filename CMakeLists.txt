@@ -82,6 +82,11 @@ endif()
 set(LLAMA_STATIC ON CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+# Force static linking for iOS
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(GGML_STATIC ON CACHE BOOL "Force static ggml for iOS" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static builds for iOS" FORCE)
+endif()
 if(UNIX AND NOT APPLE) # Linux specific
     if(GGML_CUDA)
         set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
@@ -347,8 +352,13 @@ endif()  # end if(NOT iOS)
 # --- iOS Framework Build ---
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     message(STATUS "Configuring for iOS framework build")
+    # Force static builds for all dependencies
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static builds" FORCE)
+    set(GGML_STATIC ON CACHE BOOL "Force static ggml build" FORCE)
+    set(GGML_BUILD_SHARED_LIBS OFF CACHE BOOL "Force static ggml build" FORCE)
+    set(LLAMA_STATIC ON CACHE BOOL "Force static llama build" FORCE)
+    set(LLAMA_BUILD_SHARED_LIBS OFF CACHE BOOL "Force static llama build" FORCE)
     # Build whisper for iOS
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Force static whisper build" FORCE)
     set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(WHISPER_STATIC ON CACHE BOOL "Force static whisper build" FORCE)
@@ -394,9 +404,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
     )
     target_compile_definitions(${PROJECT_NAME} PRIVATE TTS_PLATFORMS=0 WEBRTC_IOS)
+    # Link statically to whisper and llama for iOS to avoid dylib dependencies
     target_link_libraries(${PROJECT_NAME} PRIVATE whisper llama $<TARGET_OBJECTS:mtmd_obj>
         "-framework AVFoundation" "-framework Foundation" "-framework Accelerate"
         "-framework Metal" "-framework MetalKit" "-framework AudioToolbox"
+        "-framework CoreAudio"
     )
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
