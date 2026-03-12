@@ -145,11 +145,14 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
 
     whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
     wparams.n_threads = 4;
-    wparams.temperature = 0.8f;
-    wparams.no_speech_thold = 0.4f;
+    wparams.temperature = 0.0f;
+    wparams.no_speech_thold = 0.95f;
     wparams.logprob_thold = -1.0f;
-    wparams.language = "auto";
-    wparams.detect_language = false;
+    wparams.language = "en";
+    wparams.translate = false;
+    wparams.print_progress = false;
+    wparams.print_realtime = false;
+    wparams.single_segment = false;
 
     {
         std::lock_guard<std::mutex> lock(_state_mutex);

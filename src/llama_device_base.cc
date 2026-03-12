@@ -28,10 +28,12 @@
 #include <cuda_runtime.h>
 #endif
 
-// Clean response function (unchanged)
 std::string clean_response(const std::string& response) {
     std::string cleaned = response;
     cleaned = std::regex_replace(cleaned, std::regex("<\\|eot_id\\|>"), "");
+    cleaned = std::regex_replace(cleaned, std::regex("<\\|im_end\\|>"), "");
+    cleaned = std::regex_replace(cleaned, std::regex("<\\|endoftext\\|>"), "");
+    cleaned = std::regex_replace(cleaned, std::regex("<think>[\\s\\S]*?</think>"), "");
     size_t pos = cleaned.find("'t tell me what you're talking about");
     if (pos != std::string::npos) {
         cleaned = cleaned.substr(0, pos);
@@ -110,6 +112,7 @@ bool LlamaSimpleChat::Initialize() {
     llama_sampler_chain_add(smpl_, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     
     DetectStoppingTokens();
+    DetectChatFormat();
     return true;
 }
 
@@ -293,7 +296,6 @@ bool LlamaSimpleChat::InitializeContext() {
         mtmd_context_params mtmd_params = mtmd_context_params_default();
         mtmd_params.n_threads = ctx_params.n_threads;
         mtmd_params.use_gpu = true;
-        mtmd_params.verbosity = GGML_LOG_LEVEL_WARN;
         ctx_mtmd_.reset(mtmd_init_from_file(mmproj_path_.c_str(), model_, mtmd_params));
         if (!ctx_mtmd_) {
             LOG_E("Failed to load MMProj model with mtmd");
@@ -330,11 +332,6 @@ void LlamaSimpleChat::FreeContext() {
         ctx_ = nullptr;
     }
     ctx_mtmd_.reset();
-    if (model_) {
-        llama_model_free(model_);
-        model_ = nullptr;
-    }
-    llama_backend_free();
 }
 
 bool LlamaSimpleChat::ResetContextForImage() {
@@ -384,9 +381,13 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         return "";
     }
 
-    // Ensure context has system prompt if empty
     if (context_tokens_.empty()) {
-        const std::string system_prompt = "You are a helpful assistant.";
+        std::string system_prompt;
+        if (chat_format_ == ChatFormat::CHATML) {
+            system_prompt = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n";
+        } else {
+            system_prompt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant.<|eot_id|>\n";
+        }
         const int n_prompt = -llama_tokenize(vocab_, system_prompt.c_str(), system_prompt.size(), nullptr, 0, true, true);
         if (n_prompt > 0) {
             std::vector<llama_token> prompt_tokens(n_prompt);
@@ -409,15 +410,21 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         }
     }
 
-    // Tokenize the new prompt
-    const int n_tokens = -llama_tokenize(vocab_, prompt.c_str(), prompt.size(), nullptr, 0, false, false);
+    std::string wrapped_prompt;
+    if (chat_format_ == ChatFormat::CHATML) {
+        wrapped_prompt = "<|im_start|>user\n" + prompt + "<|im_end|>\n<|im_start|>assistant\n";
+    } else {
+        wrapped_prompt = "<|start_header_id|>user<|end_header_id|>\n\n" + prompt + "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
+    }
+
+    const int n_tokens = -llama_tokenize(vocab_, wrapped_prompt.c_str(), wrapped_prompt.size(), nullptr, 0, false, false);
     if (n_tokens < 0) {
         LOG_E("Failed to count prompt tokens.");
         return "";
     }
 
     std::vector<llama_token> prompt_tokens(n_tokens);
-    if (llama_tokenize(vocab_, prompt.c_str(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), false, false) < 0) {
+    if (llama_tokenize(vocab_, wrapped_prompt.c_str(), wrapped_prompt.size(), prompt_tokens.data(), prompt_tokens.size(), false, false) < 0) {
         LOG_E("Failed to tokenize prompt.");
         return "";
     }
@@ -657,13 +664,14 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
     bitmap.set_id(bitmap_id.c_str());
     LOG_V("Created mtmd_bitmap with ID: " << bitmap_id);
 
-    // Compose the prompt using the same chat-template that llama.cpp employs.
-    // <|start_header_id|>user<|end_header_id|>  <image + question>  <|eot_id|>
-    // <|start_header_id|>assistant<|end_header_id|>
-    const std::string header_user      = "<|start_header_id|>user<|end_header_id|>\n\n";
-    const std::string header_assistant = "<|start_header_id|>assistant<|end_header_id|>\n\n";
-
-    std::string full_prompt = header_user + std::string(MTMD_DEFAULT_IMAGE_MARKER) + " " + prompt + "<|eot_id|>" + header_assistant;
+    std::string full_prompt;
+    if (chat_format_ == ChatFormat::CHATML) {
+        full_prompt = "<|im_start|>user\n" + std::string(MTMD_DEFAULT_IMAGE_MARKER) + " " + prompt + "<|im_end|>\n<|im_start|>assistant\n";
+    } else {
+        const std::string header_user      = "<|start_header_id|>user<|end_header_id|>\n\n";
+        const std::string header_assistant = "<|start_header_id|>assistant<|end_header_id|>\n\n";
+        full_prompt = header_user + std::string(MTMD_DEFAULT_IMAGE_MARKER) + " " + prompt + "<|eot_id|>" + header_assistant;
+    }
     mtmd_input_text input_text = { full_prompt.c_str(), true, false };
     std::vector<const mtmd_bitmap*> bitmaps = { bitmap.ptr.get() };
 
@@ -861,7 +869,10 @@ void LlamaSimpleChat::DetectStoppingTokens() {
     stopping_token_ids_.clear();
     stopping_token_strings_.clear();
     
-    std::vector<std::string> known_stopping_tokens = {"<|eot_id|>", "<|end_of_text|>", "<|end|>", "</s>"};
+    std::vector<std::string> known_stopping_tokens = {
+        "<|eot_id|>", "<|end_of_text|>", "<|end|>", "</s>",
+        "<|im_end|>", "<|endoftext|>", "</think>"
+    };
     
     int n_vocab = llama_vocab_n_tokens(vocab_);
     for (int token_id = 0; token_id < n_vocab; ++token_id) {
@@ -893,6 +904,32 @@ void LlamaSimpleChat::DetectStoppingTokens() {
     if (stopping_token_ids_.empty()) {
         LOG_W("No stopping tokens detected in vocabulary.");
     }
+}
+
+void LlamaSimpleChat::DetectChatFormat() {
+    if (!vocab_) return;
+
+    // Probe a few known special tokens instead of scanning the full vocabulary.
+    // llama_tokenize returns > 0 if the string matches a known token sequence.
+    auto probeToken = [&](const char* text) -> bool {
+        llama_token buf;
+        int n = llama_tokenize(vocab_, text, strlen(text), &buf, 1, false, true);
+        return n == 1;
+    };
+
+    if (probeToken("<|im_start|>")) {
+        chat_format_ = ChatFormat::CHATML;
+        LOG_I("Detected ChatML format (Qwen / compatible model)");
+        return;
+    }
+    if (probeToken("<|start_header_id|>")) {
+        chat_format_ = ChatFormat::LLAMA3;
+        LOG_I("Detected Llama-3 format");
+        return;
+    }
+
+    chat_format_ = ChatFormat::CHATML;
+    LOG_I("No known chat format detected, defaulting to ChatML");
 }
 
 // LlamaDeviceBase implementation

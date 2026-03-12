@@ -39,17 +39,17 @@ include_directories(${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd)
 
 FetchContent_Declare(
     whisper
-    GIT_REPOSITORY https://github.com/ggerganov/whisper.cpp.git
-    GIT_TAG        v1.7.6
+    GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
+    GIT_TAG        master
     SOURCE_DIR     ${THIRD_PARTY_DIR}/whisper.cpp
-    GIT_SHALLOW    TRUE              # Faster clone
+    GIT_SHALLOW    TRUE
 )
 FetchContent_Declare(
     llama
-    GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
+    GIT_REPOSITORY https://github.com/ggml-org/llama.cpp
     GIT_TAG        master
     SOURCE_DIR ${THIRD_PARTY_DIR}/llama.cpp
-    GIT_SHALLOW TRUE # Faster clone
+    GIT_SHALLOW TRUE
 )
 FetchContent_Declare(
     espeak-ng-proj # Rename to avoid conflict with potential target name
@@ -211,27 +211,24 @@ endif()  # end if(UNIX AND NOT APPLE)
 # --- mtmd example shared library ---
 find_package(Threads REQUIRED)
 
+file(GLOB MTMD_MODEL_SOURCES ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/models/*.cpp)
 add_library(mtmd OBJECT
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.h
+    ${MTMD_MODEL_SOURCES}
     )
 
 target_link_libraries(mtmd PRIVATE ggml llama Threads::Threads)
 
 target_include_directories(mtmd PUBLIC
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/models
     ${THIRD_PARTY_DIR}/llama.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/include
     ${THIRD_PARTY_DIR}/llama.cpp/common
-    ${THIRD_PARTY_DIR}/llama.cpp/ggml/include # Added for ggml.h
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+    ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
     ${THIRD_PARTY_DIR}/llama.cpp/vendor
 )
 
@@ -362,17 +359,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # Skip building llama here to avoid target name conflict - FetchContent already handles it
     # add_subdirectory(${THIRD_PARTY_DIR}/llama.cpp ${CMAKE_BINARY_DIR}/_deps/llama-ios-build EXCLUDE_FROM_ALL)
     # Build mtmd from source (no FetchContent) as object and static library
+    file(GLOB MTMD_IOS_MODEL_SOURCES ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/models/*.cpp)
     add_library(mtmd_obj OBJECT
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp"
         ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
         ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp        
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp"
+        ${MTMD_IOS_MODEL_SOURCES}
     )
     target_include_directories(mtmd_obj PRIVATE
         "${THIRD_PARTY_DIR}/llama.cpp/include"
         "${THIRD_PARTY_DIR}/llama.cpp/common"
         "${THIRD_PARTY_DIR}/llama.cpp/ggml/include"
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd"
+        "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/models"
         "${THIRD_PARTY_DIR}/llama.cpp/vendor"
     )
     set_target_properties(mtmd_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)

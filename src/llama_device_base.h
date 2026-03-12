@@ -89,7 +89,11 @@ public:
 
   // Vision via mtmd
   mtmd::context_ptr ctx_mtmd_;
+  enum class ChatFormat { LLAMA3, CHATML };
+  ChatFormat chat_format_ = ChatFormat::CHATML;
+
   void DetectStoppingTokens();
+  void DetectChatFormat();
   std::deque<llama_token> context_tokens_;
   int n_past_ = 0;
   std::set<llama_token> stopping_token_ids_;
