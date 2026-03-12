@@ -256,6 +256,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         src/synthesis.cc
         src/whillats.cc
         src/whillats_utils.cc
+        src/talking_face.cc
     )
     
     # Add espeak TTS implementation only on Linux
@@ -286,8 +287,9 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-            ${THIRD_PARTY_DIR}/llama.cpp/include  # Needed for llama.h
-            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd  # Added for clip.h
+            ${THIRD_PARTY_DIR}/llama.cpp/include
+            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+            ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb
     )
 
     # Link core libraries (explicitly link llama to avoid undefined references)
