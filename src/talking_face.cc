@@ -120,11 +120,11 @@ void TalkingFace::feedAudio(const int16_t* samples, size_t count) {
     float rms = static_cast<float>(std::sqrt(sum_sq / count));
 
     // Smoothed envelope with fast attack, slow release
-    float target = std::min(1.0f, rms * 12.0f);
+    float target = std::min(1.0f, rms * 25.0f);
     if (target > smoothed_energy_) {
-        smoothed_energy_ = smoothed_energy_ * 0.3f + target * 0.7f;
+        smoothed_energy_ = smoothed_energy_ * 0.2f + target * 0.8f;
     } else {
-        smoothed_energy_ = smoothed_energy_ * 0.85f + target * 0.15f;
+        smoothed_energy_ = smoothed_energy_ * 0.7f + target * 0.3f;
     }
 
     mouth_openness_.store(smoothed_energy_);
