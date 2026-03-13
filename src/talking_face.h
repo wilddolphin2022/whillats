@@ -25,7 +25,7 @@ public:
     ~TalkingFace();
 
     bool loadImage(const char* imagePath);
-    bool loadImageFromMemory(const uint8_t* data, int width, int height, int channels);
+    bool loadImageFromMemory(const uint8_t* data, int size, int dummy1, int dummy2);
 
     // Feed TTS audio to drive the mouth animation.
     // PCM 16-bit signed mono at any sample rate.

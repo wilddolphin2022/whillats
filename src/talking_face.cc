@@ -25,32 +25,20 @@ bool TalkingFace::loadImage(const char* imagePath) {
     fread(buf.data(), 1, len, f);
     fclose(f);
 
-    int w, h, ch;
-    uint8_t* pixels = stbi_load_from_memory(buf.data(), (int)buf.size(),
-                                            &w, &h, &ch, 3);
-    if (!pixels) return false;
-    bool ok = loadImageFromMemory(pixels, w, h, 3);
-    stbi_image_free(pixels);
-    return ok;
+    return loadImageFromMemory(buf.data(), (int)buf.size(), 0, 0);
 }
 
 bool TalkingFace::loadImageFromMemory(const uint8_t* data,
-                                      int width, int height, int channels) {
-    img_w_ = width;
-    img_h_ = height;
-    base_rgb_.resize(width * height * 3);
+                                      int size, int dummy1, int dummy2) {
+    int w, h, ch;
+    uint8_t* pixels = stbi_load_from_memory(data, size, &w, &h, &ch, 3);
+    if (!pixels) return false;
 
-    if (channels == 3) {
-        std::memcpy(base_rgb_.data(), data, width * height * 3);
-    } else if (channels == 4) {
-        for (int i = 0; i < width * height; i++) {
-            base_rgb_[i * 3 + 0] = data[i * 4 + 0];
-            base_rgb_[i * 3 + 1] = data[i * 4 + 1];
-            base_rgb_[i * 3 + 2] = data[i * 4 + 2];
-        }
-    } else {
-        return false;
-    }
+    img_w_ = w;
+    img_h_ = h;
+    base_rgb_.resize(w * h * 3);
+    std::memcpy(base_rgb_.data(), pixels, w * h * 3);
+    stbi_image_free(pixels);
 
     detectMouthRegion();
     return true;
