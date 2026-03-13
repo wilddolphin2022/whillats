@@ -56,7 +56,7 @@ WhillatsTTS::~WhillatsTTS() {}
 
 void WhillatsTTS::queueText(const char* text) {
 #if !defined(__APPLE__) || !TARGET_OS_IPHONE
-    _espeak_tts->queueText(std::string(text));
+    _espeak_tts->queueText(std::string(text), "en");
 #else
     (void)text;
 #endif
