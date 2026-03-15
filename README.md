@@ -37,7 +37,7 @@ The following dependencies are included as submodules:
 
 1. Clone the repository with submodules:
 ```bash
-git clone --recursive https://github.com/wilddolphin2022/whillats.git
+git clone --recursive https://github.com/wilddolphin2025/whillats.git
 cd whillats
 
 cmake -B build
