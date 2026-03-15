@@ -1,0 +1,9 @@
+build/
+build-ios/
+trained_models/
+*.wav
+*.o
+*.a
+*.dylib
+*.so
+.DS_Store

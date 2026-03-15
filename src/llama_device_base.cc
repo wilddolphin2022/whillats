@@ -293,7 +293,6 @@ bool LlamaSimpleChat::InitializeContext() {
         mtmd_context_params mtmd_params = mtmd_context_params_default();
         mtmd_params.n_threads = ctx_params.n_threads;
         mtmd_params.use_gpu = true;
-        mtmd_params.verbosity = GGML_LOG_LEVEL_WARN;
         ctx_mtmd_.reset(mtmd_init_from_file(mmproj_path_.c_str(), model_, mtmd_params));
         if (!ctx_mtmd_) {
             LOG_E("Failed to load MMProj model with mtmd");

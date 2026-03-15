@@ -25,6 +25,9 @@ struct Options {
     std::string llama_mmproj;
     std::string test_image1;
     std::string test_image2;
+    std::string styletts2_model_dir;
+    std::string styletts2_style;
+    std::string styletts2_predictor;
 };
 
 // Function to parse command line string to above options

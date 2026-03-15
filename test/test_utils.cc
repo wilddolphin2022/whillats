@@ -36,10 +36,19 @@ Options parseOptions(int argc, char *argv[])
                      "  --llama_mmproj=<path>              Path to llama mmproj model\n"
                      "  --test_image1=<path>               Path to test image 1\n"
                      "  --test_image2=<path>               Path to test image 2\n"
+#ifdef WHILLATS_STYLETTS2
+                     "  --styletts2_model_dir=<path>       Path to StyleTTS2 ONNX models dir\n"
+                     "  --styletts2_style=<path>           Path to StyleTTS2 ref_s.bin\n"
+                     "  --styletts2_predictor=<path>       Path to StyleTTS2 ref_p.bin\n"
+#endif
                      "  --help                             Show this help message\n"
                      "\nExamples:\n"
                      "  test_whillats --whisper --whisper_model=model.bin\n"
-                     "  test_whillats --llama --llama_model=model.bin --llama_mmproj=mmproj.bin\n";
+                     "  test_whillats --llama --llama_model=model.bin --llama_mmproj=mmproj.bin\n"
+#ifdef WHILLATS_STYLETTS2
+                     "  test_whillats --tts --styletts2_model_dir=./trained_models\n"
+#endif
+                     ;
 
   for (int i = 1; i < argc; ++i)
   {
@@ -100,6 +109,21 @@ Options parseOptions(int argc, char *argv[])
     {
       opts.test_image2 = arg.substr(14); // Length of "--test_image2=" is 14
       LOG_I("Test image 2 path: " << opts.test_image2);
+    }
+    else if (arg.find("--styletts2_model_dir=") == 0)
+    {
+      opts.styletts2_model_dir = arg.substr(22);
+      LOG_I("StyleTTS2 model dir: " << opts.styletts2_model_dir);
+    }
+    else if (arg.find("--styletts2_style=") == 0)
+    {
+      opts.styletts2_style = arg.substr(18);
+      LOG_I("StyleTTS2 style path: " << opts.styletts2_style);
+    }
+    else if (arg.find("--styletts2_predictor=") == 0)
+    {
+      opts.styletts2_predictor = arg.substr(22);
+      LOG_I("StyleTTS2 predictor path: " << opts.styletts2_predictor);
     }
   }
 

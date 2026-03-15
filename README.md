@@ -14,7 +14,7 @@ Please see [BUILD.md](BUILD.md) for instructions on how to build the library and
 
 ## Features
 
-- Text-to-speech synthesis using eSpeak-NG
+- Text-to-speech synthesis using eSpeak-NG or StyleTTS2 neural TTS (via ONNX Runtime)
 - Speech recognition using Whisper
 - Language model processing using LLaMA
 
@@ -31,6 +31,7 @@ The following dependencies are included as submodules:
 - llama.cpp
 - espeak-ng
 - pcaudiolib
+- ONNX Runtime (auto-downloaded when StyleTTS2 is enabled)
 
 ## Building
 

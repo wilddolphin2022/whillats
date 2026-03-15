@@ -45,6 +45,53 @@ This project uses CMake for building the `whillats` library and its dependencies
     ./build/bin/transceiver_yuv_pcm <args...>
     ```
 
+## StyleTTS2 Neural TTS (Optional)
+
+To build with high-quality neural text-to-speech using [StyleTTS2](https://github.com/DDATT/StyleTTS2-onnx-cpp):
+
+```bash
+# macOS
+cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=ON
+cmake --build build --config Release
+
+# Linux
+cmake -B build -DWHILLATS_STYLETTS2=ON
+cmake --build build --config Release
+
+# Linux with CUDA GPU acceleration
+cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_CUDA=ON
+cmake --build build --config Release
+```
+
+Or use Make targets:
+```bash
+make styletts2          # macOS debug
+make styletts2-release  # macOS release
+make styletts2-linux    # Linux debug
+make styletts2-linux-cuda  # Linux with CUDA
+```
+
+### StyleTTS2 Model Setup
+
+1.  Download ONNX models from [HuggingFace](https://huggingface.co/DDATT/StyleTTS2-ONNX-Cpp/tree/main)
+2.  Place them in a `trained_models/` directory:
+    ```
+    trained_models/
+    ├── plbert_simp.onnx
+    ├── bert_encoder.onnx
+    ├── final_simp.onnx
+    ├── ref_s.bin        (voice style embedding)
+    └── ref_p.bin        (predictor embedding)
+    ```
+3.  Run with environment variables:
+    ```bash
+    STYLETTS2_MODEL_DIR=./trained_models \
+    ESPEAK_DATA_PATH=./build/bin/Release/espeak-ng-data \
+    ./build/bin/Release/test_whillats --tts
+    ```
+
+ONNX Runtime is automatically downloaded during CMake configuration. To use a custom install, pass `-DONNXRUNTIME_DIR=/path/to/onnxruntime`.
+
 ## Dependencies
 
 The following dependencies are automatically downloaded and built via CMake's `FetchContent`:
@@ -54,6 +101,7 @@ The following dependencies are automatically downloaded and built via CMake's `F
 *   [espeak-ng](https://github.com/espeak-ng/espeak-ng)
 *   [pcaudiolib](https://github.com/espeak-ng/pcaudiolib) (Dependency for espeak-ng)
 *   [Agora RTC SDK for Linux](https://www.agora.io/en/) (Gateway SDK version downloaded from URL)
+*   [ONNX Runtime](https://github.com/microsoft/onnxruntime) (When StyleTTS2 is enabled)
 
 ## Caveats
 

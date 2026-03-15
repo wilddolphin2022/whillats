@@ -1,0 +1,90 @@
+name: Build Whillats
+
+on:
+  push:
+    branches: [ develop, main ]
+  pull_request:
+    branches: [ develop, main ]
+
+jobs:
+  # Standard build (without StyleTTS2)
+  build-standard:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS (Apple Silicon)
+            cmake_args: -DGGML_METAL=ON
+          - os: ubuntu-latest
+            name: Linux x64
+            cmake_args: -DGGML_METAL=OFF
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake autoconf automake libtool \
+            pkg-config libpulse-dev libasound2-dev
+
+      - name: Configure CMake
+        run: cmake -B build ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --config Release -j $(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: whillats-${{ matrix.os }}
+          path: |
+            build/bin/
+            build/lib/
+
+  # StyleTTS2 build (with ONNX Runtime)
+  build-styletts2:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS StyleTTS2
+            cmake_args: -DWHILLATS_STYLETTS2=ON -DGGML_METAL=ON
+          - os: ubuntu-latest
+            name: Linux StyleTTS2
+            cmake_args: -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake autoconf automake libtool \
+            pkg-config libpulse-dev libasound2-dev
+
+      - name: Configure CMake with StyleTTS2
+        run: cmake -B build ${{ matrix.cmake_args }}
+
+      - name: Build with StyleTTS2
+        run: cmake --build build --config Release -j $(nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+
+      - name: Upload StyleTTS2 build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: whillats-styletts2-${{ matrix.os }}
+          path: |
+            build/bin/
+            build/lib/
