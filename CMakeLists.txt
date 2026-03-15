@@ -26,7 +26,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
 set(CMAKE_FRAMEWORK_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Frameworks/$<CONFIG>)
 
 # StyleTTS2 neural TTS option (requires ONNX Runtime)
-option(WHILLATS_STYLETTS2 "Enable StyleTTS2 neural TTS engine (requires ONNX Runtime)" OFF)
+option(WHILLATS_STYLETTS2 "Enable StyleTTS2 neural TTS engine (requires ONNX Runtime)" ON)
 
 # C++17 required when StyleTTS2 is enabled, C++14 otherwise
 if(WHILLATS_STYLETTS2)
