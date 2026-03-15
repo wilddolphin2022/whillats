@@ -396,6 +396,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             ${CMAKE_CURRENT_SOURCE_DIR}/src/include
             ${THIRD_PARTY_DIR}/llama.cpp/include  # Needed for llama.h
             ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd  # Added for clip.h
+            ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb  # stb_image.h for TalkingFace
     )
 
     # Link core libraries (explicitly link llama to avoid undefined references)
