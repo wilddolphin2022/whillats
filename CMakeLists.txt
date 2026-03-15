@@ -348,6 +348,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         src/llama_device_base.cc
         src/synthesis.cc
         src/talking_face.cc
+        src/sign_language_face.cc
         src/whillats.cc
         src/whillats_utils.cc
     )
@@ -594,9 +595,19 @@ add_executable(test_whillats
     test/test_utils.cc
 )
 
+# ASL sign language video test
+add_executable(test_asl_video
+    test/test_asl_video.cc
+)
+
 # Add compile definition for espeak data path to test executable as well
 target_include_directories(test_whillats PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_include_directories(test_asl_video PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb
 )
 
 # Pass StyleTTS2 flag to test executable
@@ -607,6 +618,11 @@ endif()
 # Note: test_whillats uses environment variable ESPEAK_DATA_PATH
 
 target_link_libraries(test_whillats
+    PRIVATE
+        ${PROJECT_NAME}
+)
+
+target_link_libraries(test_asl_video
     PRIVATE
         ${PROJECT_NAME}
 )
