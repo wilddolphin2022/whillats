@@ -1204,19 +1204,19 @@ void LlamaDeviceBase::askWithImage(const char *prompt, const YUVData& yuv) {
 }
 
 bool LlamaDeviceBase::start() {
+    LOG_I("LlamaDeviceBase::start() called, _running=" << _running << ", model=" << _model_path);
     if (!_running) {
         _llama_chat.reset(new LlamaSimpleChat());
         _llama_chat->SetModelPaths(_model_path, _mmproj_path);
-        // Off-load as many layers as the GPU can take (8 GiB RTX 4060 handles the full 32-layer model)
         _llama_chat->SetNGL(32);
+        LOG_I("Calling LlamaSimpleChat::Initialize()...");
         if (_llama_chat && _llama_chat->Initialize()) {
-            LOG_V("Llama chat initialized!");
+            LOG_I("Llama chat initialized successfully!");
             
-            // Detect multimodal support after successful initialization
             _hasMultimodalModel = detectMultimodalSupport();
             LOG_I("Multimodal support detection result: " << (_hasMultimodalModel ? "enabled" : "disabled"));
         } else {
-            LOG_E("Failed to initialize Llama chat");
+            LOG_E("Failed to initialize Llama chat - model may be incompatible or missing");
             return false;
         }
 
