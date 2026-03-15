@@ -13,6 +13,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdlib>
+#include <cassert>
 #include <string>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -24,6 +25,7 @@
 #include "test_utils.h"
 #include "whisper_helpers.h"
 #include "whillats_utils.h"
+#include "script_engine.h"
 
 // Set log level
 void setLogLevel(LogLevel level)
@@ -36,6 +38,8 @@ bool tts_done = false;
 bool whisper_done = false;
 bool llama_done = false;
 bool language_changed = false;
+bool script_done = false;
+std::vector<std::string> script_events;
 
 static size_t bufferCount = 0;
 
@@ -329,5 +333,326 @@ int main(int argc, char *argv[])
       LOG_E("Failed to initialize LLama model");
     }
   }
+
+  // --- Script Engine Tests ---
+  if (opts.script) {
+    LOG_I("=== Script Engine Tests ===");
+
+    // Test 1: ScriptEngine YAML parsing (unit test, no TTS needed)
+    {
+      LOG_I("Test 1: YAML loading and parsing");
+      ScriptEngine engine;
+
+      std::string test_yaml = R"(
+script:
+  name: "Unit Test Script"
+  language: "en"
+
+steps:
+  - id: greet
+    action: speak
+    text: "Hello from test."
+    next: ask
+
+  - id: ask
+    action: listen
+    prompt: "Say something."
+    timeout_ms: 2000
+    store_as: user_input
+    on_match:
+      - pattern: "yes|ok"
+        next: confirmed
+      - pattern: "no|cancel"
+        next: denied
+    next: echo
+
+  - id: confirmed
+    action: speak
+    text: "You confirmed."
+    next: done
+
+  - id: denied
+    action: speak
+    text: "You denied."
+    next: done
+
+  - id: echo
+    action: speak
+    text: "You said: ${user_input}"
+    next: done
+
+  - id: done
+    action: end
+)";
+
+      if (!engine.loadFromString(test_yaml)) {
+        LOG_E("FAIL: Could not parse YAML");
+        return 1;
+      }
+      LOG_I("  Script name: " << engine.config().name);
+      LOG_I("  Steps: " << engine.config().steps.size());
+      assert(engine.config().name == "Unit Test Script");
+      assert(engine.config().steps.size() == 6);
+      assert(engine.config().language == "en");
+      LOG_I("  PASS: YAML parsing");
+    }
+
+    // Test 2: State machine transitions with simulated events
+    {
+      LOG_I("Test 2: State machine transitions");
+      ScriptEngine engine;
+
+      std::string yaml = R"(
+script:
+  name: "State Machine Test"
+  language: "en"
+
+steps:
+  - id: greet
+    action: speak
+    text: "Hello."
+    next: listen_step
+
+  - id: listen_step
+    action: listen
+    timeout_ms: 2000
+    store_as: input
+    on_match:
+      - pattern: "yes"
+        next: yes_branch
+      - pattern: "no"
+        next: no_branch
+    next: default_branch
+
+  - id: yes_branch
+    action: speak
+    text: "You said yes."
+    next: done
+
+  - id: no_branch
+    action: speak
+    text: "You said no."
+    next: done
+
+  - id: default_branch
+    action: speak
+    text: "Default: ${input}"
+    next: done
+
+  - id: done
+    action: end
+)";
+
+      engine.loadFromString(yaml);
+
+      std::vector<std::string> events;
+      engine.setEventHandler([&events](const ScriptEvent& e) {
+        std::string type_str;
+        switch (e.type) {
+          case ScriptEventType::SPEAK_REQUEST: type_str = "speak"; break;
+          case ScriptEventType::LISTEN_START: type_str = "listen"; break;
+          case ScriptEventType::SCRIPT_END: type_str = "end"; break;
+          case ScriptEventType::STEP_CHANGED: type_str = "step:" + e.step_id; break;
+          default: type_str = "other"; break;
+        }
+        events.push_back(type_str + ":" + e.data.substr(0, 30));
+      });
+
+      engine.start();
+      assert(engine.currentStepId() == "greet");
+
+      // Simulate TTS completion -> moves to listen_step
+      engine.onSpeechComplete();
+      assert(engine.currentStepId() == "listen_step");
+
+      // Simulate transcription "yes" -> should go to yes_branch
+      engine.onTranscriptionReceived("yes");
+      assert(engine.currentStepId() == "yes_branch");
+      assert(engine.getVariable("input") == "yes");
+
+      // Simulate TTS completion -> moves to done
+      engine.onSpeechComplete();
+      assert(engine.currentStepId() == "done");
+      assert(!engine.isRunning());
+
+      LOG_I("  Events captured: " << events.size());
+      for (const auto& ev : events) {
+        LOG_V("    " << ev);
+      }
+      LOG_I("  PASS: State machine with 'yes' branch");
+    }
+
+    // Test 3: "no" branch and variable expansion
+    {
+      LOG_I("Test 3: 'no' branch and variable expansion");
+      ScriptEngine engine;
+
+      std::string yaml = R"(
+script:
+  name: "Branch Test"
+  language: "en"
+
+steps:
+  - id: start
+    action: speak
+    text: "Start."
+    next: ask
+
+  - id: ask
+    action: listen
+    timeout_ms: 2000
+    store_as: answer
+    on_match:
+      - pattern: "yes"
+        next: yes_path
+      - pattern: "no"
+        next: no_path
+    next: fallback
+
+  - id: yes_path
+    action: speak
+    text: "Yes path."
+    next: end_step
+
+  - id: no_path
+    action: speak
+    text: "No path."
+    next: end_step
+
+  - id: fallback
+    action: speak
+    text: "Fallback: ${answer}"
+    next: end_step
+
+  - id: end_step
+    action: end
+)";
+
+      engine.loadFromString(yaml);
+      std::string last_speak;
+      engine.setEventHandler([&last_speak](const ScriptEvent& e) {
+        if (e.type == ScriptEventType::SPEAK_REQUEST) last_speak = e.data;
+      });
+
+      engine.start();
+      engine.onSpeechComplete(); // greet -> ask
+      engine.onTranscriptionReceived("no way");
+      assert(engine.getVariable("answer") == "no way");
+      assert(engine.currentStepId() == "no_path");
+      LOG_I("  PASS: 'no' match works");
+
+      // Test fallback path
+      engine.stop();
+      engine.loadFromString(yaml);
+      engine.start();
+      engine.onSpeechComplete(); // start -> ask
+      engine.onTranscriptionReceived("something random");
+      assert(engine.currentStepId() == "fallback");
+      assert(last_speak.find("something random") != std::string::npos);
+      LOG_I("  PASS: Fallback with variable expansion");
+    }
+
+    // Test 4: Timeout handling
+    {
+      LOG_I("Test 4: Listen timeout");
+      ScriptEngine engine;
+
+      std::string yaml = R"(
+script:
+  name: "Timeout Test"
+  language: "en"
+
+steps:
+  - id: start
+    action: speak
+    text: "Speak now."
+    next: listen_step
+
+  - id: listen_step
+    action: listen
+    timeout_ms: 100
+    store_as: input
+    next: after_timeout
+
+  - id: after_timeout
+    action: speak
+    text: "Timed out."
+    next: done
+
+  - id: done
+    action: end
+)";
+
+      engine.loadFromString(yaml);
+      bool timed_out = false;
+      engine.setEventHandler([&timed_out](const ScriptEvent& e) {
+        if (e.type == ScriptEventType::LISTEN_TIMEOUT) timed_out = true;
+      });
+
+      engine.start();
+      engine.onSpeechComplete(); // start -> listen_step
+
+      // Wait for timeout
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      engine.checkTimeout();
+
+      assert(timed_out);
+      assert(engine.currentStepId() == "after_timeout");
+      LOG_I("  PASS: Timeout triggers correctly");
+    }
+
+    // Test 5: Full script from YAML file (if path provided)
+    if (!opts.script_path.empty()) {
+      LOG_I("Test 5: Load script from file: " << opts.script_path);
+
+      script_events.clear();
+      script_done = false;
+
+      auto scriptEventCb = [](const char* event_type, const char* step_id,
+                               const char* data, void* user_data) {
+        std::string evt = std::string(event_type) + ":" + std::string(step_id);
+        script_events.push_back(evt);
+        LOG_I("  Script event: " << event_type << " step=" << step_id
+              << " data=" << (data ? std::string(data).substr(0, 40) : ""));
+        if (std::string(event_type) == "end") {
+          script_done = true;
+        }
+      };
+
+      WhillatsSetAudioCallback audio_cb(ttsAudioCallback, nullptr);
+      WhillatsSetResponseCallback response_cb(whisperResponseCallback, nullptr);
+
+      WhillatsScript script(opts.script_path.c_str(),
+                            audio_cb, response_cb,
+                            scriptEventCb, nullptr);
+
+      if (script.start(
+            opts.whisper_model.empty() ? nullptr : opts.whisper_model.c_str(),
+            opts.llama_model.empty() ? nullptr : opts.llama_model.c_str(),
+            opts.llama_mmproj.empty() ? nullptr : opts.llama_mmproj.c_str())) {
+
+        LOG_I("  Script started at step: " << script.currentStep());
+
+        // Let it run for a few seconds (TTS will speak, then timeout on listen)
+        int wait_ms = 0;
+        while (!script_done && wait_ms < 60000) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(200));
+          wait_ms += 200;
+        }
+
+        LOG_I("  Script finished. Events: " << script_events.size());
+        for (const auto& ev : script_events) {
+          LOG_I("    " << ev);
+        }
+
+        script.stop();
+      } else {
+        LOG_E("  FAIL: Could not start script");
+      }
+    }
+
+    LOG_I("=== All Script Engine Tests Passed ===");
+  }
+
   return 0;
 }

@@ -71,6 +71,16 @@ FetchContent_Declare(
     SOURCE_DIR ${THIRD_PARTY_DIR}/pcaudiolib
     GIT_SHALLOW TRUE # Faster clone
 )
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG 0.8.0
+    GIT_SHALLOW TRUE
+)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(yaml-cpp)
 
 # Declare Agora SDK (Only for Linux)
 if(UNIX AND NOT APPLE)
@@ -348,6 +358,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         src/llama_device_base.cc
         src/synthesis.cc
         src/talking_face.cc
+        src/script_engine.cc
+        src/whillats_script.cc
         src/whillats.cc
         src/whillats_utils.cc
     )
@@ -406,6 +418,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             mtmd_shared
             llama
             ggml-base
+            yaml-cpp
     )
     
     if(LLAMA_CUDA)
@@ -609,6 +622,7 @@ endif()
 target_link_libraries(test_whillats
     PRIVATE
         ${PROJECT_NAME}
+        yaml-cpp
 )
 
 target_compile_options(test_whillats PRIVATE

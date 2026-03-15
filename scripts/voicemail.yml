@@ -1,0 +1,53 @@
+script:
+  name: "Voicemail"
+  language: "en"
+
+steps:
+  - id: greet
+    action: speak
+    text: "Hello, I am the Wilddolphin voicemail assistant. No one is available to take your call right now."
+    next: ask_name
+
+  - id: ask_name
+    action: listen
+    prompt: "Please say your name."
+    timeout_ms: 8000
+    store_as: caller_name
+    next: confirm_name
+
+  - id: confirm_name
+    action: speak
+    text: "I heard: ${caller_name}. Is that correct?"
+    next: listen_confirm
+
+  - id: listen_confirm
+    action: listen
+    timeout_ms: 5000
+    store_as: confirmation
+    on_match:
+      - pattern: "yes|correct|right|yeah"
+        next: ask_message
+      - pattern: "no|wrong|nope"
+        next: ask_name
+    next: ask_message
+
+  - id: ask_message
+    action: listen
+    prompt: "Please leave your message after the tone."
+    timeout_ms: 30000
+    store_as: message
+    store_audio: true
+    next: playback
+
+  - id: playback
+    action: speak
+    text: "You said: ${message}"
+    next: goodbye
+
+  - id: goodbye
+    action: speak
+    text: "Thank you ${caller_name}. Your message has been saved. Goodbye."
+    next: hangup
+
+  - id: hangup
+    action: end

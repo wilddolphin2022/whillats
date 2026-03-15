@@ -1,0 +1,29 @@
+script:
+  name: "Simple Test"
+  language: "en"
+
+steps:
+  - id: greet
+    action: speak
+    text: "Hello, this is a test script."
+    next: ask_input
+
+  - id: ask_input
+    action: listen
+    prompt: "Please say something."
+    timeout_ms: 3000
+    store_as: user_input
+    next: echo_back
+
+  - id: echo_back
+    action: speak
+    text: "You said: ${user_input}"
+    next: goodbye
+
+  - id: goodbye
+    action: speak
+    text: "Thank you. Goodbye."
+    next: done
+
+  - id: done
+    action: end

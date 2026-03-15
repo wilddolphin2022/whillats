@@ -41,6 +41,7 @@ Options parseOptions(int argc, char *argv[])
                      "  --styletts2_style=<path>           Path to StyleTTS2 ref_s.bin\n"
                      "  --styletts2_predictor=<path>       Path to StyleTTS2 ref_p.bin\n"
 #endif
+                     "  --script=<path>                     Run a YAML script scenario test\n"
                      "  --help                             Show this help message\n"
                      "\nExamples:\n"
                      "  test_whillats --whisper --whisper_model=model.bin\n"
@@ -124,6 +125,16 @@ Options parseOptions(int argc, char *argv[])
     {
       opts.styletts2_predictor = arg.substr(22);
       LOG_I("StyleTTS2 predictor path: " << opts.styletts2_predictor);
+    }
+    else if (arg == "--script")
+    {
+      opts.script = true;
+    }
+    else if (arg.find("--script=") == 0)
+    {
+      opts.script = true;
+      opts.script_path = arg.substr(9);
+      LOG_I("Script path: " << opts.script_path);
     }
   }
 

@@ -196,6 +196,36 @@ class WHILLATS_API WhillatsLlama {
     std::unique_ptr<LlamaDeviceBase> _llama_device;
 };
 
+// --- Script Engine for telephony applications ---
+struct WhillatsScriptImpl;
+
+typedef void (*ScriptEventCallback)(const char* event_type, const char* step_id,
+                                     const char* data, void* user_data);
+
+class WHILLATS_API WhillatsScript {
+public:
+    WhillatsScript(const char* script_path,
+                   WhillatsSetAudioCallback audio_cb,
+                   WhillatsSetResponseCallback response_cb,
+                   ScriptEventCallback event_cb,
+                   void* user_data);
+    ~WhillatsScript();
+
+    bool start(const char* whisper_model = nullptr,
+               const char* llama_model = nullptr,
+               const char* llama_mmproj = nullptr);
+    void stop();
+
+    void feedAudio(uint8_t* buffer, size_t size);
+
+    const char* currentStep() const;
+    const char* getVariable(const char* name) const;
+    bool isRunning() const;
+
+private:
+    std::unique_ptr<WhillatsScriptImpl> _impl;
+};
+
 // Helper functions
 bool WHILLATS_API save_yuv_as_bmp(const YUVData& yuv, const char* path);
 

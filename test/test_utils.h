@@ -28,6 +28,8 @@ struct Options {
     std::string styletts2_model_dir;
     std::string styletts2_style;
     std::string styletts2_predictor;
+    bool script = false;
+    std::string script_path;
 };
 
 // Function to parse command line string to above options

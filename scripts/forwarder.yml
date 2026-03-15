@@ -1,0 +1,55 @@
+script:
+  name: "Call Forwarder"
+  language: "en"
+
+steps:
+  - id: greet
+    action: speak
+    text: "Welcome to the call routing system."
+    next: ask_department
+
+  - id: ask_department
+    action: listen
+    prompt: "Please say which department you need: sales, support, or billing."
+    timeout_ms: 8000
+    store_as: department
+    on_match:
+      - pattern: "sales|sell"
+        next: forward_sales
+      - pattern: "support|help|technical"
+        next: forward_support
+      - pattern: "billing|payment|account"
+        next: forward_billing
+    next: not_understood
+
+  - id: not_understood
+    action: speak
+    text: "I did not understand. Let me try again."
+    next: ask_department
+
+  - id: forward_sales
+    action: speak
+    text: "Connecting you to the sales department now."
+    next: do_forward_sales
+
+  - id: do_forward_sales
+    action: forward
+    target: "sales@company.com"
+
+  - id: forward_support
+    action: speak
+    text: "Connecting you to technical support."
+    next: do_forward_support
+
+  - id: do_forward_support
+    action: forward
+    target: "support@company.com"
+
+  - id: forward_billing
+    action: speak
+    text: "Connecting you to the billing department."
+    next: do_forward_billing
+
+  - id: do_forward_billing
+    action: forward
+    target: "billing@company.com"
