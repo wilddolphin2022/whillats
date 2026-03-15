@@ -127,7 +127,7 @@ public:
     void recheckMultimodalSupport();
 
 private:
-    bool _running;
+    bool _running = false;
     std::atomic<bool> _destructing_ {false};
 
     std::thread _processingThread;
