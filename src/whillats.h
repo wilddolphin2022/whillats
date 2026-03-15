@@ -1,7 +1,7 @@
 /*
- *  (c) 2025, wilddolphin2022 
+ *  (c) 2025, wilddolphin2025 
  *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2022
+ *  https://github.com/wilddolphin2025
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -48,7 +48,11 @@ struct YUVData {
 
 class WhisperTranscriber;
 class LlamaDeviceBase;
+#if defined(WHILLATS_STYLETTS2)
+class StyleTTS2TTS;
+#else
 class ESpeakTTS;
+#endif
 class WhillatsSpeechSynthesizerWrapper;
 class Synthesis;
 
@@ -128,6 +132,9 @@ class WHILLATS_API WhillatsTTS {
 
   private:
     WhillatsSetAudioCallback _callback;
+#if defined(WHILLATS_STYLETTS2)
+    std::unique_ptr<StyleTTS2TTS> _styletts2;
+#else
 #if !defined(__APPLE__)
     std::unique_ptr<ESpeakTTS> _espeak_tts;
 #endif
@@ -135,6 +142,7 @@ class WHILLATS_API WhillatsTTS {
     std::unique_ptr<WhillatsSpeechSynthesizerWrapper> _wrapper;
 #elif defined(__APPLE__) && TARGET_OS_OSX
     std::unique_ptr<Synthesis> _synth;
+#endif
 #endif
 };
 

@@ -25,8 +25,16 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
 set(CMAKE_FRAMEWORK_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Frameworks/$<CONFIG>)
 
-# Additional compiler and linker flags
-set(CMAKE_CXX_STANDARD 14)
+# StyleTTS2 neural TTS option (requires ONNX Runtime)
+option(WHILLATS_STYLETTS2 "Enable StyleTTS2 neural TTS engine (requires ONNX Runtime)" ON)
+
+# C++17 required when StyleTTS2 is enabled, C++14 otherwise
+if(WHILLATS_STYLETTS2)
+    set(CMAKE_CXX_STANDARD 17)
+else()
+    set(CMAKE_CXX_STANDARD 14)
+endif()
+
 add_compile_options(-Wno-incompatible-pointer-types-discards-qualifiers)
 add_compile_options(-Wno-exit-time-destructors -Wno-global-constructors)
 
@@ -39,17 +47,17 @@ include_directories(${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd)
 
 FetchContent_Declare(
     whisper
-    GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
-    GIT_TAG        master
+    GIT_REPOSITORY https://github.com/ggerganov/whisper.cpp.git
+    GIT_TAG        v1.8.3
     SOURCE_DIR     ${THIRD_PARTY_DIR}/whisper.cpp
-    GIT_SHALLOW    TRUE
+    GIT_SHALLOW    TRUE              # Faster clone
 )
 FetchContent_Declare(
     llama
-    GIT_REPOSITORY https://github.com/ggml-org/llama.cpp
+    GIT_REPOSITORY https://github.com/ggerganov/llama.cpp
     GIT_TAG        master
     SOURCE_DIR ${THIRD_PARTY_DIR}/llama.cpp
-    GIT_SHALLOW TRUE
+    GIT_SHALLOW TRUE # Faster clone
 )
 FetchContent_Declare(
     espeak-ng-proj # Rename to avoid conflict with potential target name
@@ -73,6 +81,66 @@ if(UNIX AND NOT APPLE)
         SOURCE_SUBDIR Agora-RTC-x86_64-linux-gnu-v4.4.30-20241024_101940-398537 
         # CMake should automatically handle extraction for .tgz
     )
+endif()
+
+# --- ONNX Runtime for StyleTTS2 ---
+if(WHILLATS_STYLETTS2)
+    set(ONNXRUNTIME_VERSION "1.17.3" CACHE STRING "ONNX Runtime version to download")
+
+    # Check if user provided ONNXRUNTIME_DIR
+    if(ONNXRUNTIME_DIR)
+        set(ONNXRUNTIME_INCLUDE_DIR ${ONNXRUNTIME_DIR}/include)
+        set(ONNXRUNTIME_LIB_DIR ${ONNXRUNTIME_DIR}/lib)
+        message(STATUS "Using user-provided ONNX Runtime at: ${ONNXRUNTIME_DIR}")
+    else()
+        # Auto-download pre-built ONNX Runtime
+        if(APPLE)
+            if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64" OR CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+                set(ONNXRT_PLATFORM "osx-arm64")
+            else()
+                set(ONNXRT_PLATFORM "osx-x86_64")
+            endif()
+        elseif(UNIX)
+            if(GGML_CUDA)
+                set(ONNXRT_PLATFORM "linux-x64-gpu")
+            else()
+                set(ONNXRT_PLATFORM "linux-x64")
+            endif()
+        endif()
+
+        set(ONNXRUNTIME_URL
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-${ONNXRT_PLATFORM}-${ONNXRUNTIME_VERSION}.tgz")
+        message(STATUS "Downloading ONNX Runtime ${ONNXRUNTIME_VERSION} from: ${ONNXRUNTIME_URL}")
+
+        FetchContent_Declare(
+            onnxruntime
+            URL ${ONNXRUNTIME_URL}
+        )
+        FetchContent_GetProperties(onnxruntime)
+        if(NOT onnxruntime_POPULATED)
+            FetchContent_Populate(onnxruntime)
+        endif()
+
+        set(ONNXRUNTIME_INCLUDE_DIR ${onnxruntime_SOURCE_DIR}/include)
+        set(ONNXRUNTIME_LIB_DIR ${onnxruntime_SOURCE_DIR}/lib)
+    endif()
+
+    # Create imported target for ONNX Runtime
+    add_library(onnxruntime_lib SHARED IMPORTED)
+    if(APPLE)
+        set_target_properties(onnxruntime_lib PROPERTIES
+            IMPORTED_LOCATION ${ONNXRUNTIME_LIB_DIR}/libonnxruntime.dylib
+        )
+    else()
+        set_target_properties(onnxruntime_lib PROPERTIES
+            IMPORTED_LOCATION ${ONNXRUNTIME_LIB_DIR}/libonnxruntime.so
+        )
+    endif()
+    set_target_properties(onnxruntime_lib PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES ${ONNXRUNTIME_INCLUDE_DIR}
+    )
+    message(STATUS "ONNX Runtime include: ${ONNXRUNTIME_INCLUDE_DIR}")
+    message(STATUS "ONNX Runtime lib: ${ONNXRUNTIME_LIB_DIR}")
 endif()
 
 # --- Populate and Build Dependencies ---
@@ -213,15 +281,35 @@ if(UNIX AND NOT APPLE)
     add_custom_target(copy_espeak_data ALL DEPENDS ${ESPEAK_DATA_DEST_DIR}/phontab)
 endif()  # end if(UNIX AND NOT APPLE)
 
+# Build espeak-ng on macOS when StyleTTS2 is enabled (needed for phonemization)
+if(APPLE AND WHILLATS_STYLETTS2 AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    FetchContent_MakeAvailable(espeak-ng-proj)
+
+    set(ESPEAK_DATA_SOURCE_DIR ${CMAKE_BINARY_DIR}/_deps/espeak-ng-proj-build/espeak-ng-data)
+    set(ESPEAK_DATA_DEST_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/espeak-ng-data)
+
+    add_custom_command(
+        OUTPUT ${ESPEAK_DATA_DEST_DIR}/phontab
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${ESPEAK_DATA_SOURCE_DIR} ${ESPEAK_DATA_DEST_DIR}
+        DEPENDS espeak-ng
+        COMMENT "Copying espeak-ng-data to ${ESPEAK_DATA_DEST_DIR}"
+    )
+    add_custom_target(copy_espeak_data_styletts2 ALL DEPENDS ${ESPEAK_DATA_DEST_DIR}/phontab)
+    message(STATUS "StyleTTS2: Building espeak-ng for macOS phonemization")
+endif()
+
 # --- mtmd example shared library ---
 find_package(Threads REQUIRED)
 
 file(GLOB MTMD_MODEL_SOURCES ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/models/*.cpp)
 add_library(mtmd OBJECT
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.h
     ${MTMD_MODEL_SOURCES}
     )
 
@@ -229,11 +317,11 @@ target_link_libraries(mtmd PRIVATE ggml llama Threads::Threads)
 
 target_include_directories(mtmd PUBLIC
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/models
     ${THIRD_PARTY_DIR}/llama.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/include
     ${THIRD_PARTY_DIR}/llama.cpp/common
-    ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
+    ${THIRD_PARTY_DIR}/llama.cpp/ggml/include # Added for ggml.h
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
     ${THIRD_PARTY_DIR}/llama.cpp/vendor
 )
 
@@ -261,11 +349,12 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         src/synthesis.cc
         src/whillats.cc
         src/whillats_utils.cc
-        src/talking_face.cc
     )
     
-    # Add espeak TTS implementation only on Linux
-    if(UNIX AND NOT APPLE)
+    # Add TTS implementation based on build option
+    if(WHILLATS_STYLETTS2)
+        list(APPEND WHILLATS_SOURCES src/styletts2_tts.cc)
+    elseif(UNIX AND NOT APPLE)
         list(APPEND WHILLATS_SOURCES src/espeak_tts.cc)
     endif()
     
@@ -279,9 +368,21 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     
     add_library(${PROJECT_NAME} SHARED ${WHILLATS_SOURCES})
 
-    # Ensure espeak data is copied before building the main library (Linux only)
+    # Ensure espeak data is copied before building the main library
     if(UNIX AND NOT APPLE)
         add_dependencies(${PROJECT_NAME} copy_espeak_data)
+    elseif(APPLE AND WHILLATS_STYLETTS2)
+        add_dependencies(${PROJECT_NAME} copy_espeak_data_styletts2)
+    endif()
+
+    # StyleTTS2 compile definition and linkage
+    if(WHILLATS_STYLETTS2)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE WHILLATS_STYLETTS2)
+        target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime_lib espeak-ng)
+        target_include_directories(${PROJECT_NAME} PRIVATE
+            ${ONNXRUNTIME_INCLUDE_DIR}
+            ${THIRD_PARTY_DIR}/espeak-ng/src/include
+        )
     endif()
 
     # Note: We use environment variable ESPEAK_DATA_PATH instead of compile-time definition
@@ -292,9 +393,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-            ${THIRD_PARTY_DIR}/llama.cpp/include
-            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
-            ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb
+            ${THIRD_PARTY_DIR}/llama.cpp/include  # Needed for llama.h
+            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd  # Added for clip.h
     )
 
     # Link core libraries (explicitly link llama to avoid undefined references)
@@ -384,7 +484,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         "${THIRD_PARTY_DIR}/llama.cpp/common"
         "${THIRD_PARTY_DIR}/llama.cpp/ggml/include"
         "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd"
-        "${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/models"
         "${THIRD_PARTY_DIR}/llama.cpp/vendor"
     )
     set_target_properties(mtmd_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -452,13 +551,17 @@ if(APPLE)
         "-framework AudioToolbox"
         "-framework AVFoundation"
     )
-    target_link_options(${PROJECT_NAME} PRIVATE
+    set(APPLE_RPATHS
         "-Wl,-rpath,@loader_path/third_party/whisper.cpp/build/src"
         "-Wl,-rpath,@loader_path/third_party/whisper.cpp/build/ggml/src"
         "-Wl,-rpath,@loader_path/third_party/llama.cpp/build/bin"
         "-Wl,-rpath,@loader_path/third_party/llama.cpp/build/ggml/src"
         "-Wl,-rpath,@loader_path/third_party/pcaudiolib/src"
     )
+    if(WHILLATS_STYLETTS2 AND ONNXRUNTIME_LIB_DIR)
+        list(APPEND APPLE_RPATHS "-Wl,-rpath,${ONNXRUNTIME_LIB_DIR}")
+    endif()
+    target_link_options(${PROJECT_NAME} PRIVATE ${APPLE_RPATHS})
 elseif(UNIX AND NOT APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE PLATFORM_LINUX)
     target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -472,11 +575,15 @@ elseif(UNIX AND NOT APPLE)
         /usr/lib/x86_64-linux-gnu
         ${CMAKE_BINARY_DIR}/lib/Debug
     )
-    target_link_options(${PROJECT_NAME} PRIVATE
+    set(LINUX_LINK_OPTS
         -Wl,--allow-shlib-undefined
         -Wl,-rpath,$ORIGIN
         -Wl,-rpath,${CMAKE_BINARY_DIR}/lib/Debug
     )
+    if(WHILLATS_STYLETTS2 AND ONNXRUNTIME_LIB_DIR)
+        list(APPEND LINUX_LINK_OPTS -Wl,-rpath,${ONNXRUNTIME_LIB_DIR})
+    endif()
+    target_link_options(${PROJECT_NAME} PRIVATE ${LINUX_LINK_OPTS})
 endif()
 
 # Add test executable
@@ -489,6 +596,11 @@ add_executable(test_whillats
 target_include_directories(test_whillats PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+# Pass StyleTTS2 flag to test executable
+if(WHILLATS_STYLETTS2)
+    target_compile_definitions(test_whillats PRIVATE WHILLATS_STYLETTS2)
+endif()
 
 # Note: test_whillats uses environment variable ESPEAK_DATA_PATH
 

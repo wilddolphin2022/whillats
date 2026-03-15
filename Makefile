@@ -1,4 +1,4 @@
-.PHONY: build clean debug release test test_release example example_release deps-ios ios ios-debug ios-clean
+.PHONY: build clean debug release test test_release example example_release deps-ios ios ios-debug ios-clean styletts2 styletts2-release styletts2-linux styletts2-linux-cuda test-styletts2
 
 # --- Standard Linux/macOS Build ---
 build:
@@ -46,6 +46,35 @@ example_release: release
 	    ./build/bin/transceiver_yuv_pcm; \
 	else \
 	    echo "Example executable not found (skipped on non-Linux?)"; \
+	fi
+
+# --- StyleTTS2 Build ---
+# Builds whillats with StyleTTS2 neural TTS (ONNX Runtime auto-downloaded)
+
+styletts2:
+	cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=ON
+	cmake --build build --config Debug
+
+styletts2-release:
+	cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF
+	cmake --build build --config Release
+
+styletts2-linux:
+	cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF
+	cmake --build build --config Debug
+
+styletts2-linux-cuda:
+	cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF -DGGML_CUDA=ON
+	cmake --build build --config Debug
+
+test-styletts2: styletts2
+	@echo "Running StyleTTS2 test..."
+	@if [ -f ./build/bin/test_whillats ]; then \
+	    STYLETTS2_MODEL_DIR=./trained_models \
+	    ESPEAK_DATA_PATH=./build/bin/Debug/espeak-ng-data \
+	    ./build/bin/Debug/test_whillats --tts; \
+	else \
+	    echo "Test executable not found. Build with 'make styletts2' first."; \
 	fi
 
 # --- iOS Framework Build ---

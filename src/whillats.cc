@@ -1,7 +1,7 @@
 /*
- *  (c) 2025, wilddolphin2022 
+ *  (c) 2025, wilddolphin2025 
  *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2022
+ *  https://github.com/wilddolphin2025
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -41,37 +41,38 @@ class WhisperTranscriber {
 #include "llama_device_base.h"
 #include "whillats_utils.h"
 
-#if !defined(__APPLE__)
-#include "espeak_tts.h"
+#if defined(WHILLATS_STYLETTS2)
+#include "styletts2_tts.h"
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback)
 {
-#if !defined(__APPLE__) || !TARGET_OS_IPHONE
-      _espeak_tts = std::make_unique<ESpeakTTS>(callback);
-#endif
+    const char* modelDir = getenv("STYLETTS2_MODEL_DIR");
+    const char* espeakData = getenv("ESPEAK_DATA_PATH");
+    bool useCuda = getenv("STYLETTS2_USE_CUDA") != nullptr;
+
+    if (modelDir && espeakData) {
+        _styletts2 = std::make_unique<StyleTTS2TTS>(callback,
+            std::string(modelDir), std::string(espeakData), useCuda);
+    } else {
+        LOG_W("StyleTTS2: STYLETTS2_MODEL_DIR or ESPEAK_DATA_PATH not set");
+    }
 }
 
 WhillatsTTS::~WhillatsTTS() {}
 
 void WhillatsTTS::queueText(const char* text) {
-#if !defined(__APPLE__) || !TARGET_OS_IPHONE
-    _espeak_tts->queueText(std::string(text), "en");
-#else
-    (void)text;
-#endif
+    if (_styletts2) _styletts2->queueText(std::string(text), "en");
 }
 
-void WhillatsTTS::queueText(const char* text, const char* /*language*/) {
-    queueText(text);
+void WhillatsTTS::queueText(const char* text, const char* language) {
+    if (_styletts2) _styletts2->queueText(std::string(text),
+        std::string(language ? language : "en"));
 }
 
 bool WhillatsTTS::start() {
-#if !defined(__APPLE__) || !TARGET_OS_IPHONE
-    return _espeak_tts->start();
-#else
+    if (_styletts2) return _styletts2->start();
     return false;
-#endif
 }
 
 bool WhillatsTTS::start(bool /*withAudio*/) {
@@ -79,17 +80,50 @@ bool WhillatsTTS::start(bool /*withAudio*/) {
 }
 
 void WhillatsTTS::stop() {
-#if !defined(__APPLE__) || !TARGET_OS_IPHONE
-    _espeak_tts->stop();
-#endif
+    if (_styletts2) _styletts2->stop();
 }
 
 int WhillatsTTS::getSampleRate() {
-#if !defined(__APPLE__) || !TARGET_OS_IPHONE
+    return StyleTTS2TTS::getSampleRate();
+}
+
+void WhillatsTTS::enableSpeakerphone() {}
+
+void WhillatsTTS::disableSpeakerphone() {}
+
+#elif !defined(__APPLE__)
+#include "espeak_tts.h"
+
+WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
+    : _callback(callback)
+{
+    _espeak_tts = std::make_unique<ESpeakTTS>(callback);
+}
+
+WhillatsTTS::~WhillatsTTS() {}
+
+void WhillatsTTS::queueText(const char* text) {
+    _espeak_tts->queueText(std::string(text), "en");
+}
+
+void WhillatsTTS::queueText(const char* text, const char* language) {
+    _espeak_tts->queueText(std::string(text), std::string(language ? language : "en"));
+}
+
+bool WhillatsTTS::start() {
+    return _espeak_tts->start();
+}
+
+bool WhillatsTTS::start(bool /*withAudio*/) {
+    return start();
+}
+
+void WhillatsTTS::stop() {
+    _espeak_tts->stop();
+}
+
+int WhillatsTTS::getSampleRate() {
     return ESpeakTTS::getSampleRate();
-#else
-    return 16000;
-#endif
 }
 
 void WhillatsTTS::enableSpeakerphone() {}
@@ -168,7 +202,7 @@ void WhillatsTTS::disableSpeakerphone() {
 }
 #endif // TTS_PLATFORMS
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(WHILLATS_STYLETTS2)
 // Provide a default no-arg start() on Apple that forwards to start(bool)
 bool WhillatsTTS::start() {
     return start(true);
