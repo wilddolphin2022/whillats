@@ -179,6 +179,7 @@ class WHILLATS_API WhillatsLlama {
 
     bool start();
     void stop();
+    bool isRunning() const;
     void setThreadCount(int n);
     void askLlama(const char* prompt);
     void askWithImageFile(const char* prompt, const char* image_file, int width, int height);

@@ -116,6 +116,7 @@ public:
 
     bool start();
     void stop();
+    bool isRunning() const { return _running; }
     void setThreadCount(int n) { _nThreads = n; }
 
     void askLlama(const char *prompt);

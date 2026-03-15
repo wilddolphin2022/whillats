@@ -268,6 +268,10 @@ bool WhillatsLlama::start() {
     return _llama_device->start();
 }
 
+bool WhillatsLlama::isRunning() const {
+    return _llama_device && _llama_device->isRunning();
+}
+
 void WhillatsLlama::setThreadCount(int n) {
     if (_llama_device) _llama_device->setThreadCount(n);
 }
