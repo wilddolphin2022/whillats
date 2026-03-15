@@ -446,6 +446,13 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             gomp
             stdc++
         )
+        if(GGML_CUDA)
+            find_package(CUDAToolkit)
+            if(CUDAToolkit_FOUND)
+                target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart ggml-cuda)
+                message(STATUS "Linked whillats against CUDA runtime and ggml-cuda")
+            endif()
+        endif()
     endif()
 
 endif()  # end if(NOT iOS)
