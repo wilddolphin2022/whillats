@@ -64,13 +64,17 @@ else
     echo "  Models downloaded."
 fi
 
-# --- Find espeak-ng-data ---
+# --- Copy espeak-ng-data to output ---
 ESPEAK_DATA="$WHILLATS_DIR/build/bin/Release/espeak-ng-data"
-if [ ! -d "$ESPEAK_DATA" ]; then
-    ESPEAK_DATA=$(find "$WHILLATS_DIR/build" -name "espeak-ng-data" -type d | head -1)
+ESPEAK_BUILD_DATA="$WHILLATS_DIR/build/_deps/espeak-ng-proj-build/espeak-ng-data"
+
+if [ -d "$ESPEAK_BUILD_DATA/voices" ]; then
+    mkdir -p "$ESPEAK_DATA"
+    cp -r "$ESPEAK_BUILD_DATA"/* "$ESPEAK_DATA"/
+    echo "  Copied espeak-ng-data to $ESPEAK_DATA"
 fi
 
-if [ -z "$ESPEAK_DATA" ] || [ ! -d "$ESPEAK_DATA" ]; then
+if [ ! -f "$ESPEAK_DATA/phontab" ]; then
     echo "[WARNING] espeak-ng-data not found in build output. Trying system path..."
     if [ -d "/usr/lib/x86_64-linux-gnu/espeak-ng-data" ]; then
         ESPEAK_DATA="/usr/lib/x86_64-linux-gnu/espeak-ng-data"
