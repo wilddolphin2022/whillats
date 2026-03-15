@@ -83,6 +83,10 @@ void WhillatsTTS::stop() {
     if (_styletts2) _styletts2->stop();
 }
 
+void WhillatsTTS::setThreadCount(int n) {
+    if (_styletts2) _styletts2->setThreadCount(n);
+}
+
 int WhillatsTTS::getSampleRate() {
     return StyleTTS2TTS::getSampleRate();
 }
@@ -245,6 +249,11 @@ void WhillatsTranscriber::setLanguage(const char* language) {
     }
 }
 
+void WhillatsTranscriber::setThreadCount(int n) {
+    _threadCount = n;
+    if (_whisper_transcriber) _whisper_transcriber->setThreadCount(n);
+}
+
 WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback callback) 
     : _callback(callback),
       _llama_device(std::make_unique<LlamaDeviceBase>(model_path, "", _callback)) {}
@@ -257,6 +266,10 @@ WhillatsLlama::~WhillatsLlama() {}
 
 bool WhillatsLlama::start() {
     return _llama_device->start();
+}
+
+void WhillatsLlama::setThreadCount(int n) {
+    if (_llama_device) _llama_device->setThreadCount(n);
 }
 
 void WhillatsLlama::stop() {

@@ -144,7 +144,7 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     LOG_V("Processing audio chunk of " << samples.size() << " samples (" << duration_ms << " ms)");
 
     whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    wparams.n_threads = std::max(1u, std::thread::hardware_concurrency());
+    wparams.n_threads = (_nThreads > 0) ? _nThreads : std::max(1u, std::thread::hardware_concurrency());
     wparams.temperature = 0.0f;
     wparams.no_speech_thold = 0.95f;
     wparams.logprob_thold = -1.0f;

@@ -125,6 +125,7 @@ class WHILLATS_API WhillatsTTS {
     void stop();
     void queueText(const char* text);
     void queueText(const char* text, const char* language);
+    void setThreadCount(int n);
     void enableSpeakerphone();
     void disableSpeakerphone();
 
@@ -160,12 +161,14 @@ class WHILLATS_API WhillatsTranscriber {
     // Language control used by factory
     std::string getLanguage() const;
     void setLanguage(const char* language);
+    void setThreadCount(int n);
 
   private:
     WhillatsSetResponseCallback _callback; 
     WhillatsSetLanguageCallback _language_callback;
     std::unique_ptr<WhisperTranscriber> _whisper_transcriber; 
     std::string _language = "en";
+    int _threadCount = 0;
 };
 
 class WHILLATS_API WhillatsLlama {
@@ -176,6 +179,7 @@ class WHILLATS_API WhillatsLlama {
 
     bool start();
     void stop();
+    void setThreadCount(int n);
     void askLlama(const char* prompt);
     void askWithImageFile(const char* prompt, const char* image_file, int width, int height);
     void askWithYUVRaw(

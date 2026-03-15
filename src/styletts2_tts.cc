@@ -251,7 +251,8 @@ bool StyleTTS2TTS::start() {
     }
 
     _sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    _sessionOptions.SetIntraOpNumThreads(std::max(1u, std::thread::hardware_concurrency()));
+    int ttsThreads = (_nThreads > 0) ? _nThreads : std::max(1u, std::thread::hardware_concurrency());
+    _sessionOptions.SetIntraOpNumThreads(ttsThreads);
     _sessionOptions.DisableProfiling();
 
     // Load ONNX models

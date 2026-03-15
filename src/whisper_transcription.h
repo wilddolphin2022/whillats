@@ -43,6 +43,7 @@ public:
 
     void setVADThreshold(float threshold) { kVADThreshold = threshold; }
     float getVADThreshold() { return kVADThreshold; }
+    void setThreadCount(int n) { _nThreads = n; }
 
 private:
     bool InitializeWhisperModel(const std::string& modelPath);
@@ -84,6 +85,7 @@ private:
     } noise_profile;
 
     float kVADThreshold = 0.75;
+    int _nThreads = 0; // 0 = auto
 
     static const size_t kMinPhraseSamples = 32000;  // 200ms at 16kHz
     static const size_t kMaxPhraseSamples = 64000; // 1s at 16kHz

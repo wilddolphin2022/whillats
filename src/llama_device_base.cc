@@ -284,6 +284,7 @@ bool LlamaSimpleChat::InitializeContext() {
 #else
     ctx_params.n_threads = std::max(1u, std::thread::hardware_concurrency());
 #endif
+    if (n_threads_ > 0) ctx_params.n_threads = n_threads_;
 
     ctx_ = llama_init_from_model(model_, ctx_params);
     if (!ctx_) {
@@ -1209,6 +1210,7 @@ bool LlamaDeviceBase::start() {
         _llama_chat.reset(new LlamaSimpleChat());
         _llama_chat->SetModelPaths(_model_path, _mmproj_path);
         _llama_chat->SetNGL(32);
+        if (_nThreads > 0) _llama_chat->SetThreadCount(_nThreads);
         LOG_I("Calling LlamaSimpleChat::Initialize()...");
         if (_llama_chat && _llama_chat->Initialize()) {
             LOG_I("Llama chat initialized successfully!");

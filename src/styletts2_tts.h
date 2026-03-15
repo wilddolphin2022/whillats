@@ -49,6 +49,7 @@ public:
     bool start();
     void stop();
     void queueText(const std::string& text, const std::string& language);
+    void setThreadCount(int n) { _nThreads = n; }
     void loadStyle(const std::string& styleFile, const std::string& predictorFile);
 
     static const int getSampleRate();
@@ -93,6 +94,7 @@ private:
 
     bool _initialized{false};
     bool _phonemizerReady{false};
+    int _nThreads = 0; // 0 = auto
 };
 
 #endif // STYLETTS2_TTS_H

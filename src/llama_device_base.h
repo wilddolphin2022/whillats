@@ -57,6 +57,7 @@ public:
   bool SetModelPaths(const std::string &path, const std::string &mmproj_path);
   bool SetNGL(int layers);
   bool SetContextSize(int size);
+  void SetThreadCount(int n) { n_threads_ = n; }
   void StopGeneration();
 
   bool Initialize();
@@ -72,6 +73,7 @@ public:
   std::string mmproj_path_;
   int ngl_ = 10;
   int n_predict_ = 4096;
+  int n_threads_ = 0; // 0 = auto
   std::string prompt_ = "You are a helpful assistant.";
 
   llama_model* model_ = nullptr;
@@ -114,6 +116,7 @@ public:
 
     bool start();
     void stop();
+    void setThreadCount(int n) { _nThreads = n; }
 
     void askLlama(const char *prompt);
     void askWithImage(const char *prompt, const YUVData& yuv);
@@ -128,6 +131,7 @@ public:
 
 private:
     bool _running = false;
+    int _nThreads = 0; // 0 = auto
     std::atomic<bool> _destructing_ {false};
 
     std::thread _processingThread;
