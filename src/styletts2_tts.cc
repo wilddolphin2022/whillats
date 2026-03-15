@@ -484,7 +484,7 @@ bool StyleTTS2TTS::runProcessingThread() {
         LOG_I("StyleTTS2: Synthesizing: " << textToSynth.substr(0, 60)
               << (textToSynth.size() > 60 ? "..." : ""));
 
-        auto audio = synthesize(textToSynth, 1.5f);
+        auto audio = synthesize(textToSynth, 1.3f);
 
         if (!audio.empty()) {
             // Convert int16_t to uint16_t for the callback
