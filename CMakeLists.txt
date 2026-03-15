@@ -347,6 +347,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         src/whisper_transcription.cc
         src/llama_device_base.cc
         src/synthesis.cc
+        src/talking_face.cc
         src/whillats.cc
         src/whillats_utils.cc
     )
