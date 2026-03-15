@@ -18,6 +18,7 @@
 #include <numeric>
 #include <cstring>
 #include <cstdlib>
+#include <thread>
 
 struct MaskResult {
     std::vector<bool> text_mask;
@@ -249,9 +250,8 @@ bool StyleTTS2TTS::start() {
         LOG_I("StyleTTS2: CUDA execution provider enabled");
     }
 
-    _sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
-    _sessionOptions.DisableCpuMemArena();
-    _sessionOptions.DisableMemPattern();
+    _sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    _sessionOptions.SetIntraOpNumThreads(std::max(1u, std::thread::hardware_concurrency()));
     _sessionOptions.DisableProfiling();
 
     // Load ONNX models
