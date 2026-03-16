@@ -1,11 +1,16 @@
 .PHONY: build clean debug release test test_release example example_release deps-ios ios ios-debug ios-clean styletts2 styletts2-release styletts2-linux styletts2-linux-cuda test-styletts2
 
 # --- Platform detection: Metal on macOS, CUDA on Linux ---
+# Pass NO_CUDA=1 to disable CUDA on Linux (e.g. make debug NO_CUDA=1)
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
     GPU_FLAGS = -DGGML_METAL=ON -DGGML_CUDA=OFF
 else
-    GPU_FLAGS = -DGGML_METAL=OFF -DGGML_CUDA=ON
+    ifdef NO_CUDA
+        GPU_FLAGS = -DGGML_METAL=OFF -DGGML_CUDA=OFF
+    else
+        GPU_FLAGS = -DGGML_METAL=OFF -DGGML_CUDA=ON
+    endif
 endif
 
 # --- Standard Linux/macOS Build ---
@@ -68,11 +73,11 @@ styletts2-release:
 	cmake --build build --config Release
 
 styletts2-linux:
-	cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF
+	cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF -DGGML_CUDA=OFF -DWHILLATS_OLD_ABI=ON
 	cmake --build build --config Debug
 
 styletts2-linux-cuda:
-	cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF -DGGML_CUDA=ON
+	cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF -DGGML_CUDA=ON -DWHILLATS_OLD_ABI=ON
 	cmake --build build --config Debug
 
 test-styletts2: styletts2

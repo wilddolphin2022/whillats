@@ -38,6 +38,13 @@ endif()
 add_compile_options(-Wno-incompatible-pointer-types-discards-qualifiers)
 add_compile_options(-Wno-exit-time-destructors -Wno-global-constructors)
 
+# Match the pre-C++11 ABI used by WebRTC's bundled clang so that symbols
+# (e.g. std::string returns) link without mangling mismatches.
+option(WHILLATS_OLD_ABI "Use pre-C++11 libstdc++ ABI for clang compatibility" OFF)
+if(WHILLATS_OLD_ABI)
+    add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
+endif()
+
 # --- Dependency Declarations ---
 set(THIRD_PARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 file(MAKE_DIRECTORY ${THIRD_PARTY_DIR}) # Ensure third_party exists
@@ -373,6 +380,10 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     
     add_library(${PROJECT_NAME} SHARED ${WHILLATS_SOURCES})
 
+    # Prevent -isystem /usr/include from breaking #include_next in GCC stdlib headers
+    # when CUDA toolkit headers live at /usr/include (propagated via CUDA::cudart)
+    set_target_properties(${PROJECT_NAME} PROPERTIES NO_SYSTEM_FROM_IMPORTED ON)
+
     # Ensure espeak data is copied before building the main library
     if(UNIX AND NOT APPLE)
         add_dependencies(${PROJECT_NAME} copy_espeak_data)
@@ -604,6 +615,7 @@ add_executable(test_whillats
     test/test_whillats.cc
     test/test_utils.cc
 )
+set_target_properties(test_whillats PROPERTIES NO_SYSTEM_FROM_IMPORTED ON)
 
 # Add compile definition for espeak data path to test executable as well
 target_include_directories(test_whillats PRIVATE
