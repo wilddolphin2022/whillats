@@ -1,14 +1,22 @@
 .PHONY: build clean debug release test test_release example example_release deps-ios ios ios-debug ios-clean styletts2 styletts2-release styletts2-linux styletts2-linux-cuda test-styletts2
 
+# --- Platform detection: Metal on macOS, CUDA on Linux ---
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+    GPU_FLAGS = -DGGML_METAL=ON -DGGML_CUDA=OFF
+else
+    GPU_FLAGS = -DGGML_METAL=OFF -DGGML_CUDA=ON
+endif
+
 # --- Standard Linux/macOS Build ---
 build:
-	cmake -B build -DGGML_METAL=ON
+	cmake -B build $(GPU_FLAGS)
 
 debug: build
 	cmake --build build --config debug
 
 release:
-	cmake -B build -DCMAKE_BUILD_TYPE=release -DGGML_METAL=OFF
+	cmake -B build -DCMAKE_BUILD_TYPE=release $(GPU_FLAGS)
 	cmake --build build --config release
 
 # Default test target (uses debug build)
@@ -52,11 +60,11 @@ example_release: release
 # Builds whillats with StyleTTS2 neural TTS (ONNX Runtime auto-downloaded)
 
 styletts2:
-	cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=ON
+	cmake -B build -DWHILLATS_STYLETTS2=ON $(GPU_FLAGS)
 	cmake --build build --config Debug
 
 styletts2-release:
-	cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHILLATS_STYLETTS2=ON -DGGML_METAL=OFF
+	cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHILLATS_STYLETTS2=ON $(GPU_FLAGS)
 	cmake --build build --config Release
 
 styletts2-linux:

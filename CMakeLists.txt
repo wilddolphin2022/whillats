@@ -213,11 +213,15 @@ set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libs for whisper" FORCE)
 set(WHISPER_STATIC ON CACHE BOOL "Build static libs for whisper" FORCE) # Explicitly static
 if(UNIX AND NOT APPLE) # Linux specific
-    set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
+    if(GGML_CUDA)
+        set(GGML_CUDA ON CACHE BOOL "Enable CUDA" FORCE)
+    else()
+        set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
+    endif()
 else()
     set(GGML_CUDA OFF CACHE BOOL "Disable CUDA" FORCE)
 endif()
-# Disable Metal backend on macOS and iOS
+# Disable Metal backend for whisper (whisper uses its own ggml copy)
 set(GGML_METAL OFF CACHE BOOL "Disable ggml Metal backend" FORCE)
 FetchContent_MakeAvailable(whisper)
 
