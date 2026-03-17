@@ -44,7 +44,7 @@ class WhisperTranscriber {
 #if defined(WHILLATS_PIPER)
 #include "piper_tts.h"
 
-static int s_piperSampleRate = 22050;
+static int s_piperSampleRate = 16000;
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback)
