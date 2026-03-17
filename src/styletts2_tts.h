@@ -80,6 +80,8 @@ private:
     std::unique_ptr<Ort::Session> _plBert;
     std::unique_ptr<Ort::Session> _bertEncoder;
     std::unique_ptr<Ort::Session> _model;
+    std::unique_ptr<Ort::RunOptions> _runOptions;
+    std::unique_ptr<Ort::MemoryInfo> _memoryInfo;
 
     std::vector<float> _styleEmbedding;
     std::vector<float> _predictorEmbedding;

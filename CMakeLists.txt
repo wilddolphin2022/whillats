@@ -380,6 +380,12 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     
     add_library(${PROJECT_NAME} SHARED ${WHILLATS_SOURCES})
 
+    # Bind libstdc++ symbols locally so they don't get interposed by the host
+    # binary's libc++ (WebRTC is built with clang/libc++ and -fno-exceptions).
+    if(UNIX AND NOT APPLE)
+        target_link_options(${PROJECT_NAME} PRIVATE -Wl,-Bsymbolic)
+    endif()
+
     # Prevent -isystem /usr/include from breaking #include_next in GCC stdlib headers
     # when CUDA toolkit headers live at /usr/include (propagated via CUDA::cudart)
     set_target_properties(${PROJECT_NAME} PROPERTIES NO_SYSTEM_FROM_IMPORTED ON)

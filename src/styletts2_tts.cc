@@ -14,10 +14,14 @@
  */
 
 #include "styletts2_tts.h"
+#include <cmath>
+#include <csetjmp>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <numeric>
-#include <cstring>
-#include <cstdlib>
+#include <stdexcept>
 #include <thread>
 
 struct MaskResult {
@@ -25,6 +29,17 @@ struct MaskResult {
     std::vector<int32_t> attention_mask;
     std::vector<int64_t> shape;
 };
+
+static thread_local sigjmp_buf s_onnx_jmpbuf;
+static thread_local volatile sig_atomic_t s_onnx_guarded = 0;
+
+static void onnx_sigabrt_handler(int sig) {
+    if (s_onnx_guarded) {
+        s_onnx_guarded = 0;
+        siglongjmp(s_onnx_jmpbuf, 1);
+    }
+    _exit(134);
+}
 
 static MaskResult generateMasks(const std::vector<int64_t>& lengths) {
     if (lengths.empty()) return {};
@@ -271,6 +286,13 @@ bool StyleTTS2TTS::start() {
 
     LOG_I("StyleTTS2: ONNX models loaded successfully");
 
+    _runOptions = std::make_unique<Ort::RunOptions>();
+    _runOptions->SetRunLogVerbosityLevel(0);
+    _memoryInfo = std::make_unique<Ort::MemoryInfo>(
+        Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault));
+
+    LOG_I("StyleTTS2: Persistent RunOptions and MemoryInfo created");
+
     // Initialize phonemizer
     initPhonemizer("en-us", _espeakDataDir);
     if (!_phonemizerReady) {
@@ -335,8 +357,11 @@ std::vector<int16_t> StyleTTS2TTS::synthesize(const std::string& text, float spe
         return {};
     }
 
+    fprintf(stderr, "[STTS2] synthesize entry, text len=%zu\n", text.size());
+
     std::vector<int16_t> audioBuffer;
     std::vector<int64_t> tokens = textToSequence(text);
+    fprintf(stderr, "[STTS2] textToSequence done, %zu tokens\n", tokens.size());
     if (tokens.empty()) {
         LOG_W("StyleTTS2: No phoneme tokens generated for text");
         return {};
@@ -347,8 +372,9 @@ std::vector<int16_t> StyleTTS2TTS::synthesize(const std::string& text, float spe
     std::vector<int64_t> textLength = {static_cast<int64_t>(tokens.size())};
     MaskResult masks = generateMasks(textLength);
 
-    auto memoryInfo = Ort::MemoryInfo::CreateCpu(
-        OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault);
+    fprintf(stderr, "[STTS2] masks generated, using persistent memoryInfo\n");
+    auto& memoryInfo = *_memoryInfo;
+    fprintf(stderr, "[STTS2] memoryInfo ready, starting PL-BERT\n");
 
     // PL-BERT inference
     std::vector<Ort::Value> plBertInputTensors;
@@ -364,10 +390,21 @@ std::vector<int16_t> StyleTTS2TTS::synthesize(const std::string& text, float spe
     std::array<const char*, 2> plBertInputNames = {"input_ids", "attention_mask"};
     std::array<const char*, 1> plBertOutputNames = {"bert_dur"};
 
+    fprintf(stderr, "[STTS2] running PL-BERT...\n");
+    std::terminate_handler prev_handler;
+    s_onnx_guarded = 1;
+    prev_handler = std::set_terminate([]() {
+        fprintf(stderr, "[STTS2] std::terminate intercepted in PL-BERT\n");
+        if (s_onnx_guarded) { s_onnx_guarded = 0; siglongjmp(s_onnx_jmpbuf, 2); }
+        _exit(134);
+    });
     auto bertDur = _plBert->Run(
-        Ort::RunOptions{nullptr}, plBertInputNames.data(),
+        *_runOptions, plBertInputNames.data(),
         plBertInputTensors.data(), plBertInputTensors.size(),
         plBertOutputNames.data(), plBertOutputNames.size());
+    std::set_terminate(prev_handler);
+    s_onnx_guarded = 0;
+    fprintf(stderr, "[STTS2] PL-BERT done\n");
 
     const float* bertDurData = bertDur.front().GetTensorData<float>();
     auto bertDurShape = bertDur.front().GetTensorTypeAndShapeInfo().GetShape();
@@ -385,10 +422,20 @@ std::vector<int16_t> StyleTTS2TTS::synthesize(const std::string& text, float spe
     std::array<const char*, 1> bertEncoderInputNames = {"input"};
     std::array<const char*, 1> bertEncoderOutputNames = {"d_en"};
 
+    fprintf(stderr, "[STTS2] running BERT encoder...\n");
+    s_onnx_guarded = 1;
+    prev_handler = std::set_terminate([]() {
+        fprintf(stderr, "[STTS2] std::terminate intercepted in BERT encoder\n");
+        if (s_onnx_guarded) { s_onnx_guarded = 0; siglongjmp(s_onnx_jmpbuf, 2); }
+        _exit(134);
+    });
     auto dEn = _bertEncoder->Run(
-        Ort::RunOptions{nullptr}, bertEncoderInputNames.data(),
+        *_runOptions, bertEncoderInputNames.data(),
         bertEncoderInputTensors.data(), bertEncoderInputTensors.size(),
         bertEncoderOutputNames.data(), bertEncoderOutputNames.size());
+    std::set_terminate(prev_handler);
+    s_onnx_guarded = 0;
+    fprintf(stderr, "[STTS2] BERT encoder done\n");
 
     const float* dEnData = dEn.front().GetTensorData<float>();
     auto dEnShape = dEn.front().GetTensorTypeAndShapeInfo().GetShape();
@@ -439,15 +486,26 @@ std::vector<int16_t> StyleTTS2TTS::synthesize(const std::string& text, float spe
     std::array<const char*, 5> finalInputNames = {"tokens", "d_en", "ref", "s", "speed"};
     std::array<const char*, 1> finalOutputNames = {"output_wav"};
 
+    fprintf(stderr, "[STTS2] running final model...\n");
+    s_onnx_guarded = 1;
+    prev_handler = std::set_terminate([]() {
+        fprintf(stderr, "[STTS2] std::terminate intercepted in final model\n");
+        if (s_onnx_guarded) { s_onnx_guarded = 0; siglongjmp(s_onnx_jmpbuf, 2); }
+        _exit(134);
+    });
     auto audioOutput = _model->Run(
-        Ort::RunOptions{nullptr}, finalInputNames.data(),
+        *_runOptions, finalInputNames.data(),
         finalModelInputs.data(), finalModelInputs.size(),
         finalOutputNames.data(), finalOutputNames.size());
+    std::set_terminate(prev_handler);
+    s_onnx_guarded = 0;
+    fprintf(stderr, "[STTS2] final model done\n");
 
     const float* audioOutputData = audioOutput.front().GetTensorData<float>();
     auto audioOutputShape = audioOutput.front().GetTensorTypeAndShapeInfo().GetShape();
     int64_t audioOutputCount = audioOutputShape[audioOutputShape.size() - 1];
 
+    fprintf(stderr, "[STTS2] audio output count=%lld, converting to int16\n", (long long)audioOutputCount);
     audioBuffer.reserve(audioOutputCount);
     for (int64_t i = 0; i < audioOutputCount; i++) {
         float clamped = std::max(
@@ -489,34 +547,101 @@ bool StyleTTS2TTS::runProcessingThread() {
               << textToSynth.substr(0, 60)
               << (textToSynth.size() > 60 ? "..." : ""));
 
-        auto audio = synthesize(textToSynth, 1.0f);
+        std::vector<int16_t> audio;
+
+        struct sigaction sa_new = {}, sa_old = {};
+        sa_new.sa_handler = onnx_sigabrt_handler;
+        sigemptyset(&sa_new.sa_mask);
+        sa_new.sa_flags = 0;
+        sigaction(SIGABRT, &sa_new, &sa_old);
+
+        s_onnx_guarded = 1;
+        if (sigsetjmp(s_onnx_jmpbuf, 1) == 0) {
+            try {
+                audio = synthesize(textToSynth, 1.0f);
+            } catch (const std::exception& e) {
+                LOG_E("StyleTTS2: synthesize() threw: " << e.what());
+                audio.clear();
+            } catch (...) {
+                LOG_E("StyleTTS2: synthesize() threw unknown exception");
+                audio.clear();
+            }
+        } else {
+            LOG_E("StyleTTS2: SIGABRT caught during synthesize() - ONNX ABI crash recovered");
+            audio.clear();
+        }
+        s_onnx_guarded = 0;
+        sigaction(SIGABRT, &sa_old, nullptr);
 
         if (!audio.empty()) {
             constexpr int TARGET_RATE = 16000;
             if (SAMPLE_RATE != TARGET_RATE) {
-                size_t out_len = static_cast<size_t>(
-                    static_cast<double>(audio.size()) * TARGET_RATE / SAMPLE_RATE);
-                std::vector<int16_t> resampled(out_len);
-                double ratio = static_cast<double>(audio.size() - 1) / (out_len - 1);
-                for (size_t i = 0; i < out_len; ++i) {
-                    double src_idx = i * ratio;
-                    size_t idx0 = static_cast<size_t>(src_idx);
-                    size_t idx1 = std::min(idx0 + 1, audio.size() - 1);
-                    double frac = src_idx - idx0;
-                    resampled[i] = static_cast<int16_t>(
-                        audio[idx0] * (1.0 - frac) + audio[idx1] * frac);
+                // 24kHz -> 16kHz via polyphase: pad, low-pass, pick every 3rd from 2x stream
+                constexpr int NTAPS = 31;
+                constexpr int HALF = NTAPS / 2;
+                constexpr double FC = 1.0 / 3.0;
+
+                static bool fir_init = false;
+                static double fir[NTAPS];
+                if (!fir_init) {
+                    double fir_sum = 0.0;
+                    for (int n = 0; n < NTAPS; ++n) {
+                        int k = n - HALF;
+                        fir[n] = (k == 0) ? 2.0 * FC
+                                          : sin(2.0 * M_PI * FC * k) / (M_PI * k);
+                        fir[n] *= 0.54 - 0.46 * cos(2.0 * M_PI * n / (NTAPS - 1));
+                        fir_sum += fir[n];
+                    }
+                    for (int n = 0; n < NTAPS; ++n) fir[n] /= fir_sum;
+                    fir_init = true;
+                }
+
+                // Pad input with HALF zeros on each side to avoid startup transient
+                size_t pad = static_cast<size_t>(HALF);
+                size_t padded_len = audio.size() + 2 * pad;
+                std::vector<double> src(padded_len * 2, 0.0);
+                for (size_t i = 0; i < audio.size(); ++i) {
+                    src[(i + pad) * 2] = static_cast<double>(audio[i]);
+                }
+
+                size_t up_len = padded_len * 2;
+                // Decimate by 3 starting from the padded region
+                size_t skip = (pad * 2 + 2) / 3;
+                size_t usable = (audio.size() * 2) / 3;
+                std::vector<int16_t> resampled(usable);
+                for (size_t i = 0; i < usable; ++i) {
+                    size_t si = (skip + i) * 3;
+                    double acc = 0.0;
+                    for (int j = 0; j < NTAPS; ++j) {
+                        int idx = static_cast<int>(si) - HALF + j;
+                        if (idx >= 0 && static_cast<size_t>(idx) < up_len)
+                            acc += src[idx] * fir[j];
+                    }
+                    acc *= 2.0;
+                    acc = std::max(-32768.0, std::min(32767.0, acc));
+                    resampled[i] = static_cast<int16_t>(acc);
                 }
                 audio = std::move(resampled);
                 LOG_V("StyleTTS2: Resampled to " << audio.size() << " samples at " << TARGET_RATE << "Hz");
             }
             std::vector<uint16_t> audioU16(audio.begin(), audio.end());
             LOG_V("StyleTTS2: Delivering " << audioU16.size() << " samples");
-            _callback.OnBufferComplete(true, audioU16);
+            try {
+                _callback.OnBufferComplete(true, audioU16);
+            } catch (const std::exception& e) {
+                LOG_E("StyleTTS2: OnBufferComplete threw: " << e.what());
+            } catch (...) {
+                LOG_E("StyleTTS2: OnBufferComplete threw unknown exception");
+            }
         } else {
             LOG_W("StyleTTS2: No audio generated for text");
         }
 
-        _callback.OnSynthesisComplete();
+        try {
+            _callback.OnSynthesisComplete();
+        } catch (...) {
+            LOG_E("StyleTTS2: OnSynthesisComplete threw");
+        }
     }
 
     return true;
