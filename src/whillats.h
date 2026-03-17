@@ -50,6 +50,7 @@ class WhisperTranscriber;
 class LlamaDeviceBase;
 #if defined(WHILLATS_STYLETTS2)
 class StyleTTS2TTS;
+class PiperTTS;
 #else
 class ESpeakTTS;
 #endif
@@ -135,6 +136,7 @@ class WHILLATS_API WhillatsTTS {
     WhillatsSetAudioCallback _callback;
 #if defined(WHILLATS_STYLETTS2)
     std::unique_ptr<StyleTTS2TTS> _styletts2;
+    std::unique_ptr<PiperTTS> _piper;
 #else
 #if !defined(__APPLE__)
     std::unique_ptr<ESpeakTTS> _espeak_tts;
