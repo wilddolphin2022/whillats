@@ -163,8 +163,8 @@ void WhillatsTranscriberClient::stop() {
 }
 
 void WhillatsTranscriberClient::processAudioBuffer(uint8_t* buffer, size_t size) {
-    if (_started && size > 0)
-        _conn.sendMsg(MSG_WHISPER_AUDIO, buffer, (uint32_t)size);
+    if (!_started) return;
+    _conn.sendMsg(MSG_WHISPER_AUDIO, buffer, (uint32_t)size);
 }
 
 // --- WhillatsLlamaClient ---

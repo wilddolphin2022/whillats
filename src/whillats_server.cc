@@ -110,8 +110,12 @@ int main(int argc, char* argv[]) {
             break;
 
         case MSG_WHISPER_AUDIO:
-            if (whisper)
-                whisper->processAudioBuffer(payload.data(), payload.size());
+            if (whisper) {
+                if (h.len == 0)
+                    whisper->processAudioBuffer(nullptr, 0);
+                else
+                    whisper->processAudioBuffer(payload.data(), payload.size());
+            }
             break;
 
         case MSG_LLAMA_START: {
