@@ -21,7 +21,7 @@
 #include <thread>
 #include <vector>
 
-struct piper_synthesizer;
+class PiperSubprocess;
 
 class PiperTTS {
 public:
@@ -41,7 +41,7 @@ private:
     bool runProcessingThread();
 
     WhillatsSetAudioCallback _callback;
-    piper_synthesizer* _synth = nullptr;
+    std::unique_ptr<PiperSubprocess> _subprocess;
 
     bool _running{false};
     std::thread _processingThread;

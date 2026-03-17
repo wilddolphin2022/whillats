@@ -1,16 +1,11 @@
 /*
- *  (c) 2025, wilddolphin2025
- *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2025
- *
- *  Piper TTS implementation using libpiper C API.
- *  Designed for CPU-only deployment with real-time performance.
+ *  Piper TTS using subprocess to avoid libc++/libstdc++ ONNX crash.
+ *  All ONNX calls happen in a forked child process.
  */
 
 #include "piper_tts.h"
-#include "whillats_utils.h"
+#include "piper_subprocess.h"
 #include "whisper_helpers.h"
-#include <piper.h>
 #include <cmath>
 #include <algorithm>
 
@@ -26,13 +21,13 @@ bool PiperTTS::start(const std::string& model_path,
                      const std::string& config_path) {
     if (_initialized) return true;
 
-    const char* cfg = config_path.empty() ? nullptr : config_path.c_str();
-    _synth = piper_create(model_path.c_str(), cfg, espeak_data_path.c_str());
-    if (!_synth) {
-        LOG_E("PiperTTS: Failed to create synthesizer from " << model_path);
+    _subprocess = std::make_unique<PiperSubprocess>();
+    if (!_subprocess->start(model_path, espeak_data_path)) {
+        LOG_E("PiperTTS: Failed to start subprocess");
+        _subprocess.reset();
         return false;
     }
-    LOG_I("PiperTTS: Loaded model: " << model_path);
+    LOG_I("PiperTTS: Subprocess started for model: " << model_path);
 
     _initialized = true;
     _running = true;
@@ -52,9 +47,9 @@ void PiperTTS::stop() {
         if (_processingThread.joinable())
             _processingThread.join();
     }
-    if (_synth) {
-        piper_free(_synth);
-        _synth = nullptr;
+    if (_subprocess) {
+        _subprocess->stop();
+        _subprocess.reset();
     }
     _initialized = false;
     LOG_I("PiperTTS: Stopped");
@@ -84,52 +79,20 @@ bool PiperTTS::runProcessingThread() {
         _textQueue.pop();
     }
 
-    if (text.empty()) return true;
+    if (text.empty() || !_subprocess) return true;
 
     LOG_I("PiperTTS: Synthesizing (" << text.size() << " chars): "
           << text.substr(0, 60) << (text.size() > 60 ? "..." : ""));
 
-    int rc = piper_synthesize_start(_synth, text.c_str(), nullptr);
-    if (rc != PIPER_OK) {
-        LOG_E("PiperTTS: synthesize_start failed: " << rc);
-        _callback.OnSynthesisComplete();
-        return true;
-    }
+    auto audio = _subprocess->synthesize(text);
+    _outputSampleRate = _subprocess->getSampleRate();
 
-    std::vector<int16_t> all_audio;
-    piper_audio_chunk chunk;
-
-    while (_running) {
-        rc = piper_synthesize_next(_synth, &chunk);
-        if (rc == PIPER_DONE) break;
-        if (rc != PIPER_OK) {
-            LOG_E("PiperTTS: synthesize_next failed: " << rc);
-            break;
-        }
-
-        if (chunk.samples && chunk.num_samples > 0) {
-            // Convert float samples to int16
-            for (size_t i = 0; i < chunk.num_samples; ++i) {
-                float v = chunk.samples[i] * 32767.0f;
-                v = std::max(-32768.0f, std::min(32767.0f, v));
-                all_audio.push_back(static_cast<int16_t>(v));
-            }
-
-            int src_rate = chunk.sample_rate;
-            LOG_V("PiperTTS: Chunk " << chunk.num_samples << " samples at " << src_rate << "Hz"
-                  << (chunk.is_last ? " (last)" : ""));
-        }
-
-        if (chunk.is_last) break;
-    }
-
-    if (!all_audio.empty()) {
-        int src_rate = chunk.sample_rate > 0 ? chunk.sample_rate : 22050;
-        _outputSampleRate = src_rate;
-
-        LOG_I("PiperTTS: Generated " << all_audio.size() << " samples at " << src_rate << "Hz");
-        std::vector<uint16_t> u16(all_audio.begin(), all_audio.end());
+    if (!audio.empty()) {
+        LOG_I("PiperTTS: Generated " << audio.size() << " samples at " << _outputSampleRate << "Hz");
+        std::vector<uint16_t> u16(audio.begin(), audio.end());
         _callback.OnBufferComplete(true, u16);
+    } else {
+        LOG_W("PiperTTS: No audio generated");
     }
 
     _callback.OnSynthesisComplete();

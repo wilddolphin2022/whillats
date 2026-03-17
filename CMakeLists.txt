@@ -377,6 +377,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     if(WHILLATS_PIPER)
         list(APPEND WHILLATS_SOURCES
             src/piper_tts.cc
+            src/piper_subprocess.cc
             ${CMAKE_CURRENT_SOURCE_DIR}/third_party/piper/src/piper.cpp)
     elseif(WHILLATS_STYLETTS2)
         list(APPEND WHILLATS_SOURCES src/styletts2_tts.cc src/orpheus_tts.cc)
