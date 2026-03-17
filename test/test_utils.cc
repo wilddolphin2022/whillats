@@ -125,6 +125,21 @@ Options parseOptions(int argc, char *argv[])
       opts.styletts2_predictor = arg.substr(22);
       LOG_I("StyleTTS2 predictor path: " << opts.styletts2_predictor);
     }
+    else if (arg == "--orpheus")
+    {
+      opts.orpheus = true;
+    }
+    else if (arg.find("--orpheus_model=") == 0)
+    {
+      opts.orpheus_model = arg.substr(16);
+      opts.orpheus = true;
+      LOG_I("Orpheus model path: " << opts.orpheus_model);
+    }
+    else if (arg.find("--snac_model=") == 0)
+    {
+      opts.snac_model = arg.substr(13);
+      LOG_I("SNAC model path: " << opts.snac_model);
+    }
   }
 
   // Load environment variables if paths not provided

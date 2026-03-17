@@ -365,7 +365,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     
     # Add TTS implementation based on build option
     if(WHILLATS_STYLETTS2)
-        list(APPEND WHILLATS_SOURCES src/styletts2_tts.cc)
+        list(APPEND WHILLATS_SOURCES src/styletts2_tts.cc src/orpheus_tts.cc)
     elseif(UNIX AND NOT APPLE)
         list(APPEND WHILLATS_SOURCES src/espeak_tts.cc)
     endif()

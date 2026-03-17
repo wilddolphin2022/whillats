@@ -28,6 +28,9 @@ struct Options {
     std::string styletts2_model_dir;
     std::string styletts2_style;
     std::string styletts2_predictor;
+    bool orpheus = false;
+    std::string orpheus_model;
+    std::string snac_model;
 };
 
 // Function to parse command line string to above options

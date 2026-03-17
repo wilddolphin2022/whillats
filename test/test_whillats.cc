@@ -20,6 +20,7 @@
 #include <mach-o/dyld.h>
 #endif
 #include "whillats.h"
+#include "orpheus_tts.h"
 
 #include "test_utils.h"
 #include "whisper_helpers.h"
@@ -209,6 +210,42 @@ int main(int argc, char *argv[])
       writeWavFile("synthesized_audio_long.wav", audio_buffer, WhillatsTTS::getSampleRate());
       // Stop TTS after all audio
       tts.stop();
+    }
+  }
+
+  if (opts.orpheus) {
+    audio_buffer.clear();
+    tts_done = false;
+    WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
+    OrpheusTTS orpheus(callback);
+
+    std::string orpheus_model = opts.orpheus_model;
+    std::string snac_model = opts.snac_model;
+    if (orpheus_model.empty()) {
+        const char* env = getenv("ORPHEUS_MODEL");
+        if (env) orpheus_model = env;
+    }
+    if (snac_model.empty()) {
+        const char* env = getenv("SNAC_MODEL");
+        if (env) snac_model = env;
+    }
+    if (orpheus_model.empty() || snac_model.empty()) {
+        LOG_E("Orpheus test requires --orpheus_model= and --snac_model= (or ORPHEUS_MODEL/SNAC_MODEL env vars)");
+    } else if (orpheus.start(orpheus_model, snac_model)) {
+        const char* test_text = "Hello, this is a test of Orpheus text to speech synthesis.";
+        std::cout << "Testing Orpheus TTS with text: " << test_text << std::endl;
+
+        orpheus.queueText(test_text, "tara");
+        while (!tts_done) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        if (!audio_buffer.empty()) {
+            writeWavFile("orpheus_audio.wav", audio_buffer, OrpheusTTS::getSampleRate());
+        } else {
+            LOG_W("Orpheus: No audio generated");
+        }
+        orpheus.stop();
     }
   }
 
