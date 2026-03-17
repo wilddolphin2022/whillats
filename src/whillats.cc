@@ -253,6 +253,12 @@ bool WhillatsTTS::start() {
 }
 #endif
 
+void WhillatsSetResponseCallback::OnResponseComplete(bool success, const char* response) {
+    if (callback_) {
+        callback_(success, response, user_data_);
+    }
+}
+
 WhillatsTranscriber::WhillatsTranscriber(const char* model_path, 
     WhillatsSetResponseCallback callback,
     WhillatsSetLanguageCallback language_callback) : 

@@ -697,13 +697,52 @@ set_target_properties(synthesis PROPERTIES
     )
 endif()
 
+# whillats_server: standalone process hosting Whisper+Llama+TTS (libstdc++ only)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT APPLE)
+add_executable(whillats_server
+    src/whillats_server.cc
+)
+target_include_directories(whillats_server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${THIRD_PARTY_DIR}/whisper.cpp/include
+    ${THIRD_PARTY_DIR}/whisper.cpp/ggml/include
+    ${THIRD_PARTY_DIR}/llama.cpp/include
+    ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+)
+target_link_libraries(whillats_server PRIVATE ${PROJECT_NAME})
+target_compile_options(whillats_server PRIVATE $<$<CONFIG:Debug>:-g -O0>)
+target_link_options(whillats_server PRIVATE $<$<CONFIG:Debug>:-g>)
+if(DEFINED LINUX_LINK_OPTS)
+    target_link_options(whillats_server PRIVATE ${LINUX_LINK_OPTS})
+endif()
+
+# test_whillats_server: verifies IPC protocol between client stubs and server
+add_executable(test_whillats_server
+    test/test_whillats_server.cc
+    test/test_utils.cc
+    src/whillats_client.cc
+)
+target_include_directories(test_whillats_server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${THIRD_PARTY_DIR}/whisper.cpp/include
+    ${THIRD_PARTY_DIR}/whisper.cpp/ggml/include
+    ${THIRD_PARTY_DIR}/llama.cpp/include
+    ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+)
+target_link_libraries(test_whillats_server PRIVATE ${PROJECT_NAME} pthread)
+target_compile_options(test_whillats_server PRIVATE $<$<CONFIG:Debug>:-g -O0>)
+target_link_options(test_whillats_server PRIVATE $<$<CONFIG:Debug>:-g>)
+endif()
+
 # Final install block: framework-only on iOS, full on others
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     install(TARGETS ${PROJECT_NAME}
         FRAMEWORK DESTINATION bin
     )
 else()
-    install(TARGETS ${PROJECT_NAME} test_whillats
+    install(TARGETS ${PROJECT_NAME} test_whillats whillats_server test_whillats_server
         FRAMEWORK DESTINATION bin
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION bin

@@ -63,13 +63,8 @@ public:
     WhillatsSetResponseCallback(ResponseCallback callback, void* user_data)
         : callback_(callback), user_data_(user_data) {}
 
-    void OnResponseComplete(bool success, const char* response) {
-        if (callback_) {
-            callback_(success, response, user_data_);
-        }
-    }
+    void OnResponseComplete(bool success, const char* response);
 
-private:
     ResponseCallback callback_;
     void* user_data_;
 };
@@ -87,11 +82,10 @@ public:
 
     void OnSynthesisComplete() {
         if (callback_) {
-            // Call with success = false, empty buffer to signal completion
             callback_(false, nullptr, 0, user_data_);
         }
     }
-private:
+
     AudioCallback callback_;
     void* user_data_;
 };
@@ -107,12 +101,10 @@ public:
         }
     }
 
-    // Backward compatibility shim
     void OnLanguageDetected(bool success, const std::string& language) {
         OnLanguageChanged(success, language.c_str());
     }
 
-private:
     LanguageCallback callback_;
     void* user_data_;
 };
