@@ -1,0 +1,56 @@
+/*
+ *  (c) 2025, wilddolphin2025
+ *  For WebRTCsays.ai project
+ *  https://github.com/wilddolphin2025
+ *
+ *  Piper TTS: fast CPU-based neural TTS using libpiper.
+ *  Models are small ONNX files (~15-60MB), real-time on 8 cores.
+ */
+
+#ifndef PIPER_TTS_H
+#define PIPER_TTS_H
+
+#include "whillats.h"
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <string>
+#include <thread>
+#include <vector>
+
+struct piper_synthesizer;
+
+class PiperTTS {
+public:
+    PiperTTS(WhillatsSetAudioCallback callback);
+    ~PiperTTS();
+
+    bool start(const std::string& model_path,
+               const std::string& espeak_data_path,
+               const std::string& config_path = "");
+    void stop();
+
+    void queueText(const char* text, const char* language = "en");
+
+    static const int getSampleRate();
+
+private:
+    bool runProcessingThread();
+
+    WhillatsSetAudioCallback _callback;
+    piper_synthesizer* _synth = nullptr;
+
+    bool _running{false};
+    std::thread _processingThread;
+    std::queue<std::pair<std::string, std::string>> _textQueue;
+    std::mutex _queueMutex;
+    std::condition_variable _queueCondition;
+    std::atomic<bool> _initialized{false};
+
+    static constexpr int OUTPUT_SAMPLE_RATE = 16000;
+};
+
+#endif // PIPER_TTS_H
