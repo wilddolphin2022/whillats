@@ -25,10 +25,8 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
-#if defined(WHILLATS_USE_SERVER)
 #include "whillats_client.h"
 #include "whillats_ipc.h"
-#endif
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 class WhisperTranscriber {
  public:
@@ -44,17 +42,19 @@ class WhisperTranscriber {
 #include "llama_device_base.h"
 #include "whillats_utils.h"
 
-// Runtime check: are we inside whillats_server? If so, use in-process path.
-#if defined(WHILLATS_USE_SERVER)
-static bool isServerProcess() {
+// Runtime check: should we route through whillats_server subprocess?
+// Returns true if WHILLATS_SERVER env is set AND we are NOT the server process.
+static bool shouldUseServer() {
     static int cached = -1;
-    if (cached < 0) cached = (getenv("WHILLATS_IS_SERVER") != nullptr) ? 1 : 0;
+    if (cached < 0) {
+        bool isServer = (getenv("WHILLATS_IS_SERVER") != nullptr);
+        bool hasServerPath = (getenv("WHILLATS_SERVER") != nullptr);
+        cached = (!isServer && hasServerPath) ? 1 : 0;
+    }
     return cached != 0;
 }
-#endif
 
 // Shared server connection (lazy-initialized, one per process)
-#if defined(WHILLATS_USE_SERVER)
 static std::shared_ptr<WhillatsServerConnection> s_serverConn;
 static std::mutex s_serverMutex;
 
@@ -115,7 +115,6 @@ static std::shared_ptr<WhillatsServerConnection> getOrCreateServer() {
     fprintf(stderr, "[whillats] Server started: %s\n", server_path.c_str());
     return s_serverConn;
 }
-#endif // WHILLATS_USE_SERVER
 
 #if defined(WHILLATS_PIPER)
 #include "piper_tts.h"
@@ -125,30 +124,23 @@ static int s_piperSampleRate = 16000;
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback)
 {
-#if defined(WHILLATS_USE_SERVER)
-    _useServer = !isServerProcess();
-#endif
+    _useServer = shouldUseServer();
     if (!_useServer) _piper = std::make_unique<PiperTTS>(callback);
 }
 
 WhillatsTTS::~WhillatsTTS() {}
 
 void WhillatsTTS::queueText(const char* text) {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer && _ttsClient) { _ttsClient->queueText(text, "en"); return; }
-#endif
     if (_piper) _piper->queueText(text, "en");
 }
 
 void WhillatsTTS::queueText(const char* text, const char* language) {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer && _ttsClient) { _ttsClient->queueText(text, language); return; }
-#endif
     if (_piper) _piper->queueText(text, language);
 }
 
 bool WhillatsTTS::start() {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer) {
         _conn = getOrCreateServer();
         if (!_conn) return false;
@@ -156,7 +148,6 @@ bool WhillatsTTS::start() {
         _ttsClient = std::make_unique<WhillatsTTSClient>(*_conn);
         return _ttsClient->start();
     }
-#endif
     if (_piper) {
         const char* model = getenv("PIPER_MODEL");
         const char* espeak = getenv("ESPEAK_DATA_PATH");
@@ -174,9 +165,7 @@ bool WhillatsTTS::start() {
 bool WhillatsTTS::start(bool) { return start(); }
 
 void WhillatsTTS::stop() {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer && _ttsClient) { _ttsClient->stop(); return; }
-#endif
     if (_piper) _piper->stop();
 }
 
@@ -363,12 +352,10 @@ WhillatsTranscriber::WhillatsTranscriber(const char* model_path,
     WhillatsSetLanguageCallback language_callback) : 
     _callback(callback),
     _language_callback(language_callback) {
-#if defined(WHILLATS_USE_SERVER)
-    _useServer = !isServerProcess();
+    _useServer = shouldUseServer();
     if (_useServer) {
         if (model_path && model_path[0]) setenv("WHISPER_MODEL", model_path, 1);
     } else
-#endif
     {
         _whisper_transcriber = std::make_unique<WhisperTranscriber>(model_path, callback, language_callback);
     }
@@ -381,14 +368,11 @@ WhillatsTranscriber::WhillatsTranscriber(const char* model_path,
 WhillatsTranscriber::~WhillatsTranscriber() {}
 
 void WhillatsTranscriber::processAudioBuffer(uint8_t* playoutBuffer, const size_t playoutBufferSize) {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer && _whisperClient) { _whisperClient->processAudioBuffer(playoutBuffer, playoutBufferSize); return; }
-#endif
     if (_whisper_transcriber) _whisper_transcriber->processAudioBuffer(playoutBuffer, playoutBufferSize);
 }
 
 bool WhillatsTranscriber::start() {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer) {
         _conn = getOrCreateServer();
         if (!_conn) return false;
@@ -397,14 +381,11 @@ bool WhillatsTranscriber::start() {
         _whisperClient = std::make_unique<WhillatsTranscriberClient>(*_conn);
         return _whisperClient->start();
     }
-#endif
     return _whisper_transcriber ? _whisper_transcriber->start() : false;
 }
 
 void WhillatsTranscriber::stop() {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer && _whisperClient) { _whisperClient->stop(); return; }
-#endif
     if (_whisper_transcriber) _whisper_transcriber->stop();
 } 
 
@@ -421,12 +402,10 @@ void WhillatsTranscriber::setThreadCount(int n) {
 
 WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback callback) 
     : _callback(callback) {
-#if defined(WHILLATS_USE_SERVER)
-    _useServer = !isServerProcess();
+    _useServer = shouldUseServer();
     if (_useServer) {
         if (model_path && model_path[0]) setenv("LLAMA_MODEL", model_path, 1);
     } else
-#endif
     {
         _llama_device = std::make_unique<LlamaDeviceBase>(model_path, "", _callback);
     }
@@ -434,13 +413,11 @@ WhillatsLlama::WhillatsLlama(const char* model_path, WhillatsSetResponseCallback
 
 WhillatsLlama::WhillatsLlama(const char* model_path, const char* mmproj_path, WhillatsSetResponseCallback callback)
     : _callback(callback) {
-#if defined(WHILLATS_USE_SERVER)
-    _useServer = !isServerProcess();
+    _useServer = shouldUseServer();
     if (_useServer) {
         if (model_path && model_path[0]) setenv("LLAMA_MODEL", model_path, 1);
         if (mmproj_path && mmproj_path[0]) setenv("LLAMA_MMPROJ", mmproj_path, 1);
     } else
-#endif
     {
         _llama_device = std::make_unique<LlamaDeviceBase>(model_path, mmproj_path, _callback);
     }
@@ -449,7 +426,6 @@ WhillatsLlama::WhillatsLlama(const char* model_path, const char* mmproj_path, Wh
 WhillatsLlama::~WhillatsLlama() {}
 
 bool WhillatsLlama::start() {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer) {
         _conn = getOrCreateServer();
         if (!_conn) return false;
@@ -457,14 +433,11 @@ bool WhillatsLlama::start() {
         _llamaClient = std::make_unique<WhillatsLlamaClient>(*_conn);
         return _llamaClient->start();
     }
-#endif
     return _llama_device ? _llama_device->start() : false;
 }
 
 bool WhillatsLlama::isRunning() const {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer) return _llamaClient != nullptr;
-#endif
     return _llama_device && _llama_device->isRunning();
 }
 
@@ -473,16 +446,12 @@ void WhillatsLlama::setThreadCount(int n) {
 }
 
 void WhillatsLlama::stop() {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer && _llamaClient) { _llamaClient->stop(); return; }
-#endif
     if (_llama_device) _llama_device->stop();
 } 
 
 void WhillatsLlama::askLlama(const char* prompt) {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer && _llamaClient) { _llamaClient->askLlama(prompt); return; }
-#endif
     if (_llama_device) _llama_device->askLlama(prompt);
 }
 
@@ -510,9 +479,7 @@ void WhillatsLlama::askWithYUVRaw(
 }
 
 void WhillatsLlama::receiveVideoFrame(const YUVData& yuv) {
-#if defined(WHILLATS_USE_SERVER)
     if (_useServer && _llamaClient) { _llamaClient->receiveVideoFrame(yuv); return; }
-#endif
     if (_llama_device) _llama_device->receiveVideoFrame(yuv);
 }
 

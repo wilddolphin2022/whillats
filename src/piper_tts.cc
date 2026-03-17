@@ -28,6 +28,7 @@ bool PiperTTS::start(const std::string& model_path,
         return false;
     }
     LOG_I("PiperTTS: Subprocess started for model: " << model_path);
+    _outputSampleRate = _subprocess->getSampleRate();
 
     _initialized = true;
     _running = true;

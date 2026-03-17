@@ -58,12 +58,10 @@ class ESpeakTTS;
 class WhillatsSpeechSynthesizerWrapper;
 class Synthesis;
 
-#if defined(WHILLATS_USE_SERVER)
 class WhillatsServerConnection;
 class WhillatsTranscriberClient;
 class WhillatsLlamaClient;
 class WhillatsTTSClient;
-#endif
 
 class WHILLATS_API WhillatsSetResponseCallback {
 public:
@@ -135,10 +133,8 @@ class WHILLATS_API WhillatsTTS {
   private:
     WhillatsSetAudioCallback _callback;
     bool _useServer = false;
-#if defined(WHILLATS_USE_SERVER)
     std::shared_ptr<WhillatsServerConnection> _conn;
     std::unique_ptr<WhillatsTTSClient> _ttsClient;
-#endif
 #if defined(WHILLATS_PIPER)
     std::unique_ptr<PiperTTS> _piper;
 #elif defined(WHILLATS_STYLETTS2)
@@ -175,10 +171,8 @@ class WHILLATS_API WhillatsTranscriber {
     WhillatsSetResponseCallback _callback; 
     WhillatsSetLanguageCallback _language_callback;
     bool _useServer = false;
-#if defined(WHILLATS_USE_SERVER)
     std::shared_ptr<WhillatsServerConnection> _conn;
     std::unique_ptr<WhillatsTranscriberClient> _whisperClient;
-#endif
     std::unique_ptr<WhisperTranscriber> _whisper_transcriber;
     std::string _language = "en";
     int _threadCount = 0;
@@ -212,10 +206,8 @@ class WHILLATS_API WhillatsLlama {
   private:
     WhillatsSetResponseCallback _callback;
     bool _useServer = false;
-#if defined(WHILLATS_USE_SERVER)
     std::shared_ptr<WhillatsServerConnection> _conn;
     std::unique_ptr<WhillatsLlamaClient> _llamaClient;
-#endif
     std::unique_ptr<LlamaDeviceBase> _llama_device;
 };
 

@@ -25,9 +25,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
 set(CMAKE_FRAMEWORK_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Frameworks/$<CONFIG>)
 
-# Server mode: run Whisper/Llama/TTS in a separate process (eliminates ABI conflicts)
-option(WHILLATS_USE_SERVER "Route Whisper/Llama/TTS through whillats_server subprocess" OFF)
-
 # TTS engine selection (mutually exclusive)
 option(WHILLATS_PIPER "Enable Piper neural TTS engine (fast CPU, requires ONNX Runtime)" OFF)
 option(WHILLATS_STYLETTS2 "Enable StyleTTS2 neural TTS engine (requires ONNX Runtime)" ON)
@@ -415,10 +412,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         add_dependencies(${PROJECT_NAME} copy_espeak_data_styletts2)
     endif()
 
-    # NOTE: WHILLATS_USE_SERVER is NOT applied to libwhillats.so.
-    # The server uses the standard in-process library. Client stubs
-    # (whillats_client.cc) are compiled directly into the host app (e.g. directcall)
-    # which defines WHILLATS_USE_SERVER in its own build system.
+    # Server client stubs (always compiled; runtime dispatch via WHILLATS_SERVER env var)
+    target_sources(${PROJECT_NAME} PRIVATE src/whillats_client.cc)
 
     # TTS compile definitions and linkage
     if(WHILLATS_PIPER)
