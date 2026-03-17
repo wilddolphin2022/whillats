@@ -41,79 +41,98 @@ class WhisperTranscriber {
 #include "llama_device_base.h"
 #include "whillats_utils.h"
 
-#if defined(WHILLATS_STYLETTS2)
-#include "styletts2_tts.h"
+#if defined(WHILLATS_PIPER)
 #include "piper_tts.h"
 
-static int s_piperSampleRate = 0;
+static int s_piperSampleRate = 22050;
 
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback)
 {
-    const char* piperModel = getenv("PIPER_MODEL");
-    const char* espeakData = getenv("ESPEAK_DATA_PATH");
-
-    if (piperModel && piperModel[0]) {
-        _piper = std::make_unique<PiperTTS>(callback);
-        LOG_I("TTS: Using Piper engine");
-    } else {
-        const char* modelDir = getenv("STYLETTS2_MODEL_DIR");
-        bool useCuda = getenv("STYLETTS2_USE_CUDA") != nullptr;
-        if (modelDir && espeakData) {
-            _styletts2 = std::make_unique<StyleTTS2TTS>(callback,
-                std::string(modelDir), std::string(espeakData), useCuda);
-            LOG_I("TTS: Using StyleTTS2 engine");
-        } else {
-            LOG_W("TTS: No engine configured. Set PIPER_MODEL or STYLETTS2_MODEL_DIR + ESPEAK_DATA_PATH");
-        }
-    }
+    _piper = std::make_unique<PiperTTS>(callback);
 }
 
 WhillatsTTS::~WhillatsTTS() {}
 
 void WhillatsTTS::queueText(const char* text) {
     if (_piper) _piper->queueText(text, "en");
-    else if (_styletts2) _styletts2->queueText(std::string(text), "en");
 }
 
 void WhillatsTTS::queueText(const char* text, const char* language) {
     if (_piper) _piper->queueText(text, language);
-    else if (_styletts2) _styletts2->queueText(std::string(text),
-        std::string(language ? language : "en"));
 }
 
 bool WhillatsTTS::start() {
     if (_piper) {
         const char* model = getenv("PIPER_MODEL");
         const char* espeak = getenv("ESPEAK_DATA_PATH");
-        bool ok = _piper->start(model ? model : "", espeak ? espeak : "");
+        if (!model || !model[0]) {
+            LOG_E("PiperTTS: PIPER_MODEL env var not set");
+            return false;
+        }
+        bool ok = _piper->start(model, espeak ? espeak : "");
         if (ok) s_piperSampleRate = _piper->getSampleRate();
         return ok;
     }
+    return false;
+}
+
+bool WhillatsTTS::start(bool) { return start(); }
+
+void WhillatsTTS::stop() { if (_piper) _piper->stop(); }
+
+void WhillatsTTS::setThreadCount(int) {}
+
+int WhillatsTTS::getSampleRate() { return s_piperSampleRate; }
+
+void WhillatsTTS::enableSpeakerphone() {}
+void WhillatsTTS::disableSpeakerphone() {}
+
+#elif defined(WHILLATS_STYLETTS2)
+#include "styletts2_tts.h"
+
+WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
+    : _callback(callback)
+{
+    const char* modelDir = getenv("STYLETTS2_MODEL_DIR");
+    const char* espeakData = getenv("ESPEAK_DATA_PATH");
+    bool useCuda = getenv("STYLETTS2_USE_CUDA") != nullptr;
+
+    if (modelDir && espeakData) {
+        _styletts2 = std::make_unique<StyleTTS2TTS>(callback,
+            std::string(modelDir), std::string(espeakData), useCuda);
+    } else {
+        LOG_W("StyleTTS2: STYLETTS2_MODEL_DIR or ESPEAK_DATA_PATH not set");
+    }
+}
+
+WhillatsTTS::~WhillatsTTS() {}
+
+void WhillatsTTS::queueText(const char* text) {
+    if (_styletts2) _styletts2->queueText(std::string(text), "en");
+}
+
+void WhillatsTTS::queueText(const char* text, const char* language) {
+    if (_styletts2) _styletts2->queueText(std::string(text),
+        std::string(language ? language : "en"));
+}
+
+bool WhillatsTTS::start() {
     if (_styletts2) return _styletts2->start();
     return false;
 }
 
-bool WhillatsTTS::start(bool /*withAudio*/) {
-    return start();
-}
+bool WhillatsTTS::start(bool) { return start(); }
 
-void WhillatsTTS::stop() {
-    if (_piper) _piper->stop();
-    if (_styletts2) _styletts2->stop();
-}
+void WhillatsTTS::stop() { if (_styletts2) _styletts2->stop(); }
 
 void WhillatsTTS::setThreadCount(int n) {
     if (_styletts2) _styletts2->setThreadCount(n);
 }
 
-int WhillatsTTS::getSampleRate() {
-    if (s_piperSampleRate > 0) return s_piperSampleRate;
-    return StyleTTS2TTS::getSampleRate();
-}
+int WhillatsTTS::getSampleRate() { return StyleTTS2TTS::getSampleRate(); }
 
 void WhillatsTTS::enableSpeakerphone() {}
-
 void WhillatsTTS::disableSpeakerphone() {}
 
 #elif !defined(__APPLE__)

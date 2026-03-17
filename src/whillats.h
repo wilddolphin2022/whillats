@@ -48,9 +48,10 @@ struct YUVData {
 
 class WhisperTranscriber;
 class LlamaDeviceBase;
-#if defined(WHILLATS_STYLETTS2)
-class StyleTTS2TTS;
+#if defined(WHILLATS_PIPER)
 class PiperTTS;
+#elif defined(WHILLATS_STYLETTS2)
+class StyleTTS2TTS;
 #else
 class ESpeakTTS;
 #endif
@@ -134,9 +135,10 @@ class WHILLATS_API WhillatsTTS {
 
   private:
     WhillatsSetAudioCallback _callback;
-#if defined(WHILLATS_STYLETTS2)
-    std::unique_ptr<StyleTTS2TTS> _styletts2;
+#if defined(WHILLATS_PIPER)
     std::unique_ptr<PiperTTS> _piper;
+#elif defined(WHILLATS_STYLETTS2)
+    std::unique_ptr<StyleTTS2TTS> _styletts2;
 #else
 #if !defined(__APPLE__)
     std::unique_ptr<ESpeakTTS> _espeak_tts;

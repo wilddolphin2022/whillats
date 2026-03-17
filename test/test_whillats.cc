@@ -20,8 +20,12 @@
 #include <mach-o/dyld.h>
 #endif
 #include "whillats.h"
+#ifdef WHILLATS_STYLETTS2
 #include "orpheus_tts.h"
+#endif
+#ifdef WHILLATS_PIPER
 #include "piper_tts.h"
+#endif
 
 #include "test_utils.h"
 #include "whisper_helpers.h"
@@ -214,6 +218,7 @@ int main(int argc, char *argv[])
     }
   }
 
+#ifdef WHILLATS_STYLETTS2
   if (opts.orpheus) {
     audio_buffer.clear();
     tts_done = false;
@@ -249,7 +254,9 @@ int main(int argc, char *argv[])
         orpheus.stop();
     }
   }
+#endif
 
+#ifdef WHILLATS_PIPER
   if (opts.piper) {
     audio_buffer.clear();
     tts_done = false;
@@ -285,6 +292,7 @@ int main(int argc, char *argv[])
         piper.stop();
     }
   }
+#endif
 
   if (opts.whisper) {
     // Test WhisperTranscription

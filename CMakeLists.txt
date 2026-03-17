@@ -25,11 +25,21 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>)
 set(CMAKE_FRAMEWORK_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Frameworks/$<CONFIG>)
 
-# StyleTTS2 neural TTS option (requires ONNX Runtime)
+# TTS engine selection (mutually exclusive)
+option(WHILLATS_PIPER "Enable Piper neural TTS engine (fast CPU, requires ONNX Runtime)" OFF)
 option(WHILLATS_STYLETTS2 "Enable StyleTTS2 neural TTS engine (requires ONNX Runtime)" ON)
 
-# C++17 required when StyleTTS2 is enabled, C++14 otherwise
-if(WHILLATS_STYLETTS2)
+if(WHILLATS_PIPER)
+    set(WHILLATS_STYLETTS2 OFF CACHE BOOL "" FORCE)
+    message(STATUS "TTS engine: Piper (CPU-optimized)")
+elseif(WHILLATS_STYLETTS2)
+    message(STATUS "TTS engine: StyleTTS2")
+else()
+    message(STATUS "TTS engine: espeak-ng (fallback)")
+endif()
+
+# C++17 required when Piper or StyleTTS2 is enabled
+if(WHILLATS_PIPER OR WHILLATS_STYLETTS2)
     set(CMAKE_CXX_STANDARD 17)
 else()
     set(CMAKE_CXX_STANDARD 14)
@@ -91,7 +101,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # --- ONNX Runtime for StyleTTS2 ---
-if(WHILLATS_STYLETTS2)
+if(WHILLATS_PIPER OR WHILLATS_STYLETTS2)
     set(ONNXRUNTIME_VERSION "1.17.3" CACHE STRING "ONNX Runtime version to download")
 
     # Check if user provided ONNXRUNTIME_DIR
@@ -363,13 +373,13 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         src/whillats_utils.cc
     )
     
-    # Add TTS implementation based on build option
-    if(WHILLATS_STYLETTS2)
-        list(APPEND WHILLATS_SOURCES src/styletts2_tts.cc src/orpheus_tts.cc)
-        # Piper TTS (CPU-optimized, uses same ONNX + espeak-ng)
+    # Add TTS implementation based on build option (mutually exclusive)
+    if(WHILLATS_PIPER)
         list(APPEND WHILLATS_SOURCES
             src/piper_tts.cc
             ${CMAKE_CURRENT_SOURCE_DIR}/third_party/piper/src/piper.cpp)
+    elseif(WHILLATS_STYLETTS2)
+        list(APPEND WHILLATS_SOURCES src/styletts2_tts.cc src/orpheus_tts.cc)
     elseif(UNIX AND NOT APPLE)
         list(APPEND WHILLATS_SOURCES src/espeak_tts.cc)
     endif()
@@ -401,14 +411,21 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         add_dependencies(${PROJECT_NAME} copy_espeak_data_styletts2)
     endif()
 
-    # StyleTTS2 + Piper compile definition and linkage
-    if(WHILLATS_STYLETTS2)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE WHILLATS_STYLETTS2)
+    # TTS compile definitions and linkage
+    if(WHILLATS_PIPER)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE WHILLATS_PIPER)
         target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime_lib espeak-ng)
         target_include_directories(${PROJECT_NAME} PRIVATE
             ${ONNXRUNTIME_INCLUDE_DIR}
             ${THIRD_PARTY_DIR}/espeak-ng/src/include
             ${CMAKE_CURRENT_SOURCE_DIR}/third_party/piper/include
+        )
+    elseif(WHILLATS_STYLETTS2)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE WHILLATS_STYLETTS2)
+        target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime_lib espeak-ng)
+        target_include_directories(${PROJECT_NAME} PRIVATE
+            ${ONNXRUNTIME_INCLUDE_DIR}
+            ${THIRD_PARTY_DIR}/espeak-ng/src/include
         )
     endif()
 
@@ -593,7 +610,7 @@ if(APPLE)
         "-Wl,-rpath,@loader_path/third_party/llama.cpp/build/ggml/src"
         "-Wl,-rpath,@loader_path/third_party/pcaudiolib/src"
     )
-    if(WHILLATS_STYLETTS2 AND ONNXRUNTIME_LIB_DIR)
+    if((WHILLATS_PIPER OR WHILLATS_STYLETTS2) AND ONNXRUNTIME_LIB_DIR)
         list(APPEND APPLE_RPATHS "-Wl,-rpath,${ONNXRUNTIME_LIB_DIR}")
     endif()
     target_link_options(${PROJECT_NAME} PRIVATE ${APPLE_RPATHS})
@@ -615,7 +632,7 @@ elseif(UNIX AND NOT APPLE)
         -Wl,-rpath,$ORIGIN
         -Wl,-rpath,${CMAKE_BINARY_DIR}/lib/Debug
     )
-    if(WHILLATS_STYLETTS2 AND ONNXRUNTIME_LIB_DIR)
+    if((WHILLATS_PIPER OR WHILLATS_STYLETTS2) AND ONNXRUNTIME_LIB_DIR)
         list(APPEND LINUX_LINK_OPTS -Wl,-rpath,${ONNXRUNTIME_LIB_DIR})
     endif()
     target_link_options(${PROJECT_NAME} PRIVATE ${LINUX_LINK_OPTS})
@@ -634,7 +651,9 @@ target_include_directories(test_whillats PRIVATE
 )
 
 # Pass StyleTTS2 flag to test executable
-if(WHILLATS_STYLETTS2)
+if(WHILLATS_PIPER)
+    target_compile_definitions(test_whillats PRIVATE WHILLATS_PIPER)
+elseif(WHILLATS_STYLETTS2)
     target_compile_definitions(test_whillats PRIVATE WHILLATS_STYLETTS2)
 endif()
 
