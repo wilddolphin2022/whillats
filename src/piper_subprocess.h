@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <thread>
 #include <sys/types.h>
 
 class PiperSubprocess {
@@ -20,16 +21,16 @@ public:
     bool start(const std::string& model_path, const std::string& espeak_data);
     void stop();
 
-    // Synthesize text, returns PCM int16 samples
     std::vector<int16_t> synthesize(const std::string& text);
     int getSampleRate() const { return _sampleRate; }
 
 private:
     pid_t _child = -1;
-    int _toChild = -1;    // pipe: parent writes text
-    int _fromChild = -1;  // pipe: parent reads audio
+    int _toChild = -1;
+    int _fromChild = -1;
     int _sampleRate = 16000;
     bool _running = false;
+    std::thread _inprocThread;
 };
 
 #endif

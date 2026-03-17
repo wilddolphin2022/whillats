@@ -53,6 +53,9 @@ static void tts_audio_callback(bool success, const uint16_t* buffer, size_t buff
 }
 
 int main(int argc, char* argv[]) {
+    // Signal that we are the server process so libwhillats uses in-process mode
+    setenv("WHILLATS_IS_SERVER", "1", 1);
+
     int read_fd  = STDIN_FILENO;
     g_write_fd   = STDOUT_FILENO;
 
@@ -167,7 +170,10 @@ int main(int argc, char* argv[]) {
             if (!tts) {
                 if (cfg.piper_model[0]) setenv("PIPER_MODEL", cfg.piper_model, 1);
                 if (cfg.espeak_data[0]) setenv("ESPEAK_DATA_PATH", cfg.espeak_data, 1);
+                fprintf(stderr, "[whillats_server] Creating TTS (isServer=%d)...\n",
+                        getenv("WHILLATS_IS_SERVER") != nullptr);
                 tts = std::make_unique<WhillatsTTS>(ttsCb);
+                fprintf(stderr, "[whillats_server] TTS created, calling start()...\n");
                 if (tts->start())
                     fprintf(stderr, "[whillats_server] TTS started (rate=%d)\n", WhillatsTTS::getSampleRate());
                 else

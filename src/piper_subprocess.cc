@@ -122,14 +122,12 @@ bool PiperSubprocess::start(const std::string& model_path,
     }
 
     if (pid == 0) {
-        // Child
         close(pipe_to[1]);
         close(pipe_from[0]);
         child_main(pipe_to[0], pipe_from[1], model_path, espeak_data);
         _exit(0);
     }
 
-    // Parent
     close(pipe_to[0]);
     close(pipe_from[1]);
     _toChild = pipe_to[1];
@@ -142,7 +140,6 @@ bool PiperSubprocess::start(const std::string& model_path,
 
 void PiperSubprocess::stop() {
     if (!_running) return;
-    // Send shutdown (text_len=0)
     uint32_t zero = 0;
     write_all(_toChild, &zero, sizeof(zero));
     close(_toChild); _toChild = -1;
@@ -152,8 +149,9 @@ void PiperSubprocess::stop() {
         waitpid(_child, &status, 0);
         _child = -1;
     }
+    if (_inprocThread.joinable()) _inprocThread.join();
     _running = false;
-    LOG_I("PiperSubprocess: Stopped");
+    fprintf(stderr, "[PiperSubprocess] Stopped\n");
 }
 
 std::vector<int16_t> PiperSubprocess::synthesize(const std::string& text) {
