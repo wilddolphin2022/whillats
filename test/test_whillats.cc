@@ -21,6 +21,7 @@
 #endif
 #include "whillats.h"
 #include "orpheus_tts.h"
+#include "piper_tts.h"
 
 #include "test_utils.h"
 #include "whisper_helpers.h"
@@ -246,6 +247,42 @@ int main(int argc, char *argv[])
             LOG_W("Orpheus: No audio generated");
         }
         orpheus.stop();
+    }
+  }
+
+  if (opts.piper) {
+    audio_buffer.clear();
+    tts_done = false;
+    WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
+    PiperTTS piper(callback);
+
+    std::string piper_model = opts.piper_model;
+    if (piper_model.empty()) {
+        const char* env = getenv("PIPER_MODEL");
+        if (env) piper_model = env;
+    }
+    // espeak data from env or auto-detect
+    std::string espeak_data;
+    if (const char* env = getenv("ESPEAK_DATA_PATH")) espeak_data = env;
+
+    if (piper_model.empty()) {
+        LOG_E("Piper test requires --piper_model= or PIPER_MODEL env var");
+    } else if (piper.start(piper_model, espeak_data)) {
+        const char* test_text = "Hello, this is a test of Piper text to speech synthesis.";
+        std::cout << "Testing Piper TTS with text: " << test_text << std::endl;
+
+        piper.queueText(test_text, "en");
+        while (!tts_done) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        if (!audio_buffer.empty()) {
+            writeWavFile("piper_audio.wav", audio_buffer, PiperTTS::getSampleRate());
+            std::cout << "Saved audio to piper_audio.wav" << std::endl;
+        } else {
+            LOG_W("Piper: No audio generated");
+        }
+        piper.stop();
     }
   }
 

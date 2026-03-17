@@ -31,6 +31,8 @@ struct Options {
     bool orpheus = false;
     std::string orpheus_model;
     std::string snac_model;
+    bool piper = false;
+    std::string piper_model;
 };
 
 // Function to parse command line string to above options

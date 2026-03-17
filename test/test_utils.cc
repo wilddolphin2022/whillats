@@ -140,6 +140,16 @@ Options parseOptions(int argc, char *argv[])
       opts.snac_model = arg.substr(13);
       LOG_I("SNAC model path: " << opts.snac_model);
     }
+    else if (arg == "--piper")
+    {
+      opts.piper = true;
+    }
+    else if (arg.find("--piper_model=") == 0)
+    {
+      opts.piper_model = arg.substr(14);
+      opts.piper = true;
+      LOG_I("Piper model path: " << opts.piper_model);
+    }
   }
 
   // Load environment variables if paths not provided

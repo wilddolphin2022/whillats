@@ -366,6 +366,10 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # Add TTS implementation based on build option
     if(WHILLATS_STYLETTS2)
         list(APPEND WHILLATS_SOURCES src/styletts2_tts.cc src/orpheus_tts.cc)
+        # Piper TTS (CPU-optimized, uses same ONNX + espeak-ng)
+        list(APPEND WHILLATS_SOURCES
+            src/piper_tts.cc
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/piper/src/piper.cpp)
     elseif(UNIX AND NOT APPLE)
         list(APPEND WHILLATS_SOURCES src/espeak_tts.cc)
     endif()
@@ -397,13 +401,14 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         add_dependencies(${PROJECT_NAME} copy_espeak_data_styletts2)
     endif()
 
-    # StyleTTS2 compile definition and linkage
+    # StyleTTS2 + Piper compile definition and linkage
     if(WHILLATS_STYLETTS2)
         target_compile_definitions(${PROJECT_NAME} PRIVATE WHILLATS_STYLETTS2)
         target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime_lib espeak-ng)
         target_include_directories(${PROJECT_NAME} PRIVATE
             ${ONNXRUNTIME_INCLUDE_DIR}
             ${THIRD_PARTY_DIR}/espeak-ng/src/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/piper/include
         )
     endif()
 
