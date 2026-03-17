@@ -277,7 +277,7 @@ int main(int argc, char *argv[])
         }
 
         if (!audio_buffer.empty()) {
-            writeWavFile("piper_audio.wav", audio_buffer, PiperTTS::getSampleRate());
+            writeWavFile("piper_audio.wav", audio_buffer, piper.getSampleRate());
             std::cout << "Saved audio to piper_audio.wav" << std::endl;
         } else {
             LOG_W("Piper: No audio generated");

@@ -35,7 +35,7 @@ public:
 
     void queueText(const char* text, const char* language = "en");
 
-    static const int getSampleRate();
+    const int getSampleRate();
 
 private:
     bool runProcessingThread();
@@ -49,8 +49,7 @@ private:
     std::mutex _queueMutex;
     std::condition_variable _queueCondition;
     std::atomic<bool> _initialized{false};
-
-    static constexpr int OUTPUT_SAMPLE_RATE = 16000;
+    int _outputSampleRate = 22050;
 };
 
 #endif // PIPER_TTS_H

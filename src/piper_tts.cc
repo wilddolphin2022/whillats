@@ -124,15 +124,10 @@ bool PiperTTS::runProcessingThread() {
     }
 
     if (!all_audio.empty()) {
-        // Determine source sample rate from last chunk
         int src_rate = chunk.sample_rate > 0 ? chunk.sample_rate : 22050;
+        _outputSampleRate = src_rate;
 
-        if (src_rate != OUTPUT_SAMPLE_RATE) {
-            all_audio = resampleAudio(all_audio.data(), all_audio.size(),
-                                      src_rate, OUTPUT_SAMPLE_RATE);
-        }
-
-        LOG_I("PiperTTS: Generated " << all_audio.size() << " samples at " << OUTPUT_SAMPLE_RATE << "Hz");
+        LOG_I("PiperTTS: Generated " << all_audio.size() << " samples at " << src_rate << "Hz");
         std::vector<uint16_t> u16(all_audio.begin(), all_audio.end());
         _callback.OnBufferComplete(true, u16);
     }
@@ -142,5 +137,5 @@ bool PiperTTS::runProcessingThread() {
 }
 
 const int PiperTTS::getSampleRate() {
-    return OUTPUT_SAMPLE_RATE;
+    return _outputSampleRate;
 }

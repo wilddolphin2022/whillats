@@ -45,6 +45,8 @@ class WhisperTranscriber {
 #include "styletts2_tts.h"
 #include "piper_tts.h"
 
+static int s_piperSampleRate = 0;
+
 WhillatsTTS::WhillatsTTS(WhillatsSetAudioCallback callback)
     : _callback(callback)
 {
@@ -84,7 +86,9 @@ bool WhillatsTTS::start() {
     if (_piper) {
         const char* model = getenv("PIPER_MODEL");
         const char* espeak = getenv("ESPEAK_DATA_PATH");
-        return _piper->start(model ? model : "", espeak ? espeak : "");
+        bool ok = _piper->start(model ? model : "", espeak ? espeak : "");
+        if (ok) s_piperSampleRate = _piper->getSampleRate();
+        return ok;
     }
     if (_styletts2) return _styletts2->start();
     return false;
@@ -104,7 +108,7 @@ void WhillatsTTS::setThreadCount(int n) {
 }
 
 int WhillatsTTS::getSampleRate() {
-    if (getenv("PIPER_MODEL")) return PiperTTS::getSampleRate();
+    if (s_piperSampleRate > 0) return s_piperSampleRate;
     return StyleTTS2TTS::getSampleRate();
 }
 
