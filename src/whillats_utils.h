@@ -19,4 +19,10 @@ std::string compute_image_hash(const clip_image_u8& image);
 bool save_clip_as_bmp(const clip_image_u8& clip, const char* filename);
 std::string getDylibPath();
 
+// Resample int16 audio from src_rate to dst_rate.
+// Handles any rate pair (e.g. 24000->16000, 44100->16000, 48000->16000).
+// Returns resampled buffer; leaves input unchanged if rates already match.
+std::vector<int16_t> resampleAudio(const int16_t* data, size_t count,
+                                   int src_rate, int dst_rate);
+
 #endif // WHILLATS_UTILS_H

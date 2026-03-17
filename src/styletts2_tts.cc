@@ -14,6 +14,7 @@
  */
 
 #include "styletts2_tts.h"
+#include "whillats_utils.h"
 #include <cmath>
 #include <csetjmp>
 #include <csignal>
@@ -576,53 +577,10 @@ bool StyleTTS2TTS::runProcessingThread() {
         if (!audio.empty()) {
             constexpr int TARGET_RATE = 16000;
             if (SAMPLE_RATE != TARGET_RATE) {
-                // 24kHz -> 16kHz via polyphase: pad, low-pass, pick every 3rd from 2x stream
-                constexpr int NTAPS = 31;
-                constexpr int HALF = NTAPS / 2;
-                constexpr double FC = 1.0 / 3.0;
-
-                static bool fir_init = false;
-                static double fir[NTAPS];
-                if (!fir_init) {
-                    double fir_sum = 0.0;
-                    for (int n = 0; n < NTAPS; ++n) {
-                        int k = n - HALF;
-                        fir[n] = (k == 0) ? 2.0 * FC
-                                          : sin(2.0 * M_PI * FC * k) / (M_PI * k);
-                        fir[n] *= 0.54 - 0.46 * cos(2.0 * M_PI * n / (NTAPS - 1));
-                        fir_sum += fir[n];
-                    }
-                    for (int n = 0; n < NTAPS; ++n) fir[n] /= fir_sum;
-                    fir_init = true;
-                }
-
-                // Pad input with HALF zeros on each side to avoid startup transient
-                size_t pad = static_cast<size_t>(HALF);
-                size_t padded_len = audio.size() + 2 * pad;
-                std::vector<double> src(padded_len * 2, 0.0);
-                for (size_t i = 0; i < audio.size(); ++i) {
-                    src[(i + pad) * 2] = static_cast<double>(audio[i]);
-                }
-
-                size_t up_len = padded_len * 2;
-                // Decimate by 3 starting from the padded region
-                size_t skip = (pad * 2 + 2) / 3;
-                size_t usable = (audio.size() * 2) / 3;
-                std::vector<int16_t> resampled(usable);
-                for (size_t i = 0; i < usable; ++i) {
-                    size_t si = (skip + i) * 3;
-                    double acc = 0.0;
-                    for (int j = 0; j < NTAPS; ++j) {
-                        int idx = static_cast<int>(si) - HALF + j;
-                        if (idx >= 0 && static_cast<size_t>(idx) < up_len)
-                            acc += src[idx] * fir[j];
-                    }
-                    acc *= 2.0;
-                    acc = std::max(-32768.0, std::min(32767.0, acc));
-                    resampled[i] = static_cast<int16_t>(acc);
-                }
-                audio = std::move(resampled);
-                LOG_V("StyleTTS2: Resampled to " << audio.size() << " samples at " << TARGET_RATE << "Hz");
+                audio = resampleAudio(audio.data(), audio.size(),
+                                      SAMPLE_RATE, TARGET_RATE);
+                LOG_V("StyleTTS2: Resampled to " << audio.size()
+                      << " samples at " << TARGET_RATE << "Hz");
             }
             std::vector<uint16_t> audioU16(audio.begin(), audio.end());
             LOG_V("StyleTTS2: Delivering " << audioU16.size() << " samples");
@@ -648,5 +606,5 @@ bool StyleTTS2TTS::runProcessingThread() {
 }
 
 const int StyleTTS2TTS::getSampleRate() {
-    return SAMPLE_RATE;
+    return 16000;
 }

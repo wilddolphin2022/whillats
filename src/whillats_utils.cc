@@ -225,6 +225,90 @@ bool save_clip_as_bmp(const clip_image_u8& clip, const char* filename) {
     return true;
 }
 
+std::vector<int16_t> resampleAudio(const int16_t* data, size_t count,
+                                   int src_rate, int dst_rate) {
+    if (src_rate == dst_rate || count == 0 || !data) {
+        return std::vector<int16_t>(data, data + count);
+    }
+
+    int g = std::__gcd(src_rate, dst_rate);
+    int up   = dst_rate / g;   // upsample factor
+    int down = src_rate / g;   // decimate factor
+
+    // FIR low-pass: cutoff at min(1/up, 1/down) with Kaiser window (beta=5)
+    constexpr int NTAPS = 63;
+    constexpr int HALF  = NTAPS / 2;
+    constexpr double BETA = 5.0;
+    double fc = std::min(1.0 / up, 1.0 / down) * 0.90;
+
+    static thread_local int    cached_up = 0, cached_down = 0;
+    static thread_local double fir[NTAPS];
+
+    if (cached_up != up || cached_down != down) {
+        auto bessel_i0 = [](double x) -> double {
+            double sum = 1.0, term = 1.0;
+            for (int k = 1; k < 25; ++k) {
+                term *= (x / (2.0 * k)) * (x / (2.0 * k));
+                sum += term;
+            }
+            return sum;
+        };
+        double denom = bessel_i0(BETA);
+        double fir_sum = 0.0;
+        for (int n = 0; n < NTAPS; ++n) {
+            int k = n - HALF;
+            double sinc = (k == 0) ? 2.0 * fc
+                                   : sin(2.0 * M_PI * fc * k) / (M_PI * k);
+            double t = 2.0 * n / (NTAPS - 1) - 1.0;
+            double win = bessel_i0(BETA * sqrt(1.0 - t * t)) / denom;
+            fir[n] = sinc * win;
+            fir_sum += fir[n];
+        }
+        for (int n = 0; n < NTAPS; ++n) fir[n] /= fir_sum;
+        cached_up = up;
+        cached_down = down;
+    }
+
+    // Pad to avoid startup/tail transients
+    size_t pad = static_cast<size_t>(HALF);
+    size_t padded = count + 2 * pad;
+
+    // Build zero-stuffed upsampled stream (only the non-zero entries matter)
+    // For each output sample i, compute which upsampled index to read: i * down
+    // Then convolve around that index in the (conceptual) upsampled+padded stream.
+    size_t out_len = static_cast<size_t>(
+        static_cast<double>(count) * up / down);
+    std::vector<int16_t> out(out_len);
+
+    for (size_t i = 0; i < out_len; ++i) {
+        // Position in the upsampled stream (with padding offset)
+        double pos = static_cast<double>(i) * down;
+        // Shift by pad*up to account for front padding
+        pos += pad * up;
+
+        double acc = 0.0;
+        for (int j = 0; j < NTAPS; ++j) {
+            // Index in upsampled stream that this tap reads
+            double ui = pos - HALF + j;
+            // Only non-zero entries are at multiples of 'up'
+            // Find nearest input sample: ui / up
+            int src_idx = static_cast<int>(round(ui / up)) - static_cast<int>(pad);
+            double remainder = ui - static_cast<double>(
+                (src_idx + static_cast<int>(pad))) * up;
+            // Only accumulate if this is a non-zero sample (remainder ~ 0)
+            if (fabs(remainder) < 0.5 && src_idx >= 0 &&
+                static_cast<size_t>(src_idx) < count) {
+                acc += static_cast<double>(data[src_idx]) * fir[j];
+            }
+        }
+        acc *= up;
+        acc = std::max(-32768.0, std::min(32767.0, acc));
+        out[i] = static_cast<int16_t>(acc);
+    }
+
+    return out;
+}
+
 std::string getDylibPath() {
     Dl_info info;
     if (dladdr((void *)getDylibPath, &info)) {
