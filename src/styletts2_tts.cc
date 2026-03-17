@@ -482,15 +482,35 @@ bool StyleTTS2TTS::runProcessingThread() {
     }
 
     if (shouldSynth) {
-        LOG_I("StyleTTS2: Synthesizing: " << textToSynth.substr(0, 60)
+        if (textToSynth.size() > 200) {
+            textToSynth = textToSynth.substr(0, 200);
+        }
+        LOG_I("StyleTTS2: Synthesizing (" << textToSynth.size() << " chars): "
+              << textToSynth.substr(0, 60)
               << (textToSynth.size() > 60 ? "..." : ""));
 
-        auto audio = synthesize(textToSynth, 1.25f);
+        auto audio = synthesize(textToSynth, 1.0f);
 
         if (!audio.empty()) {
-            // Convert int16_t to uint16_t for the callback
+            constexpr int TARGET_RATE = 16000;
+            if (SAMPLE_RATE != TARGET_RATE) {
+                size_t out_len = static_cast<size_t>(
+                    static_cast<double>(audio.size()) * TARGET_RATE / SAMPLE_RATE);
+                std::vector<int16_t> resampled(out_len);
+                double ratio = static_cast<double>(audio.size() - 1) / (out_len - 1);
+                for (size_t i = 0; i < out_len; ++i) {
+                    double src_idx = i * ratio;
+                    size_t idx0 = static_cast<size_t>(src_idx);
+                    size_t idx1 = std::min(idx0 + 1, audio.size() - 1);
+                    double frac = src_idx - idx0;
+                    resampled[i] = static_cast<int16_t>(
+                        audio[idx0] * (1.0 - frac) + audio[idx1] * frac);
+                }
+                audio = std::move(resampled);
+                LOG_V("StyleTTS2: Resampled to " << audio.size() << " samples at " << TARGET_RATE << "Hz");
+            }
             std::vector<uint16_t> audioU16(audio.begin(), audio.end());
-            LOG_V("StyleTTS2: Generated " << audioU16.size() << " samples at " << SAMPLE_RATE << "Hz");
+            LOG_V("StyleTTS2: Delivering " << audioU16.size() << " samples");
             _callback.OnBufferComplete(true, audioU16);
         } else {
             LOG_W("StyleTTS2: No audio generated for text");
