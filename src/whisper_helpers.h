@@ -58,7 +58,7 @@ public:
 
     // Destructor to flush the message
     ~LogMessage() {
-        std::cout << stream_.str();
+        std::cerr << stream_.str();
     }
 
     std::ostream& stream() { return stream_; }
