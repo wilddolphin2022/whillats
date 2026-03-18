@@ -82,6 +82,13 @@ int main(int argc, char* argv[]) {
         g_write_fd = atoi(argv[2]);
     }
 
+    // Redirect stdout to stderr so any library code (llama.cpp progress dots,
+    // whisper.cpp print_info, etc.) doesn't corrupt the IPC pipe.
+    // The IPC pipe is accessed exclusively via g_write_fd.
+    if (g_write_fd != STDOUT_FILENO) {
+        dup2(STDERR_FILENO, STDOUT_FILENO);
+    }
+
     fprintf(stderr, "[whillats_server] Started (read_fd=%d, write_fd=%d)\n", read_fd, g_write_fd);
 
     WhillatsSetResponseCallback whisperCb(whisper_callback, nullptr);
