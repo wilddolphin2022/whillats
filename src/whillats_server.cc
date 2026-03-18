@@ -116,19 +116,43 @@ int main(int argc, char* argv[]) {
                 memcpy(&cfg, payload.data(), sizeof(ConfigMsg));
             fprintf(stderr, "[whillats_server] Config: whisper=%s llama=%s piper=%s\n",
                     cfg.whisper_model, cfg.llama_model, cfg.piper_model);
+
+            // Preload Llama immediately if model path provided
+            if (!llama && cfg.llama_model[0]) {
+                fprintf(stderr, "[whillats_server] Preloading Llama...\n");
+                if (cfg.llama_mmproj[0])
+                    llama = std::make_unique<LlamaDeviceBase>(cfg.llama_model, cfg.llama_mmproj, llamaCb);
+                else
+                    llama = std::make_unique<LlamaDeviceBase>(cfg.llama_model, "", llamaCb);
+                if (cfg.llama_threads > 0) llama->setThreadCount(cfg.llama_threads);
+                std::thread([&llama]() {
+                    if (llama && llama->start())
+                        fprintf(stderr, "[whillats_server] Llama preloaded\n");
+                    else
+                        fprintf(stderr, "[whillats_server] Llama preload failed\n");
+                }).detach();
+            }
+
+            // Preload Whisper immediately if model path provided
+            if (!whisper && cfg.whisper_model[0]) {
+                fprintf(stderr, "[whillats_server] Preloading Whisper...\n");
+                whisper = std::make_unique<WhisperTranscriber>(cfg.whisper_model, whisperCb, langCb);
+                if (cfg.whisper_threads > 0) whisper->setThreadCount(cfg.whisper_threads);
+                if (cfg.language[0]) whisper->setLanguage(cfg.language);
+                std::thread([&whisper]() {
+                    if (whisper && whisper->start())
+                        fprintf(stderr, "[whillats_server] Whisper preloaded\n");
+                    else
+                        fprintf(stderr, "[whillats_server] Whisper preload failed\n");
+                }).detach();
+            }
             break;
         }
 
         case MSG_WHISPER_START: {
-            if (!whisper && cfg.whisper_model[0]) {
-                whisper = std::make_unique<WhisperTranscriber>(cfg.whisper_model, whisperCb, langCb);
-                if (cfg.whisper_threads > 0) whisper->setThreadCount(cfg.whisper_threads);
-                if (cfg.language[0]) whisper->setLanguage(cfg.language);
-                if (whisper->start())
-                    fprintf(stderr, "[whillats_server] Whisper started\n");
-                else
-                    fprintf(stderr, "[whillats_server] Whisper failed to start\n");
-            }
+            // Already preloaded from MSG_CONFIG; this is a no-op confirmation
+            if (whisper)
+                fprintf(stderr, "[whillats_server] Whisper ready (preloaded)\n");
             break;
         }
 
@@ -146,17 +170,9 @@ int main(int argc, char* argv[]) {
             break;
 
         case MSG_LLAMA_START: {
-            if (!llama && cfg.llama_model[0]) {
-                if (cfg.llama_mmproj[0])
-                    llama = std::make_unique<LlamaDeviceBase>(cfg.llama_model, cfg.llama_mmproj, llamaCb);
-                else
-                    llama = std::make_unique<LlamaDeviceBase>(cfg.llama_model, "", llamaCb);
-                if (cfg.llama_threads > 0) llama->setThreadCount(cfg.llama_threads);
-                if (llama->start())
-                    fprintf(stderr, "[whillats_server] Llama started\n");
-                else
-                    fprintf(stderr, "[whillats_server] Llama failed to start\n");
-            }
+            // Already preloaded from MSG_CONFIG; this is a no-op confirmation
+            if (llama)
+                fprintf(stderr, "[whillats_server] Llama ready (preloaded)\n");
             break;
         }
 
