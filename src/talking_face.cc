@@ -98,7 +98,11 @@ void TalkingFace::detectMouthRegion() {
 }
 
 void TalkingFace::feedAudio(const int16_t* samples, size_t count) {
-    if (count == 0) return;
+    if (!samples || count == 0) {
+        smoothed_energy_ = 0.0f;
+        mouth_openness_.store(0.0f);
+        return;
+    }
 
     double sum_sq = 0.0;
     for (size_t i = 0; i < count; i++) {
