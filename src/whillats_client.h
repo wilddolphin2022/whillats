@@ -21,10 +21,10 @@ public:
 
     bool sendMsg(uint8_t type, const void* data, uint32_t len);
 
-    void setWhisperCallback(WhillatsSetResponseCallback cb) { _whisperCb = cb; }
-    void setLanguageCallback(WhillatsSetLanguageCallback cb) { _langCb = cb; }
-    void setLlamaCallback(WhillatsSetResponseCallback cb) { _llamaCb = cb; }
-    void setTtsCallback(WhillatsSetAudioCallback cb) { _ttsCb = cb; }
+    void setWhisperCallback(ResponseCallback cb, void* ud) { _whisperFn = cb; _whisperUd = ud; }
+    void setLanguageCallback(LanguageCallback cb, void* ud) { _langFn = cb; _langUd = ud; }
+    void setLlamaCallback(ResponseCallback cb, void* ud) { _llamaFn = cb; _llamaUd = ud; }
+    void setTtsCallback(AudioCallback cb, void* ud) { _ttsFn = cb; _ttsUd = ud; }
 
 private:
     void readerThread();
@@ -36,10 +36,14 @@ private:
     std::thread _reader;
     std::mutex _writeMutex;
 
-    WhillatsSetResponseCallback _whisperCb{nullptr, nullptr};
-    WhillatsSetLanguageCallback _langCb{nullptr, nullptr};
-    WhillatsSetResponseCallback _llamaCb{nullptr, nullptr};
-    WhillatsSetAudioCallback    _ttsCb{nullptr, nullptr};
+    ResponseCallback _whisperFn = nullptr;
+    void* _whisperUd = nullptr;
+    LanguageCallback _langFn = nullptr;
+    void* _langUd = nullptr;
+    ResponseCallback _llamaFn = nullptr;
+    void* _llamaUd = nullptr;
+    AudioCallback _ttsFn = nullptr;
+    void* _ttsUd = nullptr;
 };
 
 class WhillatsTranscriberClient {

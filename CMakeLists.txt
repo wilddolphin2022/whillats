@@ -364,36 +364,56 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         add_compile_options(-fobjc-arc)
     endif()
     # Define source files conditionally based on platform
-    set(WHILLATS_SOURCES
-        src/whisper_transcription.cc
-        src/llama_device_base.cc
-        src/synthesis.cc
-        src/talking_face.cc
+    # ================================================================
+    # libwhillats.so — THIN client library (no AI models, no GPU)
+    # Contains: API classes, IPC client stubs, TalkingFace, espeak fallback
+    # ================================================================
+    set(WHILLATS_CLIENT_SOURCES
         src/whillats.cc
+        src/whillats_client.cc
         src/whillats_utils.cc
+        src/talking_face.cc
+        src/synthesis.cc
     )
-    
-    # Add TTS implementation based on build option (mutually exclusive)
-    if(WHILLATS_PIPER)
-        list(APPEND WHILLATS_SOURCES
-            src/piper_tts.cc
-            src/piper_subprocess.cc
-            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/piper/src/piper.cpp)
-    elseif(WHILLATS_STYLETTS2)
-        list(APPEND WHILLATS_SOURCES src/styletts2_tts.cc src/orpheus_tts.cc)
-    elseif(UNIX AND NOT APPLE)
-        list(APPEND WHILLATS_SOURCES src/espeak_tts.cc)
-    endif()
-    
-    # Add Objective-C++ sources only on Apple platforms
+
+    # On Apple, add platform-specific TTS (in-process, no server needed)
     if(APPLE)
-        list(APPEND WHILLATS_SOURCES
+        list(APPEND WHILLATS_CLIENT_SOURCES
             src/whillats_synth.mm
             src/whillats_ios.mm
         )
     endif()
-    
-    add_library(${PROJECT_NAME} SHARED ${WHILLATS_SOURCES})
+
+    add_library(${PROJECT_NAME} SHARED ${WHILLATS_CLIENT_SOURCES})
+
+    # ================================================================
+    # whillats_server — FAT standalone binary (all AI: Whisper, Llama, TTS)
+    # Can be built with or without CUDA independently
+    # ================================================================
+    set(WHILLATS_SERVER_SOURCES
+        src/whillats_server.cc
+        src/whisper_transcription.cc
+        src/llama_device_base.cc
+        src/whillats_utils.cc
+    )
+
+    # Add TTS engine to server
+    if(WHILLATS_PIPER)
+        list(APPEND WHILLATS_SERVER_SOURCES
+            src/piper_tts.cc
+            src/piper_subprocess.cc
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/piper/src/piper.cpp)
+    elseif(WHILLATS_STYLETTS2)
+        list(APPEND WHILLATS_SERVER_SOURCES
+            src/styletts2_tts.cc
+            src/orpheus_tts.cc)
+    endif()
+    # Always include espeak TTS as fallback in server
+    if(UNIX AND NOT APPLE)
+        list(APPEND WHILLATS_SERVER_SOURCES src/espeak_tts.cc)
+    endif()
+
+    add_executable(whillats_server ${WHILLATS_SERVER_SOURCES})
 
     # Bind libstdc++ symbols locally so they don't get interposed by the host
     # binary's libc++ (WebRTC is built with clang/libc++ and -fno-exceptions).
@@ -405,100 +425,109 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # when CUDA toolkit headers live at /usr/include (propagated via CUDA::cudart)
     set_target_properties(${PROJECT_NAME} PROPERTIES NO_SYSTEM_FROM_IMPORTED ON)
 
-    # Ensure espeak data is copied before building the main library
+    # ================================================================
+    # libwhillats.so configuration — thin client, NO AI libraries
+    # ================================================================
+    target_include_directories(${PROJECT_NAME}
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+            ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb  # stb_image.h for TalkingFace
+    )
+
+    # Thin library links only pthread (for IPC client thread)
+    target_link_libraries(${PROJECT_NAME} PRIVATE pthread)
+
+    # ================================================================
+    # whillats_server configuration — fat binary, ALL AI libraries
+    # ================================================================
+    set_target_properties(whillats_server PROPERTIES NO_SYSTEM_FROM_IMPORTED ON)
+
+    # Ensure espeak data is copied before building the server
     if(UNIX AND NOT APPLE)
-        add_dependencies(${PROJECT_NAME} copy_espeak_data)
-    elseif(APPLE AND WHILLATS_STYLETTS2)
-        add_dependencies(${PROJECT_NAME} copy_espeak_data_styletts2)
+        add_dependencies(whillats_server copy_espeak_data)
     endif()
 
-    # Server client stubs (always compiled; runtime dispatch via WHILLATS_SERVER env var)
-    target_sources(${PROJECT_NAME} PRIVATE src/whillats_client.cc)
+    target_include_directories(whillats_server PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+        ${THIRD_PARTY_DIR}/whisper.cpp/include
+        ${THIRD_PARTY_DIR}/whisper.cpp/ggml/include
+        ${THIRD_PARTY_DIR}/llama.cpp/include
+        ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
+        ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+        ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb
+    )
 
-    # TTS compile definitions and linkage
+    # Server TTS compile definitions and includes
     if(WHILLATS_PIPER)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE WHILLATS_PIPER)
-        target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime_lib espeak-ng)
-        target_include_directories(${PROJECT_NAME} PRIVATE
+        target_compile_definitions(whillats_server PRIVATE WHILLATS_PIPER)
+        target_link_libraries(whillats_server PRIVATE onnxruntime_lib espeak-ng)
+        target_include_directories(whillats_server PRIVATE
             ${ONNXRUNTIME_INCLUDE_DIR}
             ${THIRD_PARTY_DIR}/espeak-ng/src/include
             ${CMAKE_CURRENT_SOURCE_DIR}/third_party/piper/include
         )
     elseif(WHILLATS_STYLETTS2)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE WHILLATS_STYLETTS2)
-        target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime_lib espeak-ng)
-        target_include_directories(${PROJECT_NAME} PRIVATE
+        target_compile_definitions(whillats_server PRIVATE WHILLATS_STYLETTS2)
+        target_link_libraries(whillats_server PRIVATE onnxruntime_lib espeak-ng)
+        target_include_directories(whillats_server PRIVATE
             ${ONNXRUNTIME_INCLUDE_DIR}
             ${THIRD_PARTY_DIR}/espeak-ng/src/include
         )
     endif()
 
-    # Note: We use environment variable ESPEAK_DATA_PATH instead of compile-time definition
-    # to avoid path issues. The environment variable should be set to: ${ESPEAK_DATA_DEST_DIR}
-
-    # Add additional include directories
-    target_include_directories(${PROJECT_NAME}
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/src
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-            ${THIRD_PARTY_DIR}/llama.cpp/include  # Needed for llama.h
-            ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd  # Added for clip.h
-            ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb  # stb_image.h for TalkingFace
-    )
-
-    # Link core libraries (explicitly link llama to avoid undefined references)
-    target_link_libraries(${PROJECT_NAME}
+    # Server links ALL AI libraries
+    target_link_libraries(whillats_server
         PRIVATE
             whisper
             mtmd_shared
             llama
             ggml-base
+            espeak-ng
+            pthread
     )
     
-    if(LLAMA_CUDA)
-        target_link_libraries(${PROJECT_NAME} PRIVATE ggml-cuda)
-        if(GGML_CUDA)
-            target_link_libraries(${PROJECT_NAME} PRIVATE ggml-cuda)
-        endif()
-
-        # Add CUDA include directories if CUDA is enabled
-        if(GGML_CUDA)
-            find_package(CUDAToolkit REQUIRED)
-            target_include_directories(${PROJECT_NAME} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-            target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
+    # Server: CUDA support (optional, independent of library)
+    if(GGML_CUDA)
+        find_package(CUDAToolkit)
+        if(CUDAToolkit_FOUND)
+            target_link_libraries(whillats_server PRIVATE CUDA::cudart ggml-cuda)
+            target_include_directories(whillats_server PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+            message(STATUS "whillats_server: GPU acceleration enabled (CUDA)")
         endif()
     endif()
 
-    # Link espeak-ng and pcaudio only on Linux
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(${PROJECT_NAME}
-            PRIVATE
-                espeak-ng
-                pcaudio
-        )
-    endif()
-
-    # Platform-specific link options
+    # Server: platform link options
     if(APPLE)
-        target_link_libraries(${PROJECT_NAME} PRIVATE
+        target_link_libraries(whillats_server PRIVATE
             "-framework Accelerate"
             "-framework Metal"
             "-framework MetalKit"
+        )
+    elseif(UNIX)
+        target_link_libraries(whillats_server PRIVATE gomp stdc++)
+    endif()
+
+    # Library: platform link options (minimal)
+    if(APPLE)
+        target_link_libraries(${PROJECT_NAME} PRIVATE
             "-framework CoreAudio"
             "-framework AudioToolbox"
             "-framework AVFoundation"
         )
-    elseif(UNIX)
-        target_link_libraries(${PROJECT_NAME} PRIVATE
-            gomp
-            stdc++
+    endif()
+
+    target_compile_options(whillats_server PRIVATE $<$<CONFIG:Debug>:-g -O0>)
+    target_link_options(whillats_server PRIVATE $<$<CONFIG:Debug>:-g>)
+    if(UNIX AND NOT APPLE)
+        target_link_options(whillats_server PRIVATE
+            -Wl,--allow-shlib-undefined
+            -Wl,-rpath,$ORIGIN
+            -Wl,-rpath,${CMAKE_BINARY_DIR}/lib/Debug
         )
-        if(GGML_CUDA)
-            find_package(CUDAToolkit)
-            if(CUDAToolkit_FOUND)
-                target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart ggml-cuda)
-                message(STATUS "Linked whillats against CUDA runtime and ggml-cuda")
-            endif()
+        if(ONNXRUNTIME_LIB_DIR)
+            target_link_options(whillats_server PRIVATE -Wl,-rpath,${ONNXRUNTIME_LIB_DIR})
         endif()
     endif()
 
@@ -654,23 +683,16 @@ target_include_directories(test_whillats PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# Pass StyleTTS2 flag to test executable
-if(WHILLATS_PIPER)
-    target_compile_definitions(test_whillats PRIVATE WHILLATS_PIPER)
-elseif(WHILLATS_STYLETTS2)
-    target_compile_definitions(test_whillats PRIVATE WHILLATS_STYLETTS2)
-endif()
-
-# Note: test_whillats uses environment variable ESPEAK_DATA_PATH
-
 target_link_libraries(test_whillats
     PRIVATE
         ${PROJECT_NAME}
+        pthread
 )
 
 target_compile_options(test_whillats PRIVATE
     $<$<CONFIG:Debug>:-g>
     $<$<CONFIG:Debug>:-O0>
+    -fno-exceptions
 )
 target_link_options(test_whillats PRIVATE
     $<$<CONFIG:Debug>:-g>
@@ -700,26 +722,6 @@ set_target_properties(synthesis PROPERTIES
     )
 endif()
 
-# whillats_server: standalone process hosting Whisper+Llama+TTS (libstdc++ only)
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT APPLE)
-add_executable(whillats_server
-    src/whillats_server.cc
-)
-target_include_directories(whillats_server PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${THIRD_PARTY_DIR}/whisper.cpp/include
-    ${THIRD_PARTY_DIR}/whisper.cpp/ggml/include
-    ${THIRD_PARTY_DIR}/llama.cpp/include
-    ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
-    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
-)
-target_link_libraries(whillats_server PRIVATE ${PROJECT_NAME})
-target_compile_options(whillats_server PRIVATE $<$<CONFIG:Debug>:-g -O0>)
-target_link_options(whillats_server PRIVATE $<$<CONFIG:Debug>:-g>)
-if(DEFINED LINUX_LINK_OPTS)
-    target_link_options(whillats_server PRIVATE ${LINUX_LINK_OPTS})
-endif()
-
 # test_whillats_server: verifies IPC protocol between client stubs and server
 add_executable(test_whillats_server
     test/test_whillats_server.cc
@@ -737,7 +739,6 @@ target_include_directories(test_whillats_server PRIVATE
 target_link_libraries(test_whillats_server PRIVATE ${PROJECT_NAME} pthread)
 target_compile_options(test_whillats_server PRIVATE $<$<CONFIG:Debug>:-g -O0>)
 target_link_options(test_whillats_server PRIVATE $<$<CONFIG:Debug>:-g>)
-endif()
 
 # Final install block: framework-only on iOS, full on others
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -758,12 +759,5 @@ else()
     endif()
 endif()
 
-# Add compile definition for espeak data path to test executable as well
-target_include_directories(test_whillats
-    PRIVATE
-        ${THIRD_PARTY_DIR}/whisper.cpp/include
-        ${THIRD_PARTY_DIR}/whisper.cpp/ggml/include
-        ${THIRD_PARTY_DIR}/llama.cpp/include
-        ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
-        ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
-)
+
+

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <unistd.h>
+#include <vector>
 
 namespace whillats_ipc {
 
@@ -41,22 +42,21 @@ inline bool write_msg(int fd, uint8_t type, const void* data, uint32_t len) {
     Header h;
     h.type = type;
     h.len  = len;
-    ssize_t n = 0;
-    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&h);
-    size_t rem = HEADER_SIZE;
+    
+    // Write header and data as a single contiguous block to avoid interleaving
+    // if the caller didn't lock properly, or if pipe buffers are small.
+    std::vector<uint8_t> buf(HEADER_SIZE + len);
+    memcpy(buf.data(), &h, HEADER_SIZE);
+    if (len > 0 && data) {
+        memcpy(buf.data() + HEADER_SIZE, data, len);
+    }
+    
+    const uint8_t* ptr = buf.data();
+    size_t rem = buf.size();
     while (rem > 0) {
-        n = ::write(fd, ptr, rem);
+        ssize_t n = ::write(fd, ptr, rem);
         if (n <= 0) return false;
         ptr += n; rem -= n;
-    }
-    if (len > 0 && data) {
-        ptr = reinterpret_cast<const uint8_t*>(data);
-        rem = len;
-        while (rem > 0) {
-            n = ::write(fd, ptr, rem);
-            if (n <= 0) return false;
-            ptr += n; rem -= n;
-        }
     }
     return true;
 }

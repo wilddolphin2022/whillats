@@ -4,6 +4,7 @@
  *  https://github.com/wilddolphin2022
  */
 
+#define STB_IMAGE_IMPLEMENTATION
 #include "talking_face.h"
 #include <cmath>
 #include <algorithm>

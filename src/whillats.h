@@ -46,18 +46,8 @@ struct YUVData {
     std::unique_ptr<uint8_t[]> v;
 };
 
-class WhisperTranscriber;
-class LlamaDeviceBase;
-#if defined(WHILLATS_PIPER)
-class PiperTTS;
-#elif defined(WHILLATS_STYLETTS2)
-class StyleTTS2TTS;
-#else
-class ESpeakTTS;
-#endif
 class WhillatsSpeechSynthesizerWrapper;
 class Synthesis;
-
 class WhillatsServerConnection;
 class WhillatsTranscriberClient;
 class WhillatsLlamaClient;
@@ -132,22 +122,12 @@ class WHILLATS_API WhillatsTTS {
 
   private:
     WhillatsSetAudioCallback _callback;
-    bool _useServer = false;
     std::shared_ptr<WhillatsServerConnection> _conn;
     std::unique_ptr<WhillatsTTSClient> _ttsClient;
-#if defined(WHILLATS_PIPER)
-    std::unique_ptr<PiperTTS> _piper;
-#elif defined(WHILLATS_STYLETTS2)
-    std::unique_ptr<StyleTTS2TTS> _styletts2;
-#else
-#if !defined(__APPLE__)
-    std::unique_ptr<ESpeakTTS> _espeak_tts;
-#endif
 #if defined(__APPLE__) && TARGET_OS_IPHONE
     std::unique_ptr<WhillatsSpeechSynthesizerWrapper> _wrapper;
 #elif defined(__APPLE__) && TARGET_OS_OSX
     std::unique_ptr<Synthesis> _synth;
-#endif
 #endif
 };
 
@@ -170,10 +150,8 @@ class WHILLATS_API WhillatsTranscriber {
   private:
     WhillatsSetResponseCallback _callback; 
     WhillatsSetLanguageCallback _language_callback;
-    bool _useServer = false;
     std::shared_ptr<WhillatsServerConnection> _conn;
     std::unique_ptr<WhillatsTranscriberClient> _whisperClient;
-    std::unique_ptr<WhisperTranscriber> _whisper_transcriber;
     std::string _language = "en";
     int _threadCount = 0;
 };
@@ -205,10 +183,8 @@ class WHILLATS_API WhillatsLlama {
 
   private:
     WhillatsSetResponseCallback _callback;
-    bool _useServer = false;
     std::shared_ptr<WhillatsServerConnection> _conn;
     std::unique_ptr<WhillatsLlamaClient> _llamaClient;
-    std::unique_ptr<LlamaDeviceBase> _llama_device;
 };
 
 // Helper functions

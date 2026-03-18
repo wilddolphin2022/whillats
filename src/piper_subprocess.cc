@@ -52,13 +52,17 @@ static void child_main(int read_fd, int write_fd,
         uint32_t text_len = 0;
         if (!read_all(read_fd, &text_len, sizeof(text_len))) break;
         if (text_len == 0) break;
+        if (text_len > 1024 * 1024) {
+            fprintf(stderr, "[PiperChild] Invalid text_len %u\n", text_len);
+            break;
+        }
 
-        std::string text(text_len, '\0');
-        if (!read_all(read_fd, &text[0], text_len)) break;
+        std::vector<char> text_buf(text_len + 1, '\0');
+        if (!read_all(read_fd, text_buf.data(), text_len)) break;
+        
+        fprintf(stderr, "[PiperChild] Synthesizing: %s\n", text_buf.data());
 
-        fprintf(stderr, "[PiperChild] Synthesizing: %s\n", text.c_str());
-
-        int rc = piper_synthesize_start(synth, text.c_str(), nullptr);
+        int rc = piper_synthesize_start(synth, text_buf.data(), nullptr);
         if (rc != PIPER_OK) {
             int32_t sr = 0; uint32_t ns = 0;
             write_all(write_fd, &sr, sizeof(sr));
@@ -158,8 +162,13 @@ std::vector<int16_t> PiperSubprocess::synthesize(const std::string& text) {
     if (!_running || text.empty()) return {};
 
     uint32_t text_len = static_cast<uint32_t>(text.size());
-    if (!write_all(_toChild, &text_len, sizeof(text_len))) return {};
-    if (!write_all(_toChild, text.data(), text_len)) return {};
+    
+    // Write length and text together to avoid interleaving in pipe
+    std::vector<uint8_t> buf(sizeof(text_len) + text_len);
+    memcpy(buf.data(), &text_len, sizeof(text_len));
+    memcpy(buf.data() + sizeof(text_len), text.data(), text_len);
+    
+    if (!write_all(_toChild, buf.data(), buf.size())) return {};
 
     int32_t sr = 0;
     uint32_t ns = 0;
@@ -168,6 +177,10 @@ std::vector<int16_t> PiperSubprocess::synthesize(const std::string& text) {
 
     if (sr > 0) _sampleRate = sr;
     if (ns == 0) return {};
+    if (ns > 10 * 1024 * 1024) { // Sanity check
+        fprintf(stderr, "[PiperSubprocess] Invalid sample count %u\n", ns);
+        return {};
+    }
 
     std::vector<int16_t> audio(ns);
     if (!read_all(_fromChild, audio.data(), ns * sizeof(int16_t))) return {};

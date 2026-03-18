@@ -1,415 +1,173 @@
 /*
- *  (c) 2025, wilddolphin2025 
- *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2025
- *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ *  test_whillats — thin client test (uses whillats_server via IPC)
+ *  Built with -fno-exceptions to match directcall environment.
+ *  Requires WHILLATS_SERVER env var pointing to whillats_server binary.
  */
 
 #include <iostream>
 #include <vector>
 #include <cstdlib>
+#include <cstdio>
 #include <string>
 #include <unistd.h>
-#include <sys/stat.h>
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
+#include <thread>
+#include <atomic>
+
 #include "whillats.h"
-#ifdef WHILLATS_STYLETTS2
-#include "orpheus_tts.h"
-#endif
-#ifdef WHILLATS_PIPER
-#include "piper_tts.h"
-#endif
-
 #include "test_utils.h"
-#include "whisper_helpers.h"
-#include "whillats_utils.h"
 
-// Set log level
-void setLogLevel(LogLevel level)
-{
-  g_currentLogLevel = level;
-}
+static std::vector<uint16_t> audio_buffer;
+static std::atomic<bool> tts_done{false};
+static std::atomic<bool> whisper_done{false};
+static std::atomic<bool> llama_done{false};
 
-std::vector<uint16_t> audio_buffer;
-bool tts_done = false;
-bool whisper_done = false;
-bool llama_done = false;
-bool language_changed = false;
-
-static size_t bufferCount = 0;
-
-void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, void* user_data) {
-    // Only handle actual audio data
-    if (success) 
-    {
-        LOG_I("Generated " << buffer_size << " audio samples at " << WhillatsTTS::getSampleRate() << "Hz");
-        if(buffer && buffer_size > 0) {
-            audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
-        }
-    } else {
-        // Signal end of synthesis
-        LOG_I("TTS done");
+void ttsAudioCallback(bool success, const uint16_t* buffer, size_t buffer_size, void*) {
+    if (success && buffer && buffer_size > 0) {
+        fprintf(stderr, "[test] TTS: %zu samples\n", buffer_size);
+        audio_buffer.insert(audio_buffer.end(), buffer, buffer + buffer_size);
+    } else if (!success) {
+        fprintf(stderr, "[test] TTS done (total %zu samples)\n", audio_buffer.size());
         tts_done = true;
     }
 }
 
-void whisperResponseCallback(bool success, const char* response, void* user_data) {
-    // Handle response here
-    std::cout << "Whisper response via callback: " << response << std::endl;
-    whisper_done = true; 
+void whisperResponseCallback(bool success, const char* response, void*) {
+    fprintf(stderr, "[test] Whisper: %s\n", response);
+    whisper_done = true;
 }
 
-void llamaResponseCallback(bool success, const char* response, void* user_data) {
-    // Handle response here
-    std::cout << "Llama response via callback: " << response << std::endl;
-    llama_done = true;   
+void llamaResponseCallback(bool success, const char* response, void*) {
+    fprintf(stderr, "[test] Llama: %s\n", response);
+    llama_done = true;
 }
 
-void languageChangedCallback(bool success, const char* language, void* user_data) {
-    // Handle response here
-    std::cout << "Language changed via callback: " << language << std::endl;
-    language_changed = true;
+void languageChangedCallback(bool success, const char* language, void*) {
+    fprintf(stderr, "[test] Language: %s\n", language);
 }
 
-// Auto-detect and set espeak data path if not already set
-void setupEspeakDataPath() {
-    if (getenv("ESPEAK_DATA_PATH")) {
-        return; // Already set
+int main(int argc, char *argv[]) {
+    Options opts = parseOptions(argc, argv);
+
+    if (argc == 1 || opts.help) {
+        fprintf(stderr, "%s\n", opts.help_string.c_str());
+        return 1;
     }
 
-    std::string bin_dir;
+    fprintf(stderr, "[test] Config: whisper=%s llama=%s\n",
+            opts.whisper_model.c_str(), opts.llama_model.c_str());
 
-#if defined(__APPLE__)
-    // macOS: use _NSGetExecutablePath
-    char exe_path[1024];
-    uint32_t size = sizeof(exe_path);
-    if (_NSGetExecutablePath(exe_path, &size) == 0) {
-        // Resolve symlinks
-        char real_path[1024];
-        if (realpath(exe_path, real_path)) {
-            bin_dir = std::string(real_path);
+    // Set model env vars early so whillats_server gets them in its config
+    if (!opts.whisper_model.empty()) setenv("WHISPER_MODEL", opts.whisper_model.c_str(), 1);
+    if (!opts.llama_model.empty()) setenv("LLAMA_MODEL", opts.llama_model.c_str(), 1);
+    if (!opts.llama_mmproj.empty()) setenv("LLAMA_MMPROJ", opts.llama_mmproj.c_str(), 1);
+
+    // ================================================================
+    // TTS Test
+    // ================================================================
+    {
+        audio_buffer.clear();
+        tts_done = false;
+        WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
+        WhillatsTTS tts(callback);
+
+        if (tts.start()) {
+            const char* text1 = "Hello, this is a test of text to speech synthesis.";
+            fprintf(stderr, "[test] TTS: %s\n", text1);
+            tts.queueText(text1, "en-US");
+            while (!tts_done) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
+            fprintf(stderr, "[test] Saved synthesized_audio.wav (%zu samples)\n", audio_buffer.size());
+
+            tts_done = false;
+            audio_buffer.clear();
+
+            const char* long_text = "Hello, this is a test of text to speech synthesis. "
+                "This is a longer test to ensure we have enough audio data. "
+                "We are testing the whisper transcription system. "
+                "The quick brown fox jumps over the lazy dog";
+            fprintf(stderr, "[test] TTS long: %s\n", long_text);
+            tts.queueText(long_text, "en");
+            while (!tts_done) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            tts_done = false;
+
+            tts.queueText("¿Cómo estás? ¿cómo te llamas?", "es");
+            while (!tts_done) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            tts_done = false;
+
+            tts.queueText("У вас есть меню на английском?", "ru");
+            while (!tts_done) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            writeWavFile("synthesized_audio_long.wav", audio_buffer, WhillatsTTS::getSampleRate());
+            fprintf(stderr, "[test] Saved synthesized_audio_long.wav (%zu samples)\n", audio_buffer.size());
+            tts.stop();
         } else {
-            bin_dir = std::string(exe_path);
+            fprintf(stderr, "[test] TTS start FAILED\n");
         }
     }
-#else
-    // Linux: use /proc/self/exe
-    char exe_path[1024];
-    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-    if (len != -1) {
-        exe_path[len] = '\0';
-        bin_dir = std::string(exe_path);
-    }
-#endif
 
-    if (!bin_dir.empty()) {
-        size_t last_slash = bin_dir.find_last_of('/');
-        if (last_slash != std::string::npos) {
-            bin_dir = bin_dir.substr(0, last_slash);
-            std::string data_path = bin_dir + "/espeak-ng-data";
+    // ================================================================
+    // Whisper Test
+    // ================================================================
+    if (opts.whisper && !audio_buffer.empty()) {
+        WhillatsSetResponseCallback callback(whisperResponseCallback, nullptr);
+        WhillatsSetLanguageCallback lang_cb(languageChangedCallback, nullptr);
+        WhillatsTranscriber whisper(opts.whisper_model.c_str(), callback, lang_cb);
 
-            struct stat st;
-            if (stat(data_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
-                setenv("ESPEAK_DATA_PATH", data_path.c_str(), 1);
-                LOG_I("Auto-detected espeak data path: " << data_path);
-                return;
+        if (whisper.start()) {
+            fprintf(stderr, "[test] Whisper started\n");
+            size_t samples_per_chunk = (WhillatsTTS::getSampleRate() * 10) / 1000;
+            fprintf(stderr, "[test] Feeding %zu samples in %zu-sample chunks\n",
+                    audio_buffer.size(), samples_per_chunk);
+
+            for (size_t i = 0; i < audio_buffer.size(); i += samples_per_chunk) {
+                size_t n = std::min(samples_per_chunk, audio_buffer.size() - i);
+                whisper.processAudioBuffer(
+                    reinterpret_cast<uint8_t*>(&audio_buffer[i]),
+                    n * sizeof(uint16_t));
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }
-        }
-    }
+            whisper.processAudioBuffer(nullptr, 0);
 
-    LOG_W("Could not auto-detect espeak data path. Please set ESPEAK_DATA_PATH environment variable.");
-}
+            for (int i = 0; i < 600 && !whisper_done; ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-int main(int argc, char *argv[])
-{
-  // Setup espeak data path first
-  setupEspeakDataPath();
-  
-  Options opts = parseOptions(argc, argv);
+            if (whisper_done)
+                fprintf(stderr, "[test] Whisper PASSED\n");
+            else
+                fprintf(stderr, "[test] Whisper TIMEOUT\n");
 
-  if (argc == 1 || opts.help)
-  {
-    std::string usage = opts.help_string;
-    LOG_E(usage);
-    return 1;
-  }
-
-  LOG_I(getUsage(opts));
-
-#ifdef WHILLATS_STYLETTS2
-  // Set StyleTTS2 env vars from command line options
-  if (!opts.styletts2_model_dir.empty()) {
-    setenv("STYLETTS2_MODEL_DIR", opts.styletts2_model_dir.c_str(), 1);
-    LOG_I("Set STYLETTS2_MODEL_DIR=" << opts.styletts2_model_dir);
-  }
-  if (opts.styletts2_model_dir.empty() && !getenv("STYLETTS2_MODEL_DIR")) {
-    LOG_W("StyleTTS2 enabled but no model dir specified. Use --styletts2_model_dir= or set STYLETTS2_MODEL_DIR");
-  }
-#endif
-
-  opts.tts = true;
-
-  setLogLevel(LogLevel::VERBOSE);
-
-  if (opts.tts) {
-    // Clear buffer before starting TTS
-    audio_buffer.clear();
-    WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
-    WhillatsTTS tts(callback); 
-      
-    if(tts.start()) {
-
-      const char *test_text = "Hello, this is a test of text to speech synthesis.";
-      std::cout << "Testing TTS with text: " << test_text << std::endl;
-
-      // Queue and wait for first utterance
-      tts.queueText(test_text, "en-US");
-      // Fallback: poll until completion
-      while (!tts_done) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-
-      // Write accumulated audio for first utterance
-      writeWavFile("synthesized_audio.wav", audio_buffer, WhillatsTTS::getSampleRate());
-      // Prepare for next utterance: clear buffer and flag
-      tts_done = false;
-      audio_buffer.clear();
-
-      const char *long_test_text = "Hello, this is a test of text to speech synthesis. "
-                                  "This is a longer test to ensure we have enough audio data. "
-                                  "We are testing the whisper transcription system. "
-                                  "The quick brown fox jumps over the lazy dog";
-                                  
-      const char *spanish_test_text = "¿Cómo estás? ¿cómo te llamas?";
-      const char *russian_test_text = "У вас есть меню на английском?";
-      // Queue and wait for long English utterance
-      std::cout << "Testing TTS with text: " << long_test_text << std::endl;
-      tts.queueText(long_test_text, "en");
-      while (!tts_done) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-      tts_done = false;
-      // Queue and wait for Spanish utterance
-      std::cout << "Testing TTS with text: " << spanish_test_text << std::endl;
-      tts.queueText(spanish_test_text, "es");
-      while (!tts_done) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-      tts_done = false;
-      // Queue and wait for Russian utterance
-      std::cout << "Testing TTS with text: " << russian_test_text << std::endl;
-      tts.queueText(russian_test_text, "ru");
-      while (!tts_done) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-      
-      tts_done = false;
-      // Write accumulated audio for all utterances
-      writeWavFile("synthesized_audio_long.wav", audio_buffer, WhillatsTTS::getSampleRate());
-      // Stop TTS after all audio
-      tts.stop();
-    }
-  }
-
-#ifdef WHILLATS_STYLETTS2
-  if (opts.orpheus) {
-    audio_buffer.clear();
-    tts_done = false;
-    WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
-    OrpheusTTS orpheus(callback);
-
-    std::string orpheus_model = opts.orpheus_model;
-    std::string snac_model = opts.snac_model;
-    if (orpheus_model.empty()) {
-        const char* env = getenv("ORPHEUS_MODEL");
-        if (env) orpheus_model = env;
-    }
-    if (snac_model.empty()) {
-        const char* env = getenv("SNAC_MODEL");
-        if (env) snac_model = env;
-    }
-    if (orpheus_model.empty() || snac_model.empty()) {
-        LOG_E("Orpheus test requires --orpheus_model= and --snac_model= (or ORPHEUS_MODEL/SNAC_MODEL env vars)");
-    } else if (orpheus.start(orpheus_model, snac_model)) {
-        const char* test_text = "Hello, this is a test of Orpheus text to speech synthesis.";
-        std::cout << "Testing Orpheus TTS with text: " << test_text << std::endl;
-
-        orpheus.queueText(test_text, "tara");
-        while (!tts_done) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-
-        if (!audio_buffer.empty()) {
-            writeWavFile("orpheus_audio.wav", audio_buffer, OrpheusTTS::getSampleRate());
+            whisper.stop();
         } else {
-            LOG_W("Orpheus: No audio generated");
+            fprintf(stderr, "[test] Whisper start FAILED\n");
         }
-        orpheus.stop();
     }
-  }
-#endif
 
-#ifdef WHILLATS_PIPER
-  if (opts.piper) {
-    audio_buffer.clear();
-    tts_done = false;
-    WhillatsSetAudioCallback callback(ttsAudioCallback, nullptr);
-    PiperTTS piper(callback);
+    // ================================================================
+    // Llama Test
+    // ================================================================
+    if (opts.llama) {
+        WhillatsSetResponseCallback callback(llamaResponseCallback, nullptr);
+        WhillatsLlama llama(opts.llama_model.c_str(), opts.llama_mmproj.c_str(), callback);
 
-    std::string piper_model = opts.piper_model;
-    if (piper_model.empty()) {
-        const char* env = getenv("PIPER_MODEL");
-        if (env) piper_model = env;
-    }
-    // espeak data from env or auto-detect
-    std::string espeak_data;
-    if (const char* env = getenv("ESPEAK_DATA_PATH")) espeak_data = env;
+        fprintf(stderr, "[test] Llama: starting with model %s\n", opts.llama_model.c_str());
+        if (llama.start()) {
+            fprintf(stderr, "[test] Llama started, asking: What is your name?\n");
+            llama.askLlama("What is your name?");
 
-    if (piper_model.empty()) {
-        LOG_E("Piper test requires --piper_model= or PIPER_MODEL env var");
-    } else if (piper.start(piper_model, espeak_data)) {
-        const char* test_text = "Hello, this is a test of Piper text to speech synthesis.";
-        std::cout << "Testing Piper TTS with text: " << test_text << std::endl;
+            for (int i = 0; i < 600 && !llama_done; ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-        piper.queueText(test_text, "en");
-        while (!tts_done) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+            if (llama_done)
+                fprintf(stderr, "[test] Llama PASSED\n");
+            else
+                fprintf(stderr, "[test] Llama TIMEOUT\n");
 
-        if (!audio_buffer.empty()) {
-            writeWavFile("piper_audio.wav", audio_buffer, piper.getSampleRate());
-            std::cout << "Saved audio to piper_audio.wav" << std::endl;
+            llama.stop();
         } else {
-            LOG_W("Piper: No audio generated");
+            fprintf(stderr, "[test] Llama start FAILED\n");
         }
-        piper.stop();
     }
-  }
-#endif
 
-  if (opts.whisper) {
-    // Test WhisperTranscription
-    WhillatsSetResponseCallback callback(whisperResponseCallback, nullptr);
-    WhillatsSetLanguageCallback language_callback(languageChangedCallback, nullptr);
-    WhillatsTranscriber whisper(opts.whisper_model.c_str(), callback, language_callback);
-
-    // Start the transcriber before processing audio
-    if (!whisper.start()) 
-    {
-      LOG_E("Failed to start Whisper transcriber");
-
-    } else {
-      LOG_I("Whisper transcriber started");
-
-      // Calculate chunk size for 10ms at the given sample rate (in samples, not bytes)
-      size_t samples_per_chunk = (WhillatsTTS::getSampleRate() * 10) / 1000;
-      std::cout << "Processing audio in " << samples_per_chunk << " sample chunks" << std::endl;
-
-      // Process audio
-      LOG_V("Processing audio buffer size: " << audio_buffer.size() << "..." << std::endl);
-      for (size_t i = 0; i < audio_buffer.size(); i += samples_per_chunk)
-      {
-        size_t chunk_size = std::min(samples_per_chunk, audio_buffer.size() - i);
-        whisper.processAudioBuffer((uint8_t *)(audio_buffer.data() + i), chunk_size * sizeof(uint16_t));
-      }
-
-      LOG_V("Short cutting audio buffer size: " << audio_buffer.size() << "..." << std::endl);
-      whisper.processAudioBuffer(nullptr, 0);
-
-      while (!whisper_done)
-      {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-      whisper_done = false;
-
-      // Process long audio
-      std::cout << "\nProcessing long audio..." << std::endl;
-      for (size_t i = 0; i < audio_buffer.size(); i += samples_per_chunk)
-      {
-        size_t chunk_size = std::min(samples_per_chunk, audio_buffer.size() - i);
-        whisper.processAudioBuffer((uint8_t *)(audio_buffer.data() + i), chunk_size * sizeof(uint16_t));
-      }
-      
-      whisper.processAudioBuffer(nullptr, 0);
-      while (!whisper_done)
-      {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-
-      // Stop the transcriber
-      whisper.stop(); 
-    }
-  }
-
-  if (opts.llama) {
-    //  Test LlamaDeviceBase
-    WhillatsSetResponseCallback callback(llamaResponseCallback, nullptr);
-    WhillatsLlama llama(opts.llama_model.c_str(), opts.llama_mmproj.c_str(), callback);
-
-    LOG_I("Initializing Llama with model: " << opts.llama_model);
-    if (llama.start()) 
-    {
-      if(!opts.test_image1.empty())
-      {
-        YUVData grey_yuv;
-        load_yuv(grey_yuv, opts.test_image1.c_str(), 300, 300);
-
-        llama.askWithYUVRaw("Describe the contents of the image in detail.", 
-                            grey_yuv.y.get(), grey_yuv.u.get(), grey_yuv.v.get(), 
-                            grey_yuv.width, grey_yuv.height, 
-                            grey_yuv.y_size, grey_yuv.uv_size);
-        
-        // Wait for the first image processing to complete
-        while (!llama_done)
-        {
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-      llama_done = false;
-      }
-
-      if(!opts.test_image2.empty())
-      {
-        YUVData yuv;
-        load_yuv(yuv, opts.test_image2.c_str(), 1754, 1240);
-
-        //llama.setImage(*yuv);
-        llama.askWithYUVRaw("Describe the contents of the image in detail.", 
-                            yuv.y.get(), yuv.u.get(), yuv.v.get(), 
-                            yuv.width, yuv.height, 
-                            yuv.y_size, yuv.uv_size);
-        
-        // Wait for the second image processing to complete
-        while (!llama_done)
-        {
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        llama_done = false;
-      }
-      
-      std::string prompt = "What is your name?";
-      LOG_I("Testing Llama with prompt: " << prompt);
-      llama.askLlama(prompt.c_str());
-      
-      // Wait for the text query response
-      while (!llama_done)
-      {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-      llama_done = false;
-      
-      llama.stop();
-    }
-    else
-    {
-      LOG_E("Failed to initialize LLama model");
-    }
-  }
-  return 0;
+    fprintf(stderr, "[test] Done\n");
+    return 0;
 }

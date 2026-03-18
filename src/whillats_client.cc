@@ -51,7 +51,7 @@ bool WhillatsServerConnection::start(const std::string& server_path, const Confi
 
     _running = true;
 
-    // Send config
+    std::lock_guard<std::mutex> lock(_writeMutex);
     write_msg(_writeFd, MSG_CONFIG, &cfg, sizeof(cfg));
 
     // Start reader thread
@@ -65,7 +65,10 @@ void WhillatsServerConnection::stop() {
     if (!_running) return;
     _running = false;
 
-    write_msg(_writeFd, MSG_SHUTDOWN, nullptr, 0);
+    {
+        std::lock_guard<std::mutex> lock(_writeMutex);
+        write_msg(_writeFd, MSG_SHUTDOWN, nullptr, 0);
+    }
 
     if (_writeFd >= 0) { close(_writeFd); _writeFd = -1; }
 
@@ -89,50 +92,59 @@ bool WhillatsServerConnection::sendMsg(uint8_t type, const void* data, uint32_t 
 void WhillatsServerConnection::readerThread() {
     Header h;
     while (_running && read_header(_readFd, h)) {
+        if (h.len > 10 * 1024 * 1024) { // 10MB sanity check to prevent bad alloc
+            fprintf(stderr, "[whillats_client] ERROR: Invalid message length %u\n", h.len);
+            break;
+        }
         std::vector<uint8_t> payload(h.len);
         if (h.len > 0 && !read_exact(_readFd, payload.data(), h.len)) break;
 
         switch (h.type) {
 
         case MSG_WHISPER_RESULT:
-            if (_whisperCb.callback_) {
-                std::string text(reinterpret_cast<char*>(payload.data()), h.len);
-                _whisperCb.OnResponseComplete(true, text.c_str());
+            if (_whisperFn) {
+                if (h.len > 1024 * 1024) break;
+                std::vector<char> buf(h.len + 1, '\0');
+                if (h.len > 0) memcpy(buf.data(), payload.data(), h.len);
+                _whisperFn(true, buf.data(), _whisperUd);
             }
             break;
 
         case MSG_WHISPER_LANGUAGE:
-            if (_langCb.callback_) {
-                std::string lang(reinterpret_cast<char*>(payload.data()), h.len);
-                _langCb.OnLanguageChanged(true, lang.c_str());
+            if (_langFn) {
+                if (h.len > 1024) break;
+                std::vector<char> buf(h.len + 1, '\0');
+                if (h.len > 0) memcpy(buf.data(), payload.data(), h.len);
+                _langFn(true, buf.data(), _langUd);
             }
             break;
 
         case MSG_LLAMA_RESPONSE:
-            if (_llamaCb.callback_) {
-                std::string resp(reinterpret_cast<char*>(payload.data()), h.len);
-                _llamaCb.OnResponseComplete(true, resp.c_str());
+            if (_llamaFn) {
+                if (h.len > 1024 * 1024) break;
+                std::vector<char> buf(h.len + 1, '\0');
+                if (h.len > 0) memcpy(buf.data(), payload.data(), h.len);
+                _llamaFn(true, buf.data(), _llamaUd);
             }
             break;
 
         case MSG_TTS_AUDIO: {
-            if (_ttsCb.callback_ && h.len >= sizeof(TtsAudioMsg)) {
+            if (_ttsFn && h.len >= sizeof(TtsAudioMsg)) {
                 TtsAudioMsg hdr;
                 memcpy(&hdr, payload.data(), sizeof(hdr));
                 const uint16_t* samples = reinterpret_cast<const uint16_t*>(
                     payload.data() + sizeof(TtsAudioMsg));
                 size_t n = hdr.num_samples;
                 if (sizeof(TtsAudioMsg) + n * sizeof(int16_t) <= h.len) {
-                    std::vector<uint16_t> buf(samples, samples + n);
-                    _ttsCb.OnBufferComplete(true, buf);
+                    _ttsFn(true, samples, n, _ttsUd);
                 }
             }
             break;
         }
 
         case MSG_TTS_DONE:
-            if (_ttsCb.callback_)
-                _ttsCb.OnSynthesisComplete();
+            if (_ttsFn)
+                _ttsFn(false, nullptr, 0, _ttsUd);
             break;
 
         default:

@@ -543,11 +543,14 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         }
 
         if (isCompleteSentence(current_phrase)) {
-            callback.OnResponseComplete(true, current_phrase.c_str());
-            LOG_I("Llama says: '" << current_phrase << "' in "
-                  << std::chrono::duration_cast<std::chrono::milliseconds>(
-                         std::chrono::steady_clock::now() - _lastResponseStart).count()
-                  << " ms");
+            std::string cleaned_phrase = clean_response(current_phrase);
+            if (!cleaned_phrase.empty()) {
+                callback.OnResponseComplete(true, cleaned_phrase.c_str());
+                LOG_I("Llama says: '" << cleaned_phrase << "' in "
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - _lastResponseStart).count()
+                      << " ms");
+            }
             response += current_phrase;
             current_phrase.clear();
         }
@@ -564,7 +567,10 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
 
     if (!current_phrase.empty()) {
         response += current_phrase;
-        callback.OnResponseComplete(true, current_phrase.c_str());
+        std::string cleaned_phrase = clean_response(current_phrase);
+        if (!cleaned_phrase.empty()) {
+            callback.OnResponseComplete(true, cleaned_phrase.c_str());
+        }
     }
 
     std::string full_response = clean_response(response);
@@ -831,8 +837,11 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
         }
 
         if (isCompleteSentence(current_phrase)) {
-            callback.OnResponseComplete(true, current_phrase.c_str());
-            LOG_V("Partial image description: " << current_phrase);
+            std::string cleaned_phrase = clean_response(current_phrase);
+            if (!cleaned_phrase.empty()) {
+                callback.OnResponseComplete(true, cleaned_phrase.c_str());
+                LOG_V("Partial image description: " << cleaned_phrase);
+            }
             response += current_phrase;
             current_phrase.clear();
         }
@@ -849,7 +858,10 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
 
     if (!current_phrase.empty()) {
         response += current_phrase;
-        callback.OnResponseComplete(true, current_phrase.c_str());
+        std::string cleaned_phrase = clean_response(current_phrase);
+        if (!cleaned_phrase.empty()) {
+            callback.OnResponseComplete(true, cleaned_phrase.c_str());
+        }
     }
 
     std::string full_response = clean_response(response);

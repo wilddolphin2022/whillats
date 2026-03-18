@@ -107,10 +107,10 @@ int main(int argc, char* argv[]) {
     cfg.tts_threads = 2;
 
     WhillatsServerConnection conn;
-    conn.setWhisperCallback({whisper_cb, nullptr});
-    conn.setLanguageCallback({language_cb, nullptr});
-    conn.setLlamaCallback({llama_cb, nullptr});
-    conn.setTtsCallback({tts_cb, nullptr});
+    conn.setWhisperCallback(whisper_cb, nullptr);
+    conn.setLanguageCallback(language_cb, nullptr);
+    conn.setLlamaCallback(llama_cb, nullptr);
+    conn.setTtsCallback(tts_cb, nullptr);
 
     if (!conn.start(server_path, cfg)) {
         fprintf(stderr, "FATAL: Failed to start server\n");
