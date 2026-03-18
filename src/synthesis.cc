@@ -23,7 +23,11 @@
 #include <string>    // for std::string
 
 #include "synthesis.h"
-#include "whisper_helpers.h"
+// whisper_helpers.h removed from thin library
+#define LOG_I(x) do { fprintf(stderr, "[INFO] %s\n", #x); } while(0)
+#define LOG_E(x) do { fprintf(stderr, "[ERROR] %s\n", #x); } while(0)
+#define LOG_V(x) do {} while(0)
+#define LOG_W(x) do { fprintf(stderr, "[WARN] %s\n", #x); } while(0)
 #include "whillats_utils.h"
 // Helper to read exactly `size` bytes from fd into buf. Returns false on EOF or error.
 bool Synthesis::readAll(int fd, void* buf, size_t size) {

@@ -20,7 +20,11 @@
 
 #include "whillats.h"
 #include "whillats_utils.h"
-#include "whisper_helpers.h"
+// whisper_helpers.h removed from thin library
+#define LOG_I(x) do { fprintf(stderr, "[INFO] %s\n", #x); } while(0)
+#define LOG_E(x) do { fprintf(stderr, "[ERROR] %s\n", #x); } while(0)
+#define LOG_V(x) do {} while(0)
+#define LOG_W(x) do { fprintf(stderr, "[WARN] %s\n", #x); } while(0)
 
 // Compute perceptual hash for clip_image_u8
 std::string compute_image_hash(const clip_image_u8& image) {
