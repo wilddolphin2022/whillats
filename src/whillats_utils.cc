@@ -14,8 +14,6 @@
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
-#include <sstream>
-#include <iomanip>
 #include <dlfcn.h>
 
 #include "whillats.h"
@@ -90,11 +88,9 @@ std::string compute_image_hash(const clip_image_u8& image) {
             }
         }
     }
-    std::stringstream ss;
-    ss << std::hex << std::setw(16) << std::setfill('0') << hash;
-    std::string hash_str = ss.str();
-    LOG_I("DEBUG: Computed image hash: " + hash_str);
-    return hash_str;
+    char hash_buf[32];
+    snprintf(hash_buf, sizeof(hash_buf), "%016lx", hash);
+    return std::string(hash_buf);
 }
 
 clip_image_u8* yuv_to_clip(const YUVData& yuv) {
@@ -235,7 +231,8 @@ std::vector<int16_t> resampleAudio(const int16_t* data, size_t count,
         return std::vector<int16_t>(data, data + count);
     }
 
-    int g = std::__gcd(src_rate, dst_rate);
+    auto gcd_fn = [](int a, int b) { while (b) { int t = b; b = a % b; a = t; } return a; };
+    int g = gcd_fn(src_rate, dst_rate);
     int up   = dst_rate / g;   // upsample factor
     int down = src_rate / g;   // decimate factor
 
@@ -275,7 +272,7 @@ std::vector<int16_t> resampleAudio(const int16_t* data, size_t count,
 
     // Pad to avoid startup/tail transients
     size_t pad = static_cast<size_t>(HALF);
-    size_t padded = count + 2 * pad;
+    (void)(count + 2 * pad); // padded count for reference
 
     // Build zero-stuffed upsampled stream (only the non-zero entries matter)
     // For each output sample i, compute which upsampled index to read: i * down
