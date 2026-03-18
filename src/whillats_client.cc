@@ -6,7 +6,7 @@
 #include <sys/wait.h>
 #include <cstdio>
 #include <cstring>
-#include <vector>
+#include <cstdlib>
 
 using namespace whillats_ipc;
 
@@ -30,7 +30,6 @@ bool WhillatsServerConnection::start(const std::string& server_path, const Confi
     }
 
     if (_serverPid == 0) {
-        // Child
         close(parent_to_child[1]);
         close(child_to_parent[0]);
 
@@ -43,7 +42,6 @@ bool WhillatsServerConnection::start(const std::string& server_path, const Confi
         _exit(1);
     }
 
-    // Parent
     close(parent_to_child[0]);
     close(child_to_parent[1]);
     _writeFd = parent_to_child[1];
@@ -51,10 +49,11 @@ bool WhillatsServerConnection::start(const std::string& server_path, const Confi
 
     _running = true;
 
-    std::lock_guard<std::mutex> lock(_writeMutex);
-    write_msg(_writeFd, MSG_CONFIG, &cfg, sizeof(cfg));
+    {
+        std::lock_guard<std::mutex> lock(_writeMutex);
+        write_msg(_writeFd, MSG_CONFIG, &cfg, sizeof(cfg));
+    }
 
-    // Start reader thread
     _reader = std::thread([this]{ readerThread(); });
 
     fprintf(stderr, "[whillats_client] Server started pid=%d\n", _serverPid);
@@ -89,67 +88,71 @@ bool WhillatsServerConnection::sendMsg(uint8_t type, const void* data, uint32_t 
     return write_msg(_writeFd, type, data, len);
 }
 
+// Reader thread: uses ONLY C malloc/free — no std::vector, no std::string.
+// This runs inside directcall's address space which has -fno-exceptions.
+// Any C++ allocation that fails would call std::terminate().
 void WhillatsServerConnection::readerThread() {
     Header h;
     while (_running && read_header(_readFd, h)) {
-        if (h.len > 10 * 1024 * 1024) { // 10MB sanity check to prevent bad alloc
-            fprintf(stderr, "[whillats_client] ERROR: Invalid message length %u\n", h.len);
+        // Sanity check
+        if (h.type == 0 || h.len > 2 * 1024 * 1024) {
+            fprintf(stderr, "[whillats_client] corrupt msg type=0x%02x len=%u\n", h.type, h.len);
             break;
         }
-        std::vector<uint8_t> payload(h.len);
-        if (h.len > 0 && !read_exact(_readFd, payload.data(), h.len)) break;
+
+        // C malloc for payload — no exceptions possible
+        uint8_t* payload = NULL;
+        if (h.len > 0) {
+            payload = (uint8_t*)malloc(h.len + 1);
+            if (!payload) {
+                fprintf(stderr, "[whillats_client] malloc(%u) failed\n", h.len);
+                break;
+            }
+            if (!read_exact(_readFd, payload, h.len)) {
+                free(payload);
+                break;
+            }
+            payload[h.len] = 0; // null-terminate for string safety
+        }
 
         switch (h.type) {
 
         case MSG_WHISPER_RESULT:
-            if (_whisperFn) {
-                if (h.len > 1024 * 1024) break;
-                std::vector<char> buf(h.len + 1, '\0');
-                if (h.len > 0) memcpy(buf.data(), payload.data(), h.len);
-                _whisperFn(true, buf.data(), _whisperUd);
-            }
+            if (_whisperFn && payload)
+                _whisperFn(true, (const char*)payload, _whisperUd);
             break;
 
         case MSG_WHISPER_LANGUAGE:
-            if (_langFn) {
-                if (h.len > 1024) break;
-                std::vector<char> buf(h.len + 1, '\0');
-                if (h.len > 0) memcpy(buf.data(), payload.data(), h.len);
-                _langFn(true, buf.data(), _langUd);
-            }
+            if (_langFn && payload)
+                _langFn(true, (const char*)payload, _langUd);
             break;
 
         case MSG_LLAMA_RESPONSE:
-            if (_llamaFn) {
-                if (h.len > 1024 * 1024) break;
-                std::vector<char> buf(h.len + 1, '\0');
-                if (h.len > 0) memcpy(buf.data(), payload.data(), h.len);
-                _llamaFn(true, buf.data(), _llamaUd);
-            }
+            if (_llamaFn && payload)
+                _llamaFn(true, (const char*)payload, _llamaUd);
             break;
 
-        case MSG_TTS_AUDIO: {
-            if (_ttsFn && h.len >= sizeof(TtsAudioMsg)) {
+        case MSG_TTS_AUDIO:
+            if (_ttsFn && payload && h.len >= sizeof(TtsAudioMsg)) {
                 TtsAudioMsg hdr;
-                memcpy(&hdr, payload.data(), sizeof(hdr));
-                const uint16_t* samples = reinterpret_cast<const uint16_t*>(
-                    payload.data() + sizeof(TtsAudioMsg));
+                memcpy(&hdr, payload, sizeof(hdr));
+                const uint16_t* samples = (const uint16_t*)(payload + sizeof(TtsAudioMsg));
                 size_t n = hdr.num_samples;
-                if (sizeof(TtsAudioMsg) + n * sizeof(int16_t) <= h.len) {
+                if (sizeof(TtsAudioMsg) + n * sizeof(int16_t) <= h.len)
                     _ttsFn(true, samples, n, _ttsUd);
-                }
             }
             break;
-        }
 
         case MSG_TTS_DONE:
             if (_ttsFn)
-                _ttsFn(false, nullptr, 0, _ttsUd);
+                _ttsFn(false, NULL, 0, _ttsUd);
             break;
 
         default:
             break;
         }
+
+        free(payload);
     }
     fprintf(stderr, "[whillats_client] Reader thread exiting\n");
 }
@@ -207,17 +210,19 @@ void WhillatsLlamaClient::askLlama(const char* prompt) {
 void WhillatsLlamaClient::receiveVideoFrame(const YUVData& yuv) {
     if (!_started || !yuv.y || !yuv.u || !yuv.v) return;
     size_t payload_sz = 16 + yuv.y_size + 2 * yuv.uv_size;
-    std::vector<uint8_t> buf(payload_sz);
-    int32_t w = yuv.width, h = yuv.height;
+    uint8_t* buf = (uint8_t*)malloc(payload_sz);
+    if (!buf) return;
+    int32_t w = yuv.width, ht = yuv.height;
     int32_t ys = (int32_t)yuv.y_size, uvs = (int32_t)yuv.uv_size;
-    memcpy(buf.data(),    &w,  4);
-    memcpy(buf.data()+4,  &h,  4);
-    memcpy(buf.data()+8,  &ys, 4);
-    memcpy(buf.data()+12, &uvs,4);
-    memcpy(buf.data()+16, yuv.y.get(), yuv.y_size);
-    memcpy(buf.data()+16+yuv.y_size, yuv.u.get(), yuv.uv_size);
-    memcpy(buf.data()+16+yuv.y_size+yuv.uv_size, yuv.v.get(), yuv.uv_size);
-    _conn.sendMsg(MSG_LLAMA_VIDEO_FRAME, buf.data(), (uint32_t)payload_sz);
+    memcpy(buf,    &w,  4);
+    memcpy(buf+4,  &ht, 4);
+    memcpy(buf+8,  &ys, 4);
+    memcpy(buf+12, &uvs,4);
+    memcpy(buf+16, yuv.y.get(), yuv.y_size);
+    memcpy(buf+16+yuv.y_size, yuv.u.get(), yuv.uv_size);
+    memcpy(buf+16+yuv.y_size+yuv.uv_size, yuv.v.get(), yuv.uv_size);
+    _conn.sendMsg(MSG_LLAMA_VIDEO_FRAME, buf, (uint32_t)payload_sz);
+    free(buf);
 }
 
 // --- WhillatsTTSClient ---
@@ -246,9 +251,11 @@ void WhillatsTTSClient::queueText(const char* text, const char* language) {
     uint16_t lang_len = (uint16_t)strlen(lang);
     uint32_t text_len = (uint32_t)strlen(text);
     uint32_t total = 2 + lang_len + text_len;
-    std::vector<uint8_t> buf(total);
-    memcpy(buf.data(), &lang_len, 2);
-    memcpy(buf.data()+2, lang, lang_len);
-    memcpy(buf.data()+2+lang_len, text, text_len);
-    _conn.sendMsg(MSG_TTS_SPEAK, buf.data(), total);
+    uint8_t* buf = (uint8_t*)malloc(total);
+    if (!buf) return;
+    memcpy(buf, &lang_len, 2);
+    memcpy(buf+2, lang, lang_len);
+    memcpy(buf+2+lang_len, text, text_len);
+    _conn.sendMsg(MSG_TTS_SPEAK, buf, total);
+    free(buf);
 }

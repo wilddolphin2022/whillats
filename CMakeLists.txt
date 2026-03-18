@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
+
 # Set project languages conditionally based on platform
 if(APPLE)
     project(whillats VERSION 1.0.0 LANGUAGES CXX C OBJC OBJCXX)
@@ -426,16 +427,27 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set_target_properties(${PROJECT_NAME} PROPERTIES NO_SYSTEM_FROM_IMPORTED ON)
 
     # ================================================================
-    # libwhillats.so configuration — thin client, NO AI libraries
+    # libwhillats.so — built with WebRTC's clang + libc++ to match directcall
     # ================================================================
+    set(WEBRTC_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+    set(WEBRTC_CLANG "${WEBRTC_SRC}/third_party/llvm-build/Release+Asserts/bin/clang++")
+    set(WEBRTC_SYSROOT "${WEBRTC_SRC}/build/linux/debian_bullseye_amd64-sysroot")
+    set(WEBRTC_LIBCXX "${WEBRTC_SRC}/third_party/libc++/src/include")
+    set(WEBRTC_LIBCXXABI "${WEBRTC_SRC}/third_party/libc++abi/src/include")
+
+    # Thin library: -fno-exceptions to match directcall.
+    # Reader thread uses C malloc/free only — no C++ allocations that could throw.
+    if(NOT APPLE)
+        target_compile_options(${PROJECT_NAME} PRIVATE -fno-exceptions -fPIC)
+    endif()
+
     target_include_directories(${PROJECT_NAME}
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-            ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb  # stb_image.h for TalkingFace
+            ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb
     )
 
-    # Thin library links only pthread (for IPC client thread)
     target_link_libraries(${PROJECT_NAME} PRIVATE pthread)
 
     # ================================================================
