@@ -159,10 +159,16 @@ ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
 
 ### directcall — WebRTC Live
 
+Thin whillats client is compiled in-tree by GN — no `LD_LIBRARY_PATH` needed.
+
 ```bash
 cd ~/webrtcsays.ai/src
 
-LD_LIBRARY_PATH=./modules/third_party/whillats/build/lib/debug:./modules/third_party/whillats/build/bin \
+# Build (GN compiles whillats client sources with WebRTC clang/libc++)
+gn gen out/debug
+ninja -C out/debug directcall
+
+# Run
 PIPER_MODEL=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
 ESPEAK_DATA_PATH=./modules/third_party/whillats/build/bin/debug/espeak-ng-data \
 WHILLATS_SERVER=./modules/third_party/whillats/build/bin/Debug/whillats_server \

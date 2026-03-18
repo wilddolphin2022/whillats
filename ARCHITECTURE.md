@@ -9,38 +9,47 @@ Whillats is a C++ library providing real-time AI speech processing for WebRTC ap
 ```
 ┌──────────────────────────────────┐     pipes      ┌──────────────────────────────────┐
 │          directcall              │  ◄──────────►  │         whillats_server           │
-│     (WebRTC, libc++,             │                │    (AI backends, libstdc++,       │
-│      -fno-exceptions)            │                │     optional CUDA)               │
+│     (WebRTC clang, libc++,       │                │    (GCC, libstdc++,               │
+│      -fno-exceptions)            │                │     optional CUDA/A100)           │
 │                                  │                │                                  │
 │  ┌────────────────────────────┐  │                │  ┌────────────────────────────┐  │
-│  │    libwhillats.so (thin)   │  │                │  │   Whisper (whisper.cpp)     │  │
-│  │  - WhillatsTTS API         │──┼── IPC ────────►│  │   Llama (llama.cpp)        │  │
-│  │  - WhillatsTranscriber API │  │                │  │   Piper TTS (ONNX)         │  │
-│  │  - WhillatsLlama API       │  │                │  │   StyleTTS2 (ONNX)         │  │
-│  │  - TalkingFace (in-proc)   │  │                │  │   Orpheus TTS (llama+ONNX) │  │
-│  │  - IPC client stubs        │  │                │  │   espeak-ng (fallback)     │  │
-│  └────────────────────────────┘  │                │  └────────────────────────────┘  │
+│  │  Whillats client (in-tree) │  │                │  │   Whisper (whisper.cpp)     │  │
+│  │  Compiled by WebRTC clang  │  │                │  │   Llama (llama.cpp)        │  │
+│  │  - WhillatsTTS API         │──┼── IPC ────────►│  │   Piper TTS (ONNX)         │  │
+│  │  - WhillatsTranscriber API │  │                │  │   StyleTTS2 (ONNX)         │  │
+│  │  - WhillatsLlama API       │  │                │  │   Orpheus TTS (llama+ONNX) │  │
+│  │  - TalkingFace (in-proc)   │  │                │  │   espeak-ng (fallback)     │  │
+│  │  - IPC client stubs        │  │                │  └────────────────────────────┘  │
+│  └────────────────────────────┘  │                │                                  │
 └──────────────────────────────────┘                └──────────────────────────────────┘
 ```
 
 ### Why Client-Server?
 
-WebRTC (directcall) is compiled with Clang/libc++ and `-fno-exceptions`. The AI libraries (llama.cpp, whisper.cpp, ONNX Runtime) use GCC/libstdc++ with exceptions. Mixing these in a single process causes `std::string` ABI crashes (`length_error` in `-fno-exceptions` mode). The server process runs in pure libstdc++ with exceptions enabled, completely isolated from WebRTC.
+WebRTC (directcall) is compiled with Clang/libc++ and `-fno-exceptions`. The AI libraries (llama.cpp, whisper.cpp, ONNX Runtime) use GCC/libstdc++ with exceptions. Mixing these in a single process causes `std::string` ABI crashes. The server process runs in pure libstdc++ with exceptions enabled, completely isolated from WebRTC.
+
+### In-Tree Build (final architecture)
+
+The thin whillats client is compiled **directly by WebRTC's GN build system** using the same Clang compiler, libc++, sysroot, and `-fno-exceptions` flags as directcall. This guarantees zero ABI mismatch — every `std::string`, `std::vector`, and C++ object in the client uses the exact same runtime as the rest of WebRTC.
+
+No external `libwhillats.so` is needed. The client sources are listed in `modules/audio_device/BUILD.gn`.
 
 ### Components
 
-**libwhillats.so** — Thin client library (CPU-only, no AI dependencies)
-- Provides `WhillatsTTS`, `WhillatsTranscriber`, `WhillatsLlama` API classes
-- Internally routes all calls through IPC to `whillats_server`
-- Contains `TalkingFace` (video lip-sync, runs in-process)
-- Zero dependency on whisper, llama, ggml, onnxruntime, espeak
-- Safe to load into any process regardless of C++ runtime
+**Whillats client (in-tree, compiled by WebRTC clang)**
+- `whillats.cc` — API classes: WhillatsTTS, WhillatsTranscriber, WhillatsLlama
+- `whillats_client.cc` — IPC stubs: fork/exec server, pipe communication (pure C malloc in reader thread)
+- `talking_face.cc` — Video lip-sync animation (in-process, 10ms frame-by-frame)
+- `whillats_utils.cc` — Audio resampling, YUV conversion
+- `stb_image_impl.c` — stb_image compiled as C (avoids C++ warning noise)
 
-**whillats_server** — Fat standalone binary (all AI backends)
+**whillats_server** — Fat standalone binary (GCC/libstdc++, all AI backends)
 - Links whisper.cpp, llama.cpp, ggml, espeak-ng, onnxruntime
-- Can be built with or without CUDA (`-DGGML_CUDA=ON`)
-- Started automatically by libwhillats.so as a subprocess
+- Can be built with CUDA (`-DGGML_CUDA=ON`) for GPU acceleration
+- Started automatically by client as subprocess via fork/exec
 - Communicates via pipes with binary IPC protocol
+- Preloads Whisper + Llama models on startup (background threads)
+- Redirects stdout→stderr to prevent library output corrupting IPC pipe
 
 ## IPC Protocol
 
@@ -52,165 +61,87 @@ Length-prefixed binary messages over Unix pipes:
 └──────────┴──────────────┴────────────────┘
 ```
 
-Message types:
+Key design decisions:
+- Header + payload written atomically (single `write()` call via malloc'd buffer)
+- Server writes protected by mutex (Llama + TTS callbacks run on different threads)
+- Reader thread uses ONLY C malloc/free — no C++ allocations (prevents `length_error` in `-fno-exceptions`)
+- Piper child closes all inherited fds (prevents IPC pipe corruption)
+- Server redirects stdout→stderr (`dup2`) before any library code runs
+
 | Type | Code | Direction | Description |
 |------|------|-----------|-------------|
 | MSG_CONFIG | 0x30 | client→server | Model paths, thread counts, language |
-| MSG_WHISPER_START | 0x01 | client→server | Start Whisper model |
-| MSG_WHISPER_STOP | 0x02 | client→server | Stop Whisper |
-| MSG_WHISPER_AUDIO | 0x03 | client→server | Audio chunk (or flush if len=0) |
+| MSG_WHISPER_START | 0x01 | client→server | Confirm Whisper ready (preloaded) |
+| MSG_WHISPER_AUDIO | 0x03 | client→server | Audio chunk (len=0 for flush) |
 | MSG_WHISPER_RESULT | 0x04 | server→client | Transcription text |
 | MSG_WHISPER_LANGUAGE | 0x05 | server→client | Detected language |
-| MSG_LLAMA_START | 0x10 | client→server | Start Llama model |
-| MSG_LLAMA_STOP | 0x11 | client→server | Stop Llama |
+| MSG_LLAMA_START | 0x10 | client→server | Confirm Llama ready (preloaded) |
 | MSG_LLAMA_ASK | 0x12 | client→server | Prompt text |
 | MSG_LLAMA_RESPONSE | 0x13 | server→client | Response text (per sentence) |
 | MSG_LLAMA_VIDEO_FRAME | 0x14 | client→server | YUV frame for multimodal |
 | MSG_TTS_START | 0x20 | client→server | Start TTS engine |
-| MSG_TTS_STOP | 0x21 | client→server | Stop TTS |
 | MSG_TTS_SPEAK | 0x22 | client→server | Text + language to synthesize |
-| MSG_TTS_AUDIO | 0x23 | server→client | PCM audio samples |
+| MSG_TTS_AUDIO | 0x23 | server→client | PCM int16 audio samples |
 | MSG_TTS_DONE | 0x24 | server→client | Synthesis complete signal |
 | MSG_SHUTDOWN | 0xFF | client→server | Shutdown server |
 
 ## Build
 
-### Prerequisites
-
-- CMake 3.16+
-- GCC 11+ (for libstdc++ C++17)
-- espeak-ng (built as dependency)
-- ONNX Runtime 1.17+ (for Piper/StyleTTS2, fetched automatically)
-- CUDA Toolkit 12.x (optional, for GPU acceleration)
-
-### CPU Build (default)
+### Server Build (CMake — CPU or GPU)
 
 ```bash
 cd src/modules/third_party/whillats
+
+# CPU-only with Piper
 cmake -B build -DCMAKE_BUILD_TYPE=Debug \
-  -DWHILLATS_PIPER=ON \
-  -DWHILLATS_OLD_ABI=ON
+  -DWHILLATS_PIPER=ON -DWHILLATS_OLD_ABI=ON
+cmake --build build -j$(nproc)
+
+# GPU (CUDA) with Piper
+cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+  -DWHILLATS_PIPER=ON -DWHILLATS_OLD_ABI=ON -DGGML_CUDA=ON
 cmake --build build -j$(nproc)
 ```
 
-### GPU Build (CUDA)
+### directcall Build (GN — automatically includes thin client)
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Debug \
-  -DWHILLATS_PIPER=ON \
-  -DWHILLATS_OLD_ABI=ON \
-  -DGGML_CUDA=ON
-cmake --build build -j$(nproc)
+cd src
+gn gen out/debug
+ninja -C out/debug directcall
 ```
 
-Only `whillats_server` links CUDA. `libwhillats.so` remains CPU-only.
+The GN build compiles whillats client sources in-tree. No `libwhillats.so` linking needed.
 
 ### Build Outputs
 
 ```
-build/lib/Debug/libwhillats.so       # Thin client library
-build/bin/Debug/whillats_server      # Fat AI server (CPU or GPU)
-build/bin/Debug/test_whillats        # Client test (uses server via IPC)
-build/bin/Debug/test_whillats_server # IPC protocol test
+out/debug/directcall                              # WebRTC app (includes thin whillats)
+modules/third_party/whillats/build/bin/Debug/
+  whillats_server                                  # Fat AI server (CPU or GPU)
+  test_whillats                                    # Client test (-fno-exceptions)
+  test_whillats_server                             # IPC protocol test
+  espeak-ng-data/                                  # espeak runtime data
 ```
-
-### CMake Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `WHILLATS_PIPER` | OFF | Enable Piper neural TTS (fast CPU) |
-| `WHILLATS_STYLETTS2` | ON | Enable StyleTTS2 neural TTS |
-| `WHILLATS_OLD_ABI` | OFF | Use `_GLIBCXX_USE_CXX11_ABI=0` for ABI compat |
-| `GGML_CUDA` | OFF | Enable CUDA GPU acceleration for Whisper+Llama |
-
-`WHILLATS_PIPER` and `WHILLATS_STYLETTS2` are mutually exclusive.
-
-## TTS Engines
-
-### Piper (`-DWHILLATS_PIPER=ON`)
-
-Fast CPU-optimized neural TTS. Best for real-time on machines without GPU.
-
-- Model: ONNX format, ~15-60MB
-- Sample rate: 16000Hz (low quality) or 22050Hz (medium)
-- Languages: Single-language per model (~60 languages available)
-- Runs in a forked subprocess (isolates ONNX Runtime)
-
-Models:
-- `en_US-lessac-low.onnx` — English, 16kHz, ~15MB, fastest
-- `en_US-lessac-medium.onnx` — English, 22050Hz, ~60MB, better quality
-
-### StyleTTS2 (`-DWHILLATS_STYLETTS2=ON`)
-
-High-quality neural TTS with style transfer. Requires more CPU/GPU.
-
-- Models: Multiple ONNX files in a directory
-- Sample rate: 24000Hz (resampled to 16000Hz)
-- English only
-
-### Orpheus
-
-Llama-based TTS with SNAC audio codec. Experimental.
-
-- Model: GGUF (llama.cpp) + SNAC ONNX decoder
-- Requires significant compute (CPU or GPU)
-
-### espeak-ng (fallback)
-
-Rule-based TTS. Always available, supports 100+ languages.
-
-- No neural model needed
-- Low quality but instant synthesis
-- Used as phonemizer for Piper and StyleTTS2
-
-## Whisper Models
-
-| Model | Size | Speed (CPU) | Quality |
-|-------|------|-------------|---------|
-| `ggml-base.bin` | 142MB | ~3x real-time | Good for commands |
-| `ggml-small.bin` | 487MB | ~0.5x real-time | Better accuracy |
-
-## Llama Models
-
-| Model | Size | Speed (CPU) | Notes |
-|-------|------|-------------|-------|
-| `Qwen2.5-1.5B-Instruct-Q4_K_M.gguf` | 1.0GB | ~500ms/sentence | Fast, good for chat |
 
 ## Running
 
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `WHILLATS_SERVER` | Yes (Linux) | Path to `whillats_server` binary |
-| `PIPER_MODEL` | Yes (Piper) | Path to Piper ONNX model |
-| `ESPEAK_DATA_PATH` | Yes | Path to espeak-ng data directory |
-| `WHISPER_MODEL` | Auto | Path to Whisper GGML model (set by API) |
-| `LLAMA_MODEL` | Auto | Path to Llama GGUF model (set by API) |
-| `LLAMA_MMPROJ` | Optional | Path to multimodal projector |
-| `STYLETTS2_MODEL_DIR` | StyleTTS2 | Path to StyleTTS2 model directory |
-| `STYLETTS2_USE_CUDA` | Optional | Enable CUDA for StyleTTS2 |
-| `ORPHEUS_MODEL` | Orpheus | Path to Orpheus GGUF model |
-| `SNAC_MODEL` | Orpheus | Path to SNAC ONNX decoder |
-
-### directcall (WebRTC)
+### directcall (WebRTC Live)
 
 ```bash
 cd ~/webrtcsays.ai/src
 
-LD_LIBRARY_PATH=./modules/third_party/whillats/build/lib/debug:./modules/third_party/whillats/build/bin \
 PIPER_MODEL=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
 ESPEAK_DATA_PATH=./modules/third_party/whillats/build/bin/debug/espeak-ng-data \
 WHILLATS_SERVER=./modules/third_party/whillats/build/bin/Debug/whillats_server \
 ./out/debug/directcall --config ../config.talking-face.json
 ```
 
-### test_whillats (all components via server)
+### test_whillats (Full Pipeline via Server)
 
 ```bash
-cd ~/webrtcsays.ai/src/modules/third_party/whillats
+cd src/modules/third_party/whillats
 
-LD_LIBRARY_PATH=./build/lib/debug:./build/bin \
 PIPER_MODEL=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
 ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
 WHILLATS_SERVER=./build/bin/Debug/whillats_server \
@@ -220,108 +151,63 @@ WHILLATS_SERVER=./build/bin/Debug/whillats_server \
   --llama
 ```
 
-### test_whillats_server (IPC protocol test)
+## Audio Pipeline
 
-```bash
-cd ~/webrtcsays.ai/src/modules/third_party/whillats
-
-LD_LIBRARY_PATH=./build/lib/debug:./build/bin \
-ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
-./build/bin/Debug/test_whillats_server \
-  --server=./build/bin/Debug/whillats_server \
-  --piper_model=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
-  --espeak_data=./build/bin/debug/espeak-ng-data \
-  --llama_model=$HOME/webrtcsays.ai/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf \
-  --whisper_model=$HOME/webrtcsays.ai/models/ggml-base.bin \
-  --all
+```
+Browser Mic → WebRTC → directcall → WhillatsTranscriber → [IPC] → Whisper (GPU)
+                                                                      │
+                                                            transcribed text
+                                                                      │
+                                     RecThreadProcess ← [IPC] ← WhillatsLlama → Llama (GPU)
+                                           │                              │
+                                      speakText()                   response text
+                                           │                              │
+                                     WhillatsTTS → [IPC] ──────► Piper TTS (CPU)
+                                                                      │
+                                                                 PCM audio
+                                                                      │
+                RecThreadProcess ← SetTTSBuffer ← ttsAudioCallback ← [IPC]
+                     │
+              feedAudio(10ms) → TalkingFace (lip-sync)
+                     │
+              WebRTC → Browser (audio + animated video)
 ```
 
-### Orpheus TTS test
+## Performance (AMD EPYC 7H12 + NVIDIA A100 40GB)
 
-```bash
-ORPHEUS_MODEL=$HOME/webrtcsays.ai/models/orpheus/orpheus-finetuned-3b-q4_k_m.gguf \
-SNAC_MODEL=$HOME/webrtcsays.ai/models/orpheus/snac24_int2wav_static.onnx \
-./build/bin/Debug/test_whillats --orpheus
-```
+| Component | CPU | GPU (A100) |
+|-----------|-----|------------|
+| Piper TTS (low, 16kHz) | ~0.5s/sentence | ~0.5s (CPU ONNX) |
+| Whisper base (30s audio) | ~15s | ~4s |
+| Llama 1.5B Q4 (per sentence) | ~1.0s | ~0.1s |
+| Model preload (all 3) | ~15s | ~8s |
 
-### StyleTTS2 test
-
-```bash
-cmake -B build -DWHILLATS_STYLETTS2=ON -DWHILLATS_OLD_ABI=ON
-cmake --build build -j$(nproc)
-
-STYLETTS2_MODEL_DIR=$HOME/webrtcsays.ai/models/styletts2 \
-ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
-./build/bin/Debug/test_whillats
-```
+Models preload in background on server startup. First query is fast.
 
 ## Source Files
 
-### Client Library (libwhillats.so)
+### Client (compiled by WebRTC GN build)
 
 | File | Description |
 |------|-------------|
 | `whillats.h` | Public API: WhillatsTTS, WhillatsTranscriber, WhillatsLlama |
 | `whillats.cc` | API implementation — routes to server via IPC |
-| `whillats_client.h/cc` | IPC client: fork/exec server, pipe communication |
-| `whillats_ipc.h` | Binary protocol: message types, read/write helpers |
-| `whillats_utils.h/cc` | Audio resampling, YUV conversion utilities |
-| `talking_face.h/cc` | Video lip-sync animation (in-process) |
-| `whillats_export.h` | DLL export macros |
+| `whillats_client.h/cc` | IPC client: fork/exec server, pipe I/O (C malloc only) |
+| `whillats_ipc.h` | Binary protocol: message types, read/write (C malloc) |
+| `whillats_utils.h/cc` | Audio resampling, YUV conversion |
+| `talking_face.h/cc` | Video lip-sync (10ms frame-by-frame audio energy) |
+| `stb_image_impl.c` | stb_image compiled as C |
 
-### Server (whillats_server)
+### Server (compiled by CMake/GCC)
 
 | File | Description |
 |------|-------------|
-| `whillats_server.cc` | Main loop: reads IPC commands, dispatches to backends |
-| `whisper_transcription.h/cc` | Whisper speech-to-text (whisper.cpp) |
-| `llama_device_base.h/cc` | Llama text generation + multimodal (llama.cpp + mtmd) |
+| `whillats_server.cc` | Main loop: IPC commands → AI backends, model preload |
+| `whisper_transcription.h/cc` | Whisper STT (whisper.cpp) |
+| `llama_device_base.h/cc` | Llama text generation + multimodal (llama.cpp) |
 | `piper_tts.h/cc` | Piper neural TTS controller |
-| `piper_subprocess.h/cc` | Piper ONNX isolation via fork |
+| `piper_subprocess.h/cc` | Piper ONNX isolation via fork (closes inherited fds) |
 | `styletts2_tts.h/cc` | StyleTTS2 neural TTS (ONNX) |
 | `orpheus_tts.h/cc` | Orpheus llama-based TTS + SNAC decoder |
 | `espeak_tts.h/cc` | espeak-ng rule-based TTS fallback |
-| `whisper_helpers.h` | Logging macros, time utilities |
-
-### Tests
-
-| File | Description |
-|------|-------------|
-| `test/test_whillats.cc` | End-to-end test via thin client (uses server) |
-| `test/test_whillats_server.cc` | Direct IPC protocol test |
-| `test/test_utils.h/cc` | WAV file writer, command-line parser |
-
-## Audio Pipeline
-
-```
-Browser Mic → WebRTC → directcall → WhillatsTranscriber → [IPC] → Whisper
-                                                                      │
-                                                            transcribed text
-                                                                      │
-                                                                      ▼
-                                                              WhillatsLlama → [IPC] → Llama
-                                                                                        │
-                                                                              response text
-                                                                                        │
-                                                                                        ▼
-                                                              WhillatsTTS → [IPC] → Piper/StyleTTS2
-                                                                                        │
-                                                                                  PCM audio
-                                                                                        │
-                        directcall ← SetTTSBuffer ← ttsAudioCallback ← [IPC] ◄─────────┘
-                            │
-                            ▼
-                    WebRTC → Browser Speaker
-```
-
-## Performance (CPU: AMD EPYC 7H12, 8 cores @ 2.6GHz)
-
-| Component | Latency | Notes |
-|-----------|---------|-------|
-| Piper TTS | ~0.5s per sentence | 16kHz, low model |
-| Whisper base | ~15s per 30s audio | Real-time factor ~0.5x |
-| Whisper small | ~35s per 30s audio | Better accuracy |
-| Llama 1.5B Q4 | ~0.5s per sentence | 100 token max |
-| Full pipeline | ~20-40s end-to-end | Whisper dominates |
-
-With A100 GPU (`-DGGML_CUDA=ON`), expect 5-10x speedup for Whisper and Llama.
+| `whisper_helpers.h` | Logging (stderr only), time utilities |
