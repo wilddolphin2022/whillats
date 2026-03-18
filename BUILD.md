@@ -1,112 +1,211 @@
-# Build Instructions
+# Whillats Build & Run Guide
 
-This project uses CMake for building the `whillats` library and its dependencies, including the Agora example.
+## Architecture
+
+Whillats uses a **client-server split** to isolate AI workloads from the WebRTC process:
+
+- **`libwhillats.so`** — thin client library (no AI deps, safe for libc++ / -fno-exceptions)
+- **`whillats_server`** — fat standalone binary (Whisper, Llama, Piper/StyleTTS2, optional CUDA)
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for full design details.
 
 ## Prerequisites
 
-*   **CMake:** Version 3.14 or higher.
-*   **C/C++ Compiler:** A modern compiler supporting C++17 (e.g., GCC, Clang).
-*   **Build Tools:** Standard build utilities (e.g., `make` or `ninja`, `binutils`).
-    *   On Debian/Ubuntu: `sudo apt update && sudo apt install build-essential cmake`
-    *   On Fedora/RHEL: `sudo dnf groupinstall "Development Tools" && sudo dnf install cmake`
-*   **(Optional) NVIDIA CUDA Toolkit:** If building with GPU support for Whisper/Llama on Linux. Ensure `nvcc` is in your PATH.
-*   **Internet Connection:** Required during the CMake configuration phase to download dependencies (Whisper, Llama, eSpeak-NG, PCAudioLib, Agora SDK).
+- CMake 3.14+
+- GCC 11+ (C++17)
+- Build tools: `sudo apt install build-essential cmake`
+- (Optional) CUDA Toolkit 12.x for GPU acceleration
 
-## Build Steps
+## Quick Build
 
-1.  **Clone the Repository:**
-    ```bash
-    git clone <repository_url> whillats
-    cd whillats
-    ```
-
-2.  **Configure using CMake:**
-    This step downloads all dependencies using FetchContent and prepares the build system.
-    ```bash
-    cmake -B build
-    ```
-    *   If you have CUDA installed and want to enable GPU support (Linux only):
-        ```bash
-        # CMake should detect CUDA automatically if nvcc is in PATH.
-        # The build is configured to enable GGML_CUDA=ON automatically on Linux.
-        cmake -B build 
-        ```
-
-3.  **Build:**
-    Compile the library, dependencies, and the example executable.
-    ```bash
-    cmake --build build
-    ```
-    *   You can use parallel builds: `cmake --build build -j $(nproc)`
-
-4.  **Run Example (Optional):**
-    The Agora example executable will be located in `build/bin`. When run it will show options including channel id and token that could be obtained from Agora. Example listens for PCM audio and invokes Llama to make conversation.
-    ```bash
-    ./build/bin/transceiver_yuv_pcm <args...>
-    ```
-
-## StyleTTS2 Neural TTS (Optional)
-
-To build with high-quality neural text-to-speech using [StyleTTS2](https://github.com/DDATT/StyleTTS2-onnx-cpp):
+### CPU-only (Piper TTS)
 
 ```bash
-# macOS
-cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_METAL=ON
-cmake --build build --config Release
+cd src/modules/third_party/whillats
 
-# Linux
-cmake -B build -DWHILLATS_STYLETTS2=ON
-cmake --build build --config Release
+cmake -B build \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DWHILLATS_PIPER=ON \
+  -DWHILLATS_OLD_ABI=ON
 
-# Linux with CUDA GPU acceleration
-cmake -B build -DWHILLATS_STYLETTS2=ON -DGGML_CUDA=ON
-cmake --build build --config Release
+cmake --build build -j$(nproc)
 ```
 
-Or use Make targets:
+### GPU (CUDA + Piper TTS)
+
 ```bash
-make styletts2          # macOS debug
-make styletts2-release  # macOS release
-make styletts2-linux    # Linux debug
-make styletts2-linux-cuda  # Linux with CUDA
+cmake -B build \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DWHILLATS_PIPER=ON \
+  -DWHILLATS_OLD_ABI=ON \
+  -DGGML_CUDA=ON
+
+cmake --build build -j$(nproc)
 ```
 
-### StyleTTS2 Model Setup
+Only `whillats_server` links CUDA. `libwhillats.so` stays CPU-only.
 
-1.  Download ONNX models from [HuggingFace](https://huggingface.co/DDATT/StyleTTS2-ONNX-Cpp/tree/main)
-2.  Place them in a `trained_models/` directory:
-    ```
-    trained_models/
-    ├── plbert_simp.onnx
-    ├── bert_encoder.onnx
-    ├── final_simp.onnx
-    ├── ref_s.bin        (voice style embedding)
-    └── ref_p.bin        (predictor embedding)
-    ```
-3.  Run with environment variables:
-    ```bash
-    STYLETTS2_MODEL_DIR=./trained_models \
-    ESPEAK_DATA_PATH=./build/bin/Release/espeak-ng-data \
-    ./build/bin/Release/test_whillats --tts
-    ```
+### StyleTTS2 (instead of Piper)
 
-ONNX Runtime is automatically downloaded during CMake configuration. To use a custom install, pass `-DONNXRUNTIME_DIR=/path/to/onnxruntime`.
+```bash
+cmake -B build \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DWHILLATS_STYLETTS2=ON \
+  -DWHILLATS_OLD_ABI=ON
 
-## Dependencies
+cmake --build build -j$(nproc)
+```
 
-The following dependencies are automatically downloaded and built via CMake's `FetchContent`:
+`WHILLATS_PIPER` and `WHILLATS_STYLETTS2` are mutually exclusive.
 
-*   [whisper.cpp](https://github.com/ggerganov/whisper.cpp)
-*   [llama.cpp](https://github.com/ggerganov/llama.cpp)
-*   [espeak-ng](https://github.com/espeak-ng/espeak-ng)
-*   [pcaudiolib](https://github.com/espeak-ng/pcaudiolib) (Dependency for espeak-ng)
-*   [Agora RTC SDK for Linux](https://www.agora.io/en/) (Gateway SDK version downloaded from URL)
-*   [ONNX Runtime](https://github.com/microsoft/onnxruntime) (When StyleTTS2 is enabled)
+## CMake Options
 
-## Caveats
+| Option | Default | Description |
+|--------|---------|-------------|
+| `WHILLATS_PIPER` | OFF | Piper neural TTS (fast CPU, ONNX) |
+| `WHILLATS_STYLETTS2` | ON | StyleTTS2 neural TTS (ONNX) |
+| `WHILLATS_OLD_ABI` | OFF | `_GLIBCXX_USE_CXX11_ABI=0` for compat |
+| `GGML_CUDA` | OFF | CUDA GPU for Whisper + Llama |
 
-*   **Clean Builds:** If you encounter persistent build errors, especially after changing CMake options or dependency versions, try removing the build directory (`rm -rf build`) and re-running the CMake configuration step.
-*   **System Libraries:** The build is configured to use the versions of Whisper, Llama, and eSpeak-NG downloaded by FetchContent. If you have system-wide installations of these libraries (e.g., in `/usr/local/lib`), they might interfere if CMake is not configured correctly. The current setup attempts to prioritize the FetchContent builds.
-*   **eSpeak-NG Data Path:** The `espeak-ng-data` directory required by eSpeak-NG at runtime is copied to `build/bin/espeak-ng-data`. The C++ code using the espeak API must be initialized with this path (currently passed via the `ESPEAK_DATA_PATH` compile definition).
-*   **Agora SDK Version:** The build fetches a specific version of the Agora RTC SDK via URL. If this URL becomes invalid, the build will fail during the CMake configuration phase.
-*   **Agora Example Code:** The Agora example code (`example/agora-whillats-bot`) is based on examples provided by [Agora.io](https://www.agora.io/en/). 
+## Build Outputs
+
+```
+build/lib/Debug/libwhillats.so            # Thin client (no AI)
+build/bin/Debug/whillats_server           # Fat AI server
+build/bin/Debug/test_whillats             # Client test (-fno-exceptions)
+build/bin/Debug/test_whillats_server      # IPC protocol test
+build/bin/debug/espeak-ng-data/           # espeak runtime data
+```
+
+## Models
+
+Download before running:
+
+| Model | Size | Download |
+|-------|------|----------|
+| Whisper base | 142MB | `wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin` |
+| Whisper small | 487MB | `wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin` |
+| Qwen 1.5B Q4 | 1.0GB | `wget https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf` |
+| Piper low | 15MB | `wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/low/en_US-lessac-low.onnx` |
+| Piper medium | 60MB | `wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx` |
+
+Place models in `~/webrtcsays.ai/models/`:
+```
+models/
+├── ggml-base.bin
+├── ggml-small.bin
+├── Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+└── piper/
+    ├── en_US-lessac-low.onnx
+    └── en_US-lessac-low.onnx.json
+```
+
+## Running
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `WHILLATS_SERVER` | Yes (Linux) | Path to `whillats_server` binary |
+| `PIPER_MODEL` | Piper mode | Path to `.onnx` voice model |
+| `ESPEAK_DATA_PATH` | Yes | Path to `espeak-ng-data` directory |
+| `WHISPER_MODEL` | Auto | Set by API from config |
+| `LLAMA_MODEL` | Auto | Set by API from config |
+| `LD_LIBRARY_PATH` | Yes | Include `build/lib/debug` |
+
+### test_whillats — Full Pipeline Test
+
+Tests TTS → Whisper → Llama through the server. Built with `-fno-exceptions`.
+
+```bash
+cd src/modules/third_party/whillats
+
+LD_LIBRARY_PATH=./build/lib/debug:./build/bin \
+PIPER_MODEL=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
+ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
+WHILLATS_SERVER=./build/bin/Debug/whillats_server \
+./build/bin/Debug/test_whillats \
+  --whisper_model=$HOME/webrtcsays.ai/models/ggml-base.bin \
+  --llama_model=$HOME/webrtcsays.ai/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf \
+  --llama
+```
+
+Expected output:
+```
+[test] TTS: 49152 samples
+[test] Saved synthesized_audio.wav
+[test] Saved synthesized_audio_long.wav
+[test] Whisper: Hello, this is a test of text to speak.
+[test] Whisper PASSED
+[test] Llama: I don't have a name.
+[test] Llama PASSED
+```
+
+### test_whillats_server — IPC Protocol Test
+
+Tests the IPC layer directly (independent of libwhillats.so).
+
+```bash
+LD_LIBRARY_PATH=./build/lib/debug:./build/bin \
+ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
+./build/bin/Debug/test_whillats_server \
+  --server=./build/bin/Debug/whillats_server \
+  --piper_model=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
+  --espeak_data=./build/bin/debug/espeak-ng-data \
+  --llama_model=$HOME/webrtcsays.ai/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf \
+  --whisper_model=$HOME/webrtcsays.ai/models/ggml-base.bin \
+  --all
+```
+
+### directcall — WebRTC Live
+
+```bash
+cd ~/webrtcsays.ai/src
+
+LD_LIBRARY_PATH=./modules/third_party/whillats/build/lib/debug:./modules/third_party/whillats/build/bin \
+PIPER_MODEL=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
+ESPEAK_DATA_PATH=./modules/third_party/whillats/build/bin/debug/espeak-ng-data \
+WHILLATS_SERVER=./modules/third_party/whillats/build/bin/Debug/whillats_server \
+./out/debug/directcall --config ../config.talking-face.json
+```
+
+### StyleTTS2 Mode
+
+```bash
+cmake -B build -DWHILLATS_STYLETTS2=ON -DWHILLATS_OLD_ABI=ON
+cmake --build build -j$(nproc)
+
+STYLETTS2_MODEL_DIR=$HOME/webrtcsays.ai/models/styletts2 \
+ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
+WHILLATS_SERVER=./build/bin/Debug/whillats_server \
+./build/bin/Debug/test_whillats
+```
+
+## Performance
+
+Tested on AMD EPYC 7H12 (8 cores) + NVIDIA A100 40GB:
+
+| Component | CPU | GPU (A100) |
+|-----------|-----|------------|
+| Piper TTS (low, 16kHz) | ~0.5s/sentence | ~0.5s (CPU-only ONNX) |
+| Whisper base (30s audio) | ~15s | ~4s |
+| Llama 1.5B Q4 (per sentence) | ~1.0s | ~0.5s |
+| Model preload (all 3) | ~15s | ~8s |
+
+Models preload in background on server startup. First query is fast.
+
+## Dependencies (auto-fetched)
+
+- [whisper.cpp](https://github.com/ggerganov/whisper.cpp)
+- [llama.cpp](https://github.com/ggerganov/llama.cpp)
+- [espeak-ng](https://github.com/espeak-ng/espeak-ng)
+- [ONNX Runtime](https://github.com/microsoft/onnxruntime) (for Piper/StyleTTS2)
+- [Piper](https://github.com/OHF-Voice/piper1-gpl) (when `WHILLATS_PIPER=ON`)
+
+## Troubleshooting
+
+- **`length_error` crash**: Ensure `directcall` uses `libwhillats.so` (thin) and `WHILLATS_SERVER` points to the fat server binary. Never load AI code in the WebRTC process.
+- **Whisper slow**: Use `ggml-base.bin` (142MB) instead of `ggml-small.bin` (487MB). Enable GPU with `-DGGML_CUDA=ON`.
+- **Llama timeout**: Models preload on server startup. If still slow, reduce model size or enable GPU.
+- **No audio**: Check `PIPER_MODEL` and `ESPEAK_DATA_PATH` are set correctly.
+- **Clean rebuild**: `rm -rf build && cmake -B build ...`
