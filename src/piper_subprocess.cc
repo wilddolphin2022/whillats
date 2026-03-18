@@ -126,9 +126,18 @@ bool PiperSubprocess::start(const std::string& model_path,
     }
 
     if (pid == 0) {
+        // Close all inherited fds except our pipes and stderr.
+        // This prevents the child from accidentally writing to the
+        // IPC pipe (g_write_fd) or any other inherited fd.
         close(pipe_to[1]);
         close(pipe_from[0]);
-        child_main(pipe_to[0], pipe_from[1], model_path, espeak_data);
+        int keep_read = pipe_to[0];
+        int keep_write = pipe_from[1];
+        for (int fd = 3; fd < 1024; ++fd) {
+            if (fd != keep_read && fd != keep_write)
+                close(fd);
+        }
+        child_main(keep_read, keep_write, model_path, espeak_data);
         _exit(0);
     }
 
