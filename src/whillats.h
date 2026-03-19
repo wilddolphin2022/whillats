@@ -117,6 +117,7 @@ class WHILLATS_API WhillatsTTS {
     void setThreadCount(int n);
     void enableSpeakerphone();
     void disableSpeakerphone();
+    void setCallback(WhillatsSetAudioCallback cb);
 
     static int getSampleRate();
 
@@ -146,6 +147,8 @@ class WHILLATS_API WhillatsTranscriber {
     std::string getLanguage() const;
     void setLanguage(const char* language);
     void setThreadCount(int n);
+    void setCallback(WhillatsSetResponseCallback cb);
+    void setLanguageCallback(WhillatsSetLanguageCallback cb);
 
   private:
     WhillatsSetResponseCallback _callback; 
@@ -178,8 +181,8 @@ class WHILLATS_API WhillatsLlama {
         size_t y_size,
         size_t uv_size);
 
-    // Accept a video frame for multimodal prompts (no-op on iOS)
     void receiveVideoFrame(const YUVData& yuv);
+    void setCallback(WhillatsSetResponseCallback cb);
 
   private:
     WhillatsSetResponseCallback _callback;

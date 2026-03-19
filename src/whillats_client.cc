@@ -117,36 +117,46 @@ void WhillatsServerConnection::readerThread() {
 
         switch (h.type) {
 
-        case MSG_WHISPER_RESULT:
-            if (_whisperFn && payload)
-                _whisperFn(true, (const char*)payload, _whisperUd);
+        case MSG_WHISPER_RESULT: {
+            ResponseCallback fn = _whisperFn; void* ud = _whisperUd;
+            if (fn && ud && payload)
+                fn(true, (const char*)payload, ud);
             break;
+        }
 
-        case MSG_WHISPER_LANGUAGE:
-            if (_langFn && payload)
-                _langFn(true, (const char*)payload, _langUd);
+        case MSG_WHISPER_LANGUAGE: {
+            LanguageCallback fn = _langFn; void* ud = _langUd;
+            if (fn && ud && payload)
+                fn(true, (const char*)payload, ud);
             break;
+        }
 
-        case MSG_LLAMA_RESPONSE:
-            if (_llamaFn && payload)
-                _llamaFn(true, (const char*)payload, _llamaUd);
+        case MSG_LLAMA_RESPONSE: {
+            ResponseCallback fn = _llamaFn; void* ud = _llamaUd;
+            if (fn && ud && payload)
+                fn(true, (const char*)payload, ud);
             break;
+        }
 
-        case MSG_TTS_AUDIO:
-            if (_ttsFn && payload && h.len >= sizeof(TtsAudioMsg)) {
+        case MSG_TTS_AUDIO: {
+            AudioCallback fn = _ttsFn; void* ud = _ttsUd;
+            if (fn && ud && payload && h.len >= sizeof(TtsAudioMsg)) {
                 TtsAudioMsg hdr;
                 memcpy(&hdr, payload, sizeof(hdr));
                 const uint16_t* samples = (const uint16_t*)(payload + sizeof(TtsAudioMsg));
                 size_t n = hdr.num_samples;
                 if (sizeof(TtsAudioMsg) + n * sizeof(int16_t) <= h.len)
-                    _ttsFn(true, samples, n, _ttsUd);
+                    fn(true, samples, n, ud);
             }
             break;
+        }
 
-        case MSG_TTS_DONE:
-            if (_ttsFn)
-                _ttsFn(false, NULL, 0, _ttsUd);
+        case MSG_TTS_DONE: {
+            AudioCallback fn = _ttsFn; void* ud = _ttsUd;
+            if (fn && ud)
+                fn(false, NULL, 0, ud);
             break;
+        }
 
         default:
             break;

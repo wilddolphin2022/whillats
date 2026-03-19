@@ -139,6 +139,10 @@ bool WhillatsTTS::start() {
 }
 bool WhillatsTTS::start(bool) { return start(); }
 void WhillatsTTS::stop() { if (_ttsClient) _ttsClient->stop(); }
+void WhillatsTTS::setCallback(WhillatsSetAudioCallback cb) {
+    _callback = cb;
+    if (_conn) _conn->setTtsCallback(cb.callback_, cb.user_data_);
+}
 void WhillatsTTS::queueText(const char* t) { if (_ttsClient) _ttsClient->queueText(t, "en"); }
 void WhillatsTTS::queueText(const char* t, const char* l) { if (_ttsClient) _ttsClient->queueText(t, l); }
 int WhillatsTTS::getSampleRate() { return 16000; }
@@ -180,6 +184,14 @@ bool WhillatsTranscriber::start() {
 }
 
 void WhillatsTranscriber::stop() { if (_whisperClient) _whisperClient->stop(); }
+void WhillatsTranscriber::setCallback(WhillatsSetResponseCallback cb) {
+    _callback = cb;
+    if (_conn) _conn->setWhisperCallback(cb.callback_, cb.user_data_);
+}
+void WhillatsTranscriber::setLanguageCallback(WhillatsSetLanguageCallback cb) {
+    _language_callback = cb;
+    if (_conn) _conn->setLanguageCallback(cb.callback_, cb.user_data_);
+}
 
 void WhillatsTranscriber::processAudioBuffer(uint8_t* buf, const size_t size) {
     if (_whisperClient) _whisperClient->processAudioBuffer(buf, size);
@@ -216,6 +228,10 @@ bool WhillatsLlama::start() {
 bool WhillatsLlama::isRunning() const { return _llamaClient != nullptr; }
 void WhillatsLlama::setThreadCount(int) {}
 void WhillatsLlama::stop() { if (_llamaClient) _llamaClient->stop(); }
+void WhillatsLlama::setCallback(WhillatsSetResponseCallback cb) {
+    _callback = cb;
+    if (_conn) _conn->setLlamaCallback(cb.callback_, cb.user_data_);
+}
 void WhillatsLlama::askLlama(const char* prompt) { if (_llamaClient) _llamaClient->askLlama(prompt); }
 void WhillatsLlama::askWithImageFile(const char*, const char*, int, int) {}
 void WhillatsLlama::askWithYUVRaw(const char*, const uint8_t*, const uint8_t*,

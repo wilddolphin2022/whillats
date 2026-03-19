@@ -164,7 +164,6 @@ int main(int argc, char* argv[]) {
         }
 
         case MSG_WHISPER_STOP:
-            if (whisper) { whisper->stop(); whisper.reset(); }
             break;
 
         case MSG_WHISPER_AUDIO:
@@ -184,7 +183,6 @@ int main(int argc, char* argv[]) {
         }
 
         case MSG_LLAMA_STOP:
-            if (llama) { llama->stop(); llama.reset(); }
             break;
 
         case MSG_LLAMA_ASK: {
@@ -251,9 +249,6 @@ int main(int argc, char* argv[]) {
         }
 
         case MSG_TTS_STOP:
-#if defined(WHILLATS_PIPER) || defined(WHILLATS_STYLETTS2)
-            if (tts) { tts->stop(); tts.reset(); }
-#endif
             break;
 
         case MSG_TTS_SPEAK: {
