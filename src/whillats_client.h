@@ -21,10 +21,18 @@ public:
 
     bool sendMsg(uint8_t type, const void* data, uint32_t len);
 
-    void setWhisperCallback(ResponseCallback cb, void* ud) { _whisperFn = cb; _whisperUd = ud; }
-    void setLanguageCallback(LanguageCallback cb, void* ud) { _langFn = cb; _langUd = ud; }
-    void setLlamaCallback(ResponseCallback cb, void* ud) { _llamaFn = cb; _llamaUd = ud; }
-    void setTtsCallback(AudioCallback cb, void* ud) { _ttsFn = cb; _ttsUd = ud; }
+    void setWhisperCallback(ResponseCallback cb, void* ud) { std::lock_guard<std::mutex> l(_cbMutex); _whisperFn = cb; _whisperUd = ud; }
+    void setLanguageCallback(LanguageCallback cb, void* ud) { std::lock_guard<std::mutex> l(_cbMutex); _langFn = cb; _langUd = ud; }
+    void setLlamaCallback(ResponseCallback cb, void* ud) { std::lock_guard<std::mutex> l(_cbMutex); _llamaFn = cb; _llamaUd = ud; }
+    void setTtsCallback(AudioCallback cb, void* ud) { std::lock_guard<std::mutex> l(_cbMutex); _ttsFn = cb; _ttsUd = ud; }
+
+    void clearAllCallbacks() {
+        std::lock_guard<std::mutex> l(_cbMutex);
+        _whisperFn = nullptr; _whisperUd = nullptr;
+        _langFn = nullptr; _langUd = nullptr;
+        _llamaFn = nullptr; _llamaUd = nullptr;
+        _ttsFn = nullptr; _ttsUd = nullptr;
+    }
 
 private:
     void readerThread();
@@ -35,6 +43,7 @@ private:
     std::atomic<bool> _running{false};
     std::thread _reader;
     std::mutex _writeMutex;
+    std::mutex _cbMutex;
 
     ResponseCallback _whisperFn = nullptr;
     void* _whisperUd = nullptr;
