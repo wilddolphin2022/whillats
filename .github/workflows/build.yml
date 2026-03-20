@@ -2,9 +2,9 @@ name: Build Whillats
 
 on:
   push:
-    branches: [ develop, styletts2, takingface ]
+    branches: [ develop, styletts2, talkingface ]
   pull_request:
-    branches: [ develop ]
+    branches: [ develop, talkingface ]
   workflow_dispatch:
 
 jobs:
