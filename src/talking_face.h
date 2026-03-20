@@ -1,7 +1,7 @@
 /*
- *  (c) 2025, wilddolphin2022
+ *  (c) 2025, wilddolphin2025
  *  For WebRTCsays.ai project
- *  https://github.com/wilddolphin2022
+ *  https://github.com/wilddolphin2025
  */
 
 #ifndef TALKING_FACE_H
