@@ -217,7 +217,7 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     return true;
 }
 
-void WhisperTranscriber::ProcessTokens(const std::vector<whisper_token>& tokens) {
+void WhisperTranscriber::ProcessTokens(const std::vector<int32_t>& tokens) {
     std::string chunk_text;
     chunk_text.reserve(tokens.size() * 8);  // Pre-allocate
 

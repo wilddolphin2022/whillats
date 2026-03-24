@@ -131,6 +131,10 @@ class WHILLATS_API WhillatsTTS {
 
     static int getSampleRate();
 
+    // Replace callback (e.g. null before stop) so async work cannot call into a
+    // destroyed WhisperAudioDevice.
+    void setCallback(WhillatsSetAudioCallback callback) { _callback = callback; }
+
   private:
     WhillatsSetAudioCallback _callback;
 #if defined(WHILLATS_STYLETTS2)
@@ -162,6 +166,15 @@ class WHILLATS_API WhillatsTranscriber {
     std::string getLanguage() const;
     void setLanguage(const char* language);
     void setThreadCount(int n);
+
+    void setCallback(WhillatsSetResponseCallback callback) {
+      _callback = callback;
+      _language_callback = WhillatsSetLanguageCallback(nullptr, nullptr);
+    }
+
+    void setLanguageCallback(WhillatsSetLanguageCallback callback) {
+      _language_callback = callback;
+    }
 
   private:
     WhillatsSetResponseCallback _callback; 
@@ -195,6 +208,8 @@ class WHILLATS_API WhillatsLlama {
 
     // Accept a video frame for multimodal prompts (no-op on iOS)
     void receiveVideoFrame(const YUVData& yuv);
+
+    void setCallback(WhillatsSetResponseCallback callback) { _callback = callback; }
 
   private:
     WhillatsSetResponseCallback _callback;

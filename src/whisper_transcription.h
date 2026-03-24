@@ -20,10 +20,15 @@
 #include <complex>
 #include <atomic>
 #include <memory>
+#include <cstdint>
 
-#include <whisper.h>
 #include "whisper_helpers.h"
 #include "whillats.h"
+
+// Forward declarations: keep whisper.h out of this header so WebRTC GN can compile
+// whillats.cc without vendoring whisper/ggml include paths (implementation TUs include whisper.h).
+struct whisper_context;
+struct whisper_state;
 
 class WhisperTranscriber {
 public:
@@ -48,7 +53,7 @@ public:
 private:
     bool InitializeWhisperModel(const std::string& modelPath);
     bool TranscribeAudioNonBlocking(const std::vector<float>& samples);
-    void ProcessTokens(const std::vector<whisper_token>& tokens);
+    void ProcessTokens(const std::vector<int32_t>& tokens);
     bool RunProcessingThread();
     void ProcessRemainingAudio();
     bool ValidateWhisperModel(const std::string& modelPath);
@@ -70,7 +75,7 @@ private:
     std::string _language = "auto";
     bool _detectLanguage = false;
 
-    std::vector<whisper_token> _pastTokens;
+    std::vector<int32_t> _pastTokens;
     int _nPast = 0;
     const int _maxContext = 224;
 
@@ -90,7 +95,7 @@ private:
     static const size_t kMinPhraseSamples = 32000;  // 200ms at 16kHz
     static const size_t kMaxPhraseSamples = 64000; // 1s at 16kHz
 
-    static const size_t kRingBufferSizeIncrement = 60 * WHISPER_SAMPLE_RATE; 
+    static const size_t kRingBufferSizeIncrement = 60 * 16000; 
 
 
     static const bool kDebug = false;
