@@ -291,71 +291,43 @@ int main(int argc, char* argv[]) {
                 stbi_image_free(img_data);
                 llama.receiveVideoFrame(yuv);
 
-                llama_full_response.clear(); llama_done = false;
-                const char* image_prompt = "Describe this image in detail.";
-                fprintf(stderr, "[test] Llama image prompt: %s\n", image_prompt);
-                llama.askLlama(image_prompt);
+                struct LlamaPrompt { const char* text; const char* lang; const char* wav; };
+                LlamaPrompt prompts[] = {
+                    { "Describe this image in detail.", "en", "llama_image_description.wav" },
+                    { "У вас есть меню на английском?", "ru", "llama_ru_response.wav"       },
+                };
 
-                if (wait_for(llama_done, 120)) {
-                    fprintf(stderr, "[test] Llama image description PASSED: '%s'\n",
-                            llama_full_response.c_str());
-
-                    // Synthesize the image description via TTS
-                    if (test_tts && !llama_full_response.empty()) {
-                        fprintf(stderr, "\n=== TTS: Synthesizing Llama image description ===\n");
-                        WhillatsTTSClient tts_llama(conn);
-                        if (tts_llama.start()) {
-                            std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                            tts_audio.clear(); tts_done = false;
-                            fprintf(stderr, "[test] TTS language: %s\n", detected_language.c_str());
-                            tts_llama.queueText(llama_full_response.c_str(), detected_language.c_str());
-                            if (wait_for(tts_done, 60)) {
-                                writeWavFile("llama_image_description.wav", tts_audio, 16000);
-                                fprintf(stderr, "[test] TTS image description PASSED (%zu samples) -> llama_image_description.wav\n",
-                                        tts_audio.size());
-                            } else {
-                                fprintf(stderr, "[test] TTS image description FAILED (timeout)\n");
-                                result = 1;
-                            }
-                            tts_llama.stop();
-                        }
-                    }
-                    // Second prompt in Russian
-                    fprintf(stderr, "\n=== Llama: Second prompt (RU) ===\n");
+                for (auto& p : prompts) {
                     llama_full_response.clear(); llama_done = false;
-                    const char* ru_prompt = "У вас есть меню на английском?";
-                    fprintf(stderr, "[test] Llama prompt: %s\n", ru_prompt);
-                    llama.askLlama(ru_prompt);
+                    fprintf(stderr, "\n=== Llama prompt [%s]: %s ===\n", p.lang, p.text);
+                    llama.askLlama(p.text);
 
                     if (wait_for(llama_done, 120)) {
-                        fprintf(stderr, "[test] Llama RU PASSED: '%s'\n", llama_full_response.c_str());
+                        fprintf(stderr, "[test] Llama [%s] PASSED: '%s'\n",
+                                p.lang, llama_full_response.c_str());
 
                         if (test_tts && !llama_full_response.empty()) {
-                            fprintf(stderr, "\n=== TTS: Synthesizing Llama RU response ===\n");
-                            WhillatsTTSClient tts_llama_ru(conn);
-                            if (tts_llama_ru.start()) {
+                            fprintf(stderr, "\n=== TTS: Synthesizing Llama [%s] response ===\n", p.lang);
+                            WhillatsTTSClient tts_llama(conn);
+                            if (tts_llama.start()) {
                                 std::this_thread::sleep_for(std::chrono::milliseconds(300));
                                 tts_audio.clear(); tts_done = false;
-                                fprintf(stderr, "[test] TTS language: %s\n", detected_language.c_str());
-                                tts_llama_ru.queueText(llama_full_response.c_str(), detected_language.c_str());
+                                tts_llama.queueText(llama_full_response.c_str(), p.lang);
                                 if (wait_for(tts_done, 60)) {
-                                    writeWavFile("llama_ru_response.wav", tts_audio, 16000);
-                                    fprintf(stderr, "[test] TTS RU response PASSED (%zu samples) -> llama_ru_response.wav\n",
-                                            tts_audio.size());
+                                    writeWavFile(p.wav, tts_audio, 16000);
+                                    fprintf(stderr, "[test] TTS [%s] PASSED (%zu samples) -> %s\n",
+                                            p.lang, tts_audio.size(), p.wav);
                                 } else {
-                                    fprintf(stderr, "[test] TTS RU response FAILED (timeout)\n");
+                                    fprintf(stderr, "[test] TTS [%s] FAILED (timeout)\n", p.lang);
                                     result = 1;
                                 }
-                                tts_llama_ru.stop();
+                                tts_llama.stop();
                             }
                         }
                     } else {
-                        fprintf(stderr, "[test] Llama RU FAILED (timeout)\n");
+                        fprintf(stderr, "[test] Llama [%s] FAILED (timeout)\n", p.lang);
                         result = 1;
                     }
-                } else {
-                    fprintf(stderr, "[test] Llama image recognition FAILED (timeout)\n");
-                    result = 1;
                 }
             } else {
                 if (img_data) stbi_image_free(img_data);
