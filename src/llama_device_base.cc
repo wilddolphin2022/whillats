@@ -1331,6 +1331,7 @@ bool LlamaDeviceBase::RunProcessingThread()
                           << std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::steady_clock::now()-t0).count()
                           << " ms");
+                    _responseCallback.OnResponseComplete(false, nullptr);  // signal done
                 } else {
                     LOG_V("Skipping duplicate image with hash: " << h);
                 }
@@ -1340,9 +1341,10 @@ bool LlamaDeviceBase::RunProcessingThread()
                     _llama_chat->StopGeneration();
                     LOG_I("Stopped ongoing generation for new text processing");
                 }
-                
+
                 _llama_chat->_lastResponseStart = std::chrono::steady_clock::now();
                 _llama_chat->generate(req.prompt, _responseCallback);
+                _responseCallback.OnResponseComplete(false, nullptr);  // signal done
             }
         }
     }
