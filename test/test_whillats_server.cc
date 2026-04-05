@@ -326,10 +326,23 @@ int main(int argc, char* argv[]) {
                     { "У вас есть меню на английском?", "ru", "llama_ru_response.wav"       },
                 };
 
+                // Prefix non-English prompts so the model responds in the right language.
+                auto make_prompt = [](const char* text, const char* lang) -> std::string {
+                    std::string l(lang);
+                    if (l == "ru") return std::string("Отвечай только по-русски. ") + text;
+                    if (l == "es") return std::string("Responde solo en español. ") + text;
+                    if (l == "de") return std::string("Antworte nur auf Deutsch. ") + text;
+                    if (l == "fr") return std::string("Réponds uniquement en français. ") + text;
+                    if (l == "zh") return std::string("只用中文回答。") + text;
+                    if (l == "ja") return std::string("日本語だけで答えてください。") + text;
+                    return text;
+                };
+
                 for (auto& p : prompts) {
                     llama_full_response.clear(); llama_done = false;
-                    fprintf(stderr, "\n=== Llama prompt [%s]: %s ===\n", p.lang, p.text);
-                    llama.askLlama(p.text);
+                    std::string prompt = make_prompt(p.text, p.lang);
+                    fprintf(stderr, "\n=== Llama prompt [%s]: %s ===\n", p.lang, prompt.c_str());
+                    llama.askLlama(prompt.c_str());
 
                     if (wait_for(llama_done, 120)) {
                         fprintf(stderr, "[test] Llama [%s] PASSED: '%s'\n",
