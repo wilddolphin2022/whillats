@@ -9,7 +9,9 @@
 #include <memory>
 #include <sys/stat.h>
 
+#ifndef STB_IMAGE_IMPLEMENTATION_PROVIDED
 #define STB_IMAGE_IMPLEMENTATION
+#endif
 #include "stb_image.h"
 
 #include "whillats_client.h"
