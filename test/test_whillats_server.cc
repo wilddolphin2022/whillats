@@ -7,6 +7,7 @@
 #include <chrono>
 #include <atomic>
 #include <memory>
+#include <sys/stat.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -169,6 +170,11 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "[test] Server connection established\n");
     int result = 0;
 
+    // All output WAV files go into media/
+    const std::string media_dir = "media";
+    mkdir(media_dir.c_str(), 0755);
+    auto wav = [&](const char* name) { return media_dir + "/" + name; };
+
     // ================================================================
     // TTS Tests
     // ================================================================
@@ -185,8 +191,8 @@ int main(int argc, char* argv[]) {
             tts_audio.clear(); tts_done = false;
             tts.queueText("Hello, this is a test of text to speech synthesis.", "en-US");
             if (wait_for(tts_done, 30)) {
-                writeWavFile("synthesized_audio.wav", tts_audio, 16000);
-                fprintf(stderr, "[test] TTS short PASSED (%zu samples) -> synthesized_audio.wav\n", tts_audio.size());
+                writeWavFile(wav("synthesized_audio.wav"), tts_audio, 16000);
+                fprintf(stderr, "[test] TTS short PASSED (%zu samples) -> %s\n", tts_audio.size(), wav("synthesized_audio.wav").c_str());
             } else {
                 fprintf(stderr, "[test] TTS short FAILED (timeout)\n");
                 result = 1;
@@ -213,9 +219,9 @@ int main(int argc, char* argv[]) {
                 tts_audio.clear(); tts_done = false;
                 tts.queueText(seg.text, seg.lang);
                 if (wait_for(tts_done, 30)) {
-                    writeWavFile(seg.wav, tts_audio, 16000);
+                    writeWavFile(wav(seg.wav), tts_audio, 16000);
                     fprintf(stderr, "[test] TTS %s PASSED (%zu samples) -> %s\n",
-                            seg.lang, tts_audio.size(), seg.wav);
+                            seg.lang, tts_audio.size(), wav(seg.wav).c_str());
                     tts_audio_combined.insert(tts_audio_combined.end(),
                                               tts_audio.begin(), tts_audio.end());
                 } else {
@@ -224,10 +230,10 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            writeWavFile("synthesized_audio_long.wav", tts_audio_combined, 16000);
+            writeWavFile(wav("synthesized_audio_long.wav"), tts_audio_combined, 16000);
             if (tts_long_ok)
-                fprintf(stderr, "[test] TTS long PASSED (%zu samples total) -> synthesized_audio_long.wav\n",
-                        tts_audio_combined.size());
+                fprintf(stderr, "[test] TTS long PASSED (%zu samples total) -> %s\n",
+                        tts_audio_combined.size(), wav("synthesized_audio_long.wav").c_str());
             else
                 fprintf(stderr, "[test] TTS long FAILED (%zu samples collected)\n",
                         tts_audio_combined.size());
@@ -314,9 +320,9 @@ int main(int argc, char* argv[]) {
                                 tts_audio.clear(); tts_done = false;
                                 tts_llama.queueText(llama_full_response.c_str(), p.lang);
                                 if (wait_for(tts_done, 60)) {
-                                    writeWavFile(p.wav, tts_audio, 16000);
+                                    writeWavFile(wav(p.wav), tts_audio, 16000);
                                     fprintf(stderr, "[test] TTS [%s] PASSED (%zu samples) -> %s\n",
-                                            p.lang, tts_audio.size(), p.wav);
+                                            p.lang, tts_audio.size(), wav(p.wav).c_str());
                                 } else {
                                     fprintf(stderr, "[test] TTS [%s] FAILED (timeout)\n", p.lang);
                                     result = 1;
