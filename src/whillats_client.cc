@@ -121,22 +121,22 @@ void WhillatsServerConnection::readerThread() {
             switch (h.type) {
 
             case MSG_WHISPER_RESULT:
-                if (_whisperFn && _whisperUd && payload)
+                if (_whisperFn && payload)
                     _whisperFn(true, (const char*)payload, _whisperUd);
                 break;
 
             case MSG_WHISPER_LANGUAGE:
-                if (_langFn && _langUd && payload)
+                if (_langFn && payload)
                     _langFn(true, (const char*)payload, _langUd);
                 break;
 
             case MSG_LLAMA_RESPONSE:
-                if (_llamaFn && _llamaUd && payload)
+                if (_llamaFn && payload)
                     _llamaFn(true, (const char*)payload, _llamaUd);
                 break;
 
             case MSG_TTS_AUDIO:
-                if (_ttsFn && _ttsUd && payload && h.len >= sizeof(TtsAudioMsg)) {
+                if (_ttsFn && payload && h.len >= sizeof(TtsAudioMsg)) {
                     TtsAudioMsg hdr;
                     memcpy(&hdr, payload, sizeof(hdr));
                     const uint16_t* samples = (const uint16_t*)(payload + sizeof(TtsAudioMsg));
@@ -147,7 +147,7 @@ void WhillatsServerConnection::readerThread() {
                 break;
 
             case MSG_TTS_DONE:
-                if (_ttsFn && _ttsUd)
+                if (_ttsFn)
                     _ttsFn(false, NULL, 0, _ttsUd);
                 break;
 

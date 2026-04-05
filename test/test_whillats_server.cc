@@ -67,6 +67,7 @@ int main(int argc, char* argv[]) {
     const char* server_path = nullptr;
     const char* whisper_model = nullptr;
     const char* llama_model = nullptr;
+    const char* mmproj_path = nullptr;
     const char* piper_model = nullptr;
     const char* espeak_data = nullptr;
     bool test_tts = false, test_whisper = false, test_llama = false;
@@ -76,6 +77,7 @@ int main(int argc, char* argv[]) {
         if (arg.find("--server=") == 0) server_path = argv[i] + 9;
         else if (arg.find("--whisper_model=") == 0) whisper_model = argv[i] + 16;
         else if (arg.find("--llama_model=") == 0) llama_model = argv[i] + 14;
+        else if (arg.find("--mmproj_path=") == 0) mmproj_path = argv[i] + 14;
         else if (arg.find("--piper_model=") == 0) piper_model = argv[i] + 14;
         else if (arg.find("--espeak_data=") == 0) espeak_data = argv[i] + 14;
         else if (arg == "--tts") test_tts = true;
@@ -85,7 +87,7 @@ int main(int argc, char* argv[]) {
         else if (arg == "--help") {
             fprintf(stderr,
                 "Usage: %s --server=PATH [--whisper_model=PATH] [--llama_model=PATH]\n"
-                "  [--piper_model=PATH] [--espeak_data=PATH]\n"
+                "  [--mmproj_path=PATH] [--piper_model=PATH] [--espeak_data=PATH]\n"
                 "  [--tts] [--whisper] [--llama] [--all]\n", argv[0]);
             return 0;
         }
@@ -99,6 +101,7 @@ int main(int argc, char* argv[]) {
     whillats_ipc::ConfigMsg cfg{};
     if (whisper_model) strncpy(cfg.whisper_model, whisper_model, sizeof(cfg.whisper_model)-1);
     if (llama_model) strncpy(cfg.llama_model, llama_model, sizeof(cfg.llama_model)-1);
+    if (mmproj_path) strncpy(cfg.llama_mmproj, mmproj_path, sizeof(cfg.llama_mmproj)-1);
     if (piper_model) strncpy(cfg.piper_model, piper_model, sizeof(cfg.piper_model)-1);
     if (espeak_data) strncpy(cfg.espeak_data, espeak_data, sizeof(cfg.espeak_data)-1);
     strncpy(cfg.language, "en", sizeof(cfg.language)-1);
@@ -146,23 +149,27 @@ int main(int argc, char* argv[]) {
             // Long + multi-language
             fprintf(stderr, "\n=== TTS: Long + multi-language ===\n");
             tts_audio.clear(); tts_done = false;
+            bool tts_long_ok = true;
             tts.queueText("Hello, this is a test of text to speech synthesis. "
                            "This is a longer test to ensure we have enough audio data. "
                            "We are testing the whisper transcription system. "
                            "The quick brown fox jumps over the lazy dog", "en");
-            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS long EN FAILED\n"); result = 1; }
+            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS long EN FAILED\n"); result = 1; tts_long_ok = false; }
 
             tts_done = false;
             tts.queueText("¿Cómo estás? ¿cómo te llamas?", "es");
-            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS ES FAILED\n"); result = 1; }
+            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS ES FAILED\n"); result = 1; tts_long_ok = false; }
 
             tts_done = false;
             tts.queueText("У вас есть меню на английском?", "ru");
-            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS RU FAILED\n"); result = 1; }
+            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS RU FAILED\n"); result = 1; tts_long_ok = false; }
 
             tts_done = false;
             writeWavFile("synthesized_audio_long.wav", tts_audio, 16000);
-            fprintf(stderr, "[test] TTS long PASSED (%zu samples) -> synthesized_audio_long.wav\n", tts_audio.size());
+            if (tts_long_ok)
+                fprintf(stderr, "[test] TTS long PASSED (%zu samples) -> synthesized_audio_long.wav\n", tts_audio.size());
+            else
+                fprintf(stderr, "[test] TTS long FAILED (%zu samples collected)\n", tts_audio.size());
             tts.stop();
         }
     }
@@ -208,14 +215,14 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "[test] Llama start FAILED\n");
             result = 1;
         } else {
-            fprintf(stderr, "[test] Waiting for Llama model to load (may take 30s+ if other models loaded)...\n");
-            std::this_thread::sleep_for(std::chrono::seconds(30));
+            fprintf(stderr, "[test] Waiting for Llama model to load (may take 60s+ for large multimodal models)...\n");
+            std::this_thread::sleep_for(std::chrono::seconds(60));
 
             llama_full_response.clear(); llama_done = false;
             fprintf(stderr, "[test] Llama prompt: What is your name?\n");
             llama.askLlama("What is your name?");
 
-            if (wait_for(llama_done, 60)) {
+            if (wait_for(llama_done, 120)) {
                 fprintf(stderr, "[test] Llama PASSED: '%s'\n", llama_full_response.c_str());
             } else {
                 fprintf(stderr, "[test] Llama FAILED (timeout)\n");

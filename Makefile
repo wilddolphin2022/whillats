@@ -1,4 +1,4 @@
-.PHONY: build clean debug release test test_release example example_release deps-ios ios ios-debug ios-clean styletts2 styletts2-release styletts2-linux styletts2-linux-cuda test-styletts2
+.PHONY: build clean debug release test test_release example example_release deps-ios ios ios-debug ios-clean styletts2 styletts2-release styletts2-linux styletts2-linux-cuda test-styletts2 piper piper-release
 
 # --- Platform detection: Metal on macOS, CUDA on Linux ---
 # Pass NO_CUDA=1 to disable CUDA on Linux (e.g. make debug NO_CUDA=1)
@@ -25,9 +25,12 @@ release:
 	cmake --build build --config release
 
 # Default test target (uses debug build)
+# Binaries go to build/bin/<CONFIG>/ per CMakeLists.txt (Debug, Release, etc.)
 test: debug
 	@echo "Running debug test..."
-	@if [ -f ./build/bin/test_whillats ]; then \
+	@if [ -f ./build/bin/Debug/test_whillats ]; then \
+	    ./build/bin/Debug/test_whillats; \
+	elif [ -f ./build/bin/test_whillats ]; then \
 	    ./build/bin/test_whillats; \
 	else \
 	    echo "Test executable not found (skipped on iOS?)"; \
@@ -36,7 +39,11 @@ test: debug
 # Release test target
 test_release: release
 	@echo "Running release test..."
-	@if [ -f ./build/bin/test_whillats ]; then \
+	@if [ -f ./build/bin/Release/test_whillats ]; then \
+	    ./build/bin/Release/test_whillats; \
+	elif [ -f ./build/bin/release/test_whillats ]; then \
+	    ./build/bin/release/test_whillats; \
+	elif [ -f ./build/bin/test_whillats ]; then \
 	    ./build/bin/test_whillats; \
 	else \
 	    echo "Test executable not found (skipped on iOS?)"; \
@@ -46,7 +53,9 @@ test_release: release
 # Default example target (uses debug build)
 example: debug
 	@echo "Running debug example (Linux Only)..."
-	@if [ -f ./build/bin/transceiver_yuv_pcm ]; then \
+	@if [ -f ./build/bin/Debug/transceiver_yuv_pcm ]; then \
+	    ./build/bin/Debug/transceiver_yuv_pcm; \
+	elif [ -f ./build/bin/transceiver_yuv_pcm ]; then \
 	    ./build/bin/transceiver_yuv_pcm; \
 	else \
 	    echo "Example executable not found (skipped on non-Linux?)"; \
@@ -55,11 +64,30 @@ example: debug
 # Release example target
 example_release: release
 	@echo "Running release example (Linux Only)..."
-	@if [ -f ./build/bin/transceiver_yuv_pcm ]; then \
+	@if [ -f ./build/bin/Release/transceiver_yuv_pcm ]; then \
+	    ./build/bin/Release/transceiver_yuv_pcm; \
+	elif [ -f ./build/bin/release/transceiver_yuv_pcm ]; then \
+	    ./build/bin/release/transceiver_yuv_pcm; \
+	elif [ -f ./build/bin/transceiver_yuv_pcm ]; then \
 	    ./build/bin/transceiver_yuv_pcm; \
 	else \
 	    echo "Example executable not found (skipped on non-Linux?)"; \
 	fi
+
+# --- Piper TTS Build ---
+# Builds whillats with Piper neural TTS engine (fast CPU, requires ONNX Runtime)
+
+piper:
+	cmake -B build -DWHILLATS_PIPER=ON -DWHILLATS_STYLETTS2=OFF $(GPU_FLAGS)
+	cmake --build build --config Debug --target espeak-ng-bin
+	cmake --build build --config Debug --target data
+	cmake --build build --config Debug
+
+piper-release:
+	cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHILLATS_PIPER=ON -DWHILLATS_STYLETTS2=OFF $(GPU_FLAGS)
+	cmake --build build --config Release --target espeak-ng-bin
+	cmake --build build --config Release --target data
+	cmake --build build --config Release
 
 # --- StyleTTS2 Build ---
 # Builds whillats with StyleTTS2 neural TTS (ONNX Runtime auto-downloaded)
@@ -82,10 +110,14 @@ styletts2-linux-cuda:
 
 test-styletts2: styletts2
 	@echo "Running StyleTTS2 test..."
-	@if [ -f ./build/bin/test_whillats ]; then \
+	@if [ -f ./build/bin/Debug/test_whillats ]; then \
 	    STYLETTS2_MODEL_DIR=./trained_models \
 	    ESPEAK_DATA_PATH=./build/bin/Debug/espeak-ng-data \
 	    ./build/bin/Debug/test_whillats --tts; \
+	elif [ -f ./build/bin/test_whillats ]; then \
+	    STYLETTS2_MODEL_DIR=./trained_models \
+	    ESPEAK_DATA_PATH=./build/bin/Debug/espeak-ng-data \
+	    ./build/bin/test_whillats --tts; \
 	else \
 	    echo "Test executable not found. Build with 'make styletts2' first."; \
 	fi

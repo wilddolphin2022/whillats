@@ -303,9 +303,15 @@ if(UNIX AND NOT APPLE)
     add_custom_target(copy_espeak_data ALL DEPENDS ${ESPEAK_DATA_DEST_DIR}/phontab)
 endif()  # end if(UNIX AND NOT APPLE)
 
-# Build espeak-ng on macOS when StyleTTS2 is enabled (needed for phonemization)
-if(APPLE AND WHILLATS_STYLETTS2 AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    FetchContent_MakeAvailable(espeak-ng-proj)
+# Build espeak-ng on macOS when StyleTTS2 or Piper is enabled (needed for phonemization)
+if(APPLE AND (WHILLATS_STYLETTS2 OR WHILLATS_PIPER) AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Use add_subdirectory directly to avoid cmake 4.x FetchContent binary-dir reuse issues.
+    # The source is already present (either submodule or previously fetched).
+    if(NOT TARGET espeak-ng)
+        add_subdirectory(${THIRD_PARTY_DIR}/espeak-ng
+                         ${CMAKE_BINARY_DIR}/_deps/espeak-ng-proj-build
+                         EXCLUDE_FROM_ALL)
+    endif()
 
     set(ESPEAK_DATA_SOURCE_DIR ${CMAKE_BINARY_DIR}/_deps/espeak-ng-proj-build/espeak-ng-data)
     set(ESPEAK_DATA_DEST_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/espeak-ng-data)
@@ -313,11 +319,15 @@ if(APPLE AND WHILLATS_STYLETTS2 AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_custom_command(
         OUTPUT ${ESPEAK_DATA_DEST_DIR}/phontab
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${ESPEAK_DATA_SOURCE_DIR} ${ESPEAK_DATA_DEST_DIR}
-        DEPENDS espeak-ng
+        DEPENDS espeak-ng data
         COMMENT "Copying espeak-ng-data to ${ESPEAK_DATA_DEST_DIR}"
     )
     add_custom_target(copy_espeak_data_styletts2 ALL DEPENDS ${ESPEAK_DATA_DEST_DIR}/phontab)
-    message(STATUS "StyleTTS2: Building espeak-ng for macOS phonemization")
+    if(WHILLATS_STYLETTS2)
+        message(STATUS "StyleTTS2: Building espeak-ng for macOS phonemization")
+    else()
+        message(STATUS "Piper: Building espeak-ng for macOS phonemization")
+    endif()
 endif()
 
 # --- mtmd example shared library ---
@@ -329,6 +339,8 @@ add_library(mtmd OBJECT
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-audio.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-image.cpp
+    ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-image.h
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/mtmd-helper.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.cpp
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd/clip.h
@@ -458,6 +470,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # Ensure espeak data is copied before building the server
     if(UNIX AND NOT APPLE)
         add_dependencies(whillats_server copy_espeak_data)
+    elseif(APPLE AND (WHILLATS_STYLETTS2 OR WHILLATS_PIPER))
+        add_dependencies(whillats_server copy_espeak_data_styletts2)
     endif()
 
     target_include_directories(whillats_server PRIVATE
