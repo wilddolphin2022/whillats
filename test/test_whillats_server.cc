@@ -192,30 +192,47 @@ int main(int argc, char* argv[]) {
                 result = 1;
             }
 
-            // Long + multi-language
+            // Long + multi-language — three separate segments, each saved to its own file
             fprintf(stderr, "\n=== TTS: Long + multi-language ===\n");
-            tts_audio.clear(); tts_done = false;
             bool tts_long_ok = true;
-            tts.queueText("Hello, this is a test of text to speech synthesis. "
-                           "This is a longer test to ensure we have enough audio data. "
-                           "We are testing the whisper transcription system. "
-                           "The quick brown fox jumps over the lazy dog", "en");
-            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS long EN FAILED\n"); result = 1; tts_long_ok = false; }
+            std::vector<uint16_t> tts_audio_combined;
 
-            tts_done = false;
-            tts.queueText("¿Cómo estás? ¿cómo te llamas?", "es");
-            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS ES FAILED\n"); result = 1; tts_long_ok = false; }
+            struct { const char* text; const char* lang; const char* wav; } segments[] = {
+                { "Hello, this is a test of text to speech synthesis. "
+                  "This is a longer test to ensure we have enough audio data. "
+                  "We are testing the whisper transcription system. "
+                  "The quick brown fox jumps over the lazy dog",
+                  "en", "synthesized_audio_long_en.wav" },
+                { "¿Cómo estás? ¿cómo te llamas?",
+                  "es", "synthesized_audio_long_es.wav" },
+                { "У вас есть меню на английском?",
+                  "ru", "synthesized_audio_long_ru.wav" },
+            };
 
-            tts_done = false;
-            tts.queueText("У вас есть меню на английском?", "ru");
-            if (!wait_for(tts_done, 30)) { fprintf(stderr, "[test] TTS RU FAILED\n"); result = 1; tts_long_ok = false; }
+            for (auto& seg : segments) {
+                tts_audio.clear(); tts_done = false;
+                tts.queueText(seg.text, seg.lang);
+                if (wait_for(tts_done, 30)) {
+                    writeWavFile(seg.wav, tts_audio, 16000);
+                    fprintf(stderr, "[test] TTS %s PASSED (%zu samples) -> %s\n",
+                            seg.lang, tts_audio.size(), seg.wav);
+                    tts_audio_combined.insert(tts_audio_combined.end(),
+                                              tts_audio.begin(), tts_audio.end());
+                } else {
+                    fprintf(stderr, "[test] TTS %s FAILED (timeout)\n", seg.lang);
+                    result = 1; tts_long_ok = false;
+                }
+            }
 
-            tts_done = false;
-            writeWavFile("synthesized_audio_long.wav", tts_audio, 16000);
+            writeWavFile("synthesized_audio_long.wav", tts_audio_combined, 16000);
             if (tts_long_ok)
-                fprintf(stderr, "[test] TTS long PASSED (%zu samples) -> synthesized_audio_long.wav\n", tts_audio.size());
+                fprintf(stderr, "[test] TTS long PASSED (%zu samples total) -> synthesized_audio_long.wav\n",
+                        tts_audio_combined.size());
             else
-                fprintf(stderr, "[test] TTS long FAILED (%zu samples collected)\n", tts_audio.size());
+                fprintf(stderr, "[test] TTS long FAILED (%zu samples collected)\n",
+                        tts_audio_combined.size());
+            // keep tts_audio populated with last segment for Whisper test below
+            tts_audio = tts_audio_combined;
             tts.stop();
         }
     }
