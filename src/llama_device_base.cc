@@ -34,7 +34,9 @@ std::string clean_response(const std::string& response) {
     cleaned = std::regex_replace(cleaned, std::regex("<\\|im_end\\|>"), "");
     cleaned = std::regex_replace(cleaned, std::regex("<\\|endoftext\\|>"), "");
     cleaned = std::regex_replace(cleaned, std::regex("<end_of_turn>"), "");
-    cleaned = std::regex_replace(cleaned, std::regex("<start_of_turn>.*"), "");
+    cleaned = std::regex_replace(cleaned, std::regex("<start_of_turn>[^>]*>?"), "");
+    // Gemma-4 eot token may decode as <turn|> pieces
+    cleaned = std::regex_replace(cleaned, std::regex("<turn\\|>"), "");
     cleaned = std::regex_replace(cleaned, std::regex("<think>[\\s\\S]*?</think>"), "");
     size_t pos = cleaned.find("'t tell me what you're talking about");
     if (pos != std::string::npos) {
@@ -496,7 +498,8 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
         }
 
         llama_token new_token_id = cur_p.data[cur_p.selected].id;
-        if (stopping_token_ids_.find(new_token_id) != stopping_token_ids_.end()) {
+        if (llama_vocab_is_eog(vocab_, new_token_id) ||
+            stopping_token_ids_.find(new_token_id) != stopping_token_ids_.end()) {
             LOG_V("Reached a stopping token with ID: " << new_token_id);
             break;
         }
@@ -802,7 +805,8 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
         }
 
         llama_token new_token_id = cur_p.data[cur_p.selected].id;
-        if (generated_tokens > min_gen_tokens && stopping_token_ids_.find(new_token_id) != stopping_token_ids_.end()) {
+        if (llama_vocab_is_eog(vocab_, new_token_id) ||
+            (generated_tokens > min_gen_tokens && stopping_token_ids_.find(new_token_id) != stopping_token_ids_.end())) {
             LOG_V("Image generation reached stopping token ID: " << new_token_id);
             break;
         }
@@ -894,7 +898,7 @@ void LlamaSimpleChat::DetectStoppingTokens() {
     std::vector<std::string> known_stopping_tokens = {
         "<|eot_id|>", "<|end_of_text|>", "<|end|>", "</s>",
         "<|im_end|>", "<|endoftext|>", "</think>",
-        "<end_of_turn>"
+        "<end_of_turn>", "<turn|>"
     };
     
     int n_vocab = llama_vocab_n_tokens(vocab_);
