@@ -56,6 +56,7 @@ static std::atomic<bool> llama_done{false};
 static std::atomic<bool> tts_done{false};
 static std::vector<uint16_t> tts_audio;
 static std::string llama_full_response;
+static std::string detected_language = "en";  // updated by language_cb
 
 static void whisper_cb(bool success, const char* text, void*) {
     fprintf(stderr, "[test] Whisper: %s\n", text);
@@ -63,7 +64,10 @@ static void whisper_cb(bool success, const char* text, void*) {
 }
 
 static void language_cb(bool success, const char* lang, void*) {
-    fprintf(stderr, "[test] Language: %s\n", lang);
+    if (lang && lang[0]) {
+        detected_language = lang;
+        fprintf(stderr, "[test] Language detected: %s\n", lang);
+    }
 }
 
 static void llama_cb(bool success, const char* text, void*) {
@@ -286,7 +290,8 @@ int main(int argc, char* argv[]) {
                         if (tts_llama.start()) {
                             std::this_thread::sleep_for(std::chrono::milliseconds(300));
                             tts_audio.clear(); tts_done = false;
-                            tts_llama.queueText(llama_full_response.c_str(), "en");
+                            fprintf(stderr, "[test] TTS language: %s\n", detected_language.c_str());
+                            tts_llama.queueText(llama_full_response.c_str(), detected_language.c_str());
                             if (wait_for(tts_done, 60)) {
                                 writeWavFile("llama_image_description.wav", tts_audio, 16000);
                                 fprintf(stderr, "[test] TTS image description PASSED (%zu samples) -> llama_image_description.wav\n",
