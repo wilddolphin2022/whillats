@@ -91,7 +91,7 @@ public:
 
   // Vision via mtmd
   mtmd::context_ptr ctx_mtmd_;
-  enum class ChatFormat { LLAMA3, CHATML };
+  enum class ChatFormat { LLAMA3, CHATML, GEMMA };
   ChatFormat chat_format_ = ChatFormat::CHATML;
 
   void DetectStoppingTokens();

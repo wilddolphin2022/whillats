@@ -33,6 +33,8 @@ std::string clean_response(const std::string& response) {
     cleaned = std::regex_replace(cleaned, std::regex("<\\|eot_id\\|>"), "");
     cleaned = std::regex_replace(cleaned, std::regex("<\\|im_end\\|>"), "");
     cleaned = std::regex_replace(cleaned, std::regex("<\\|endoftext\\|>"), "");
+    cleaned = std::regex_replace(cleaned, std::regex("<end_of_turn>"), "");
+    cleaned = std::regex_replace(cleaned, std::regex("<start_of_turn>.*"), "");
     cleaned = std::regex_replace(cleaned, std::regex("<think>[\\s\\S]*?</think>"), "");
     size_t pos = cleaned.find("'t tell me what you're talking about");
     if (pos != std::string::npos) {
@@ -384,7 +386,10 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
 
     if (context_tokens_.empty()) {
         std::string system_prompt;
-        if (chat_format_ == ChatFormat::CHATML) {
+        if (chat_format_ == ChatFormat::GEMMA) {
+            // Gemma has no system role; embed instruction in the first user turn
+            system_prompt = "<start_of_turn>user\nYou are a helpful assistant.<end_of_turn>\n<start_of_turn>model\nOkay.<end_of_turn>\n";
+        } else if (chat_format_ == ChatFormat::CHATML) {
             system_prompt = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n";
         } else {
             system_prompt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant.<|eot_id|>\n";
@@ -412,7 +417,9 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     }
 
     std::string wrapped_prompt;
-    if (chat_format_ == ChatFormat::CHATML) {
+    if (chat_format_ == ChatFormat::GEMMA) {
+        wrapped_prompt = "<start_of_turn>user\n" + prompt + "<end_of_turn>\n<start_of_turn>model\n";
+    } else if (chat_format_ == ChatFormat::CHATML) {
         wrapped_prompt = "<|im_start|>user\n" + prompt + "<|im_end|>\n<|im_start|>assistant\n";
     } else {
         wrapped_prompt = "<|start_header_id|>user<|end_header_id|>\n\n" + prompt + "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
@@ -672,7 +679,9 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
     LOG_V("Created mtmd_bitmap with ID: " << bitmap_id);
 
     std::string full_prompt;
-    if (chat_format_ == ChatFormat::CHATML) {
+    if (chat_format_ == ChatFormat::GEMMA) {
+        full_prompt = "<start_of_turn>user\n" + std::string(MTMD_DEFAULT_IMAGE_MARKER) + " " + prompt + "<end_of_turn>\n<start_of_turn>model\n";
+    } else if (chat_format_ == ChatFormat::CHATML) {
         full_prompt = "<|im_start|>user\n" + std::string(MTMD_DEFAULT_IMAGE_MARKER) + " " + prompt + "<|im_end|>\n<|im_start|>assistant\n";
     } else {
         const std::string header_user      = "<|start_header_id|>user<|end_header_id|>\n\n";
@@ -884,7 +893,8 @@ void LlamaSimpleChat::DetectStoppingTokens() {
     
     std::vector<std::string> known_stopping_tokens = {
         "<|eot_id|>", "<|end_of_text|>", "<|end|>", "</s>",
-        "<|im_end|>", "<|endoftext|>", "</think>"
+        "<|im_end|>", "<|endoftext|>", "</think>",
+        "<end_of_turn>"
     };
     
     int n_vocab = llama_vocab_n_tokens(vocab_);
@@ -930,6 +940,11 @@ void LlamaSimpleChat::DetectChatFormat() {
         return n == 1;
     };
 
+    if (probeToken("<start_of_turn>")) {
+        chat_format_ = ChatFormat::GEMMA;
+        LOG_I("Detected Gemma format");
+        return;
+    }
     if (probeToken("<|im_start|>")) {
         chat_format_ = ChatFormat::CHATML;
         LOG_I("Detected ChatML format (Qwen / compatible model)");
