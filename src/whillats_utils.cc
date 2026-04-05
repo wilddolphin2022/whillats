@@ -236,6 +236,26 @@ std::vector<int16_t> resampleAudio(const int16_t* data, size_t count,
     int up   = dst_rate / g;   // upsample factor
     int down = src_rate / g;   // decimate factor
 
+    // The polyphase FIR below requires NTAPS >= up to fire at least one tap per
+    // output sample. For high up values (e.g. 22050->16000 gives up=320) the FIR
+    // degrades to zero output on most samples, causing a comb-filter / metallic
+    // artefact. Fall back to linear interpolation for those cases — correct and
+    // artefact-free even if slightly less sharp in the stopband.
+    if (up > 63) {
+        double ratio = static_cast<double>(src_rate) / dst_rate;
+        size_t out_len = static_cast<size_t>(count / ratio);
+        std::vector<int16_t> out(out_len);
+        for (size_t i = 0; i < out_len; ++i) {
+            double pos  = i * ratio;
+            size_t lo   = static_cast<size_t>(pos);
+            size_t hi   = (lo + 1 < count) ? lo + 1 : lo;
+            double frac = pos - lo;
+            double v    = data[lo] + frac * (data[hi] - data[lo]);
+            out[i] = static_cast<int16_t>(std::max(-32768.0, std::min(32767.0, v)));
+        }
+        return out;
+    }
+
     // FIR low-pass: cutoff at min(1/up, 1/down) with Kaiser window (beta=5)
     constexpr int NTAPS = 63;
     constexpr int HALF  = NTAPS / 2;
