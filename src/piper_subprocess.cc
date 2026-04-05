@@ -15,12 +15,13 @@
 #include <sys/wait.h>
 #include <cstring>
 #include <cstdio>
+#include <cerrno>
 
 static bool write_all(int fd, const void* buf, size_t len) {
     const uint8_t* p = static_cast<const uint8_t*>(buf);
     while (len > 0) {
         ssize_t n = write(fd, p, len);
-        if (n <= 0) return false;
+        if (n <= 0) return false;  // caller checks errno if needed
         p += n; len -= n;
     }
     return true;
@@ -113,6 +114,9 @@ bool PiperSubprocess::start(const std::string& model_path,
                             const std::string& espeak_data) {
     if (_running) return true;
 
+    // Prevent SIGPIPE from killing the server if the child exits unexpectedly.
+    signal(SIGPIPE, SIG_IGN);
+
     int pipe_to[2], pipe_from[2];
     if (pipe(pipe_to) != 0 || pipe(pipe_from) != 0) {
         LOG_E("PiperSubprocess: pipe() failed");
@@ -171,18 +175,29 @@ std::vector<int16_t> PiperSubprocess::synthesize(const std::string& text) {
     if (!_running || text.empty()) return {};
 
     uint32_t text_len = static_cast<uint32_t>(text.size());
-    
+
     // Write length and text together to avoid interleaving in pipe
     std::vector<uint8_t> buf(sizeof(text_len) + text_len);
     memcpy(buf.data(), &text_len, sizeof(text_len));
     memcpy(buf.data() + sizeof(text_len), text.data(), text_len);
-    
-    if (!write_all(_toChild, buf.data(), buf.size())) return {};
+
+    if (!write_all(_toChild, buf.data(), buf.size())) {
+        fprintf(stderr, "[PiperSubprocess] Write to child failed (child likely died), marking dead\n");
+        _running = false;
+        return {};
+    }
 
     int32_t sr = 0;
     uint32_t ns = 0;
-    if (!read_all(_fromChild, &sr, sizeof(sr))) return {};
-    if (!read_all(_fromChild, &ns, sizeof(ns))) return {};
+    if (!read_all(_fromChild, &sr, sizeof(sr))) {
+        fprintf(stderr, "[PiperSubprocess] Read from child failed (child likely died), marking dead\n");
+        _running = false;
+        return {};
+    }
+    if (!read_all(_fromChild, &ns, sizeof(ns))) {
+        _running = false;
+        return {};
+    }
 
     if (sr > 0) _sampleRate = sr;
     if (ns == 0) return {};

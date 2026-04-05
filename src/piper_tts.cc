@@ -11,6 +11,7 @@
 #include "whisper_helpers.h"
 #include <cmath>
 #include <algorithm>
+#include <unistd.h>
 
 PiperTTS::PiperTTS(WhillatsSetAudioCallback callback)
     : _callback(callback) {}
@@ -52,6 +53,12 @@ bool PiperTTS::addLangModel(const std::string& lang, const std::string& model_pa
         return false;
     }
     if (model_path.empty()) return false;
+
+    // Fail fast if the model file doesn't exist rather than crashing the child
+    if (access(model_path.c_str(), R_OK) != 0) {
+        LOG_E("PiperTTS: model file not readable for lang=" << lang << ": " << model_path);
+        return false;
+    }
 
     auto sub = std::make_unique<PiperSubprocess>();
     if (!sub->start(model_path, _espeakDataPath)) {
