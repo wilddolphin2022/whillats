@@ -320,6 +320,39 @@ int main(int argc, char* argv[]) {
                             tts_llama.stop();
                         }
                     }
+                    // Second prompt in Russian
+                    fprintf(stderr, "\n=== Llama: Second prompt (RU) ===\n");
+                    llama_full_response.clear(); llama_done = false;
+                    const char* ru_prompt = "У вас есть меню на английском?";
+                    fprintf(stderr, "[test] Llama prompt: %s\n", ru_prompt);
+                    llama.askLlama(ru_prompt);
+
+                    if (wait_for(llama_done, 120)) {
+                        fprintf(stderr, "[test] Llama RU PASSED: '%s'\n", llama_full_response.c_str());
+
+                        if (test_tts && !llama_full_response.empty()) {
+                            fprintf(stderr, "\n=== TTS: Synthesizing Llama RU response ===\n");
+                            WhillatsTTSClient tts_llama_ru(conn);
+                            if (tts_llama_ru.start()) {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                                tts_audio.clear(); tts_done = false;
+                                fprintf(stderr, "[test] TTS language: %s\n", detected_language.c_str());
+                                tts_llama_ru.queueText(llama_full_response.c_str(), detected_language.c_str());
+                                if (wait_for(tts_done, 60)) {
+                                    writeWavFile("llama_ru_response.wav", tts_audio, 16000);
+                                    fprintf(stderr, "[test] TTS RU response PASSED (%zu samples) -> llama_ru_response.wav\n",
+                                            tts_audio.size());
+                                } else {
+                                    fprintf(stderr, "[test] TTS RU response FAILED (timeout)\n");
+                                    result = 1;
+                                }
+                                tts_llama_ru.stop();
+                            }
+                        }
+                    } else {
+                        fprintf(stderr, "[test] Llama RU FAILED (timeout)\n");
+                        result = 1;
+                    }
                 } else {
                     fprintf(stderr, "[test] Llama image recognition FAILED (timeout)\n");
                     result = 1;
