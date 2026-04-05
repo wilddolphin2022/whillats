@@ -9,29 +9,12 @@
 #include "piper_tts.h"
 #include "piper_subprocess.h"
 #include "whisper_helpers.h"
+#include "whillats_utils.h"
 #include <cmath>
 #include <algorithm>
 #include <unistd.h>
 
 static constexpr int TARGET_SAMPLE_RATE = 16000;
-
-// Linear-interpolation resampler. Good enough for TTS→Whisper pipeline.
-static std::vector<int16_t> resample_to_16k(const std::vector<int16_t>& in, int src_rate) {
-    if (src_rate == TARGET_SAMPLE_RATE || in.empty()) return in;
-    double ratio = static_cast<double>(src_rate) / TARGET_SAMPLE_RATE;
-    size_t out_len = static_cast<size_t>(in.size() / ratio);
-    std::vector<int16_t> out(out_len);
-    for (size_t i = 0; i < out_len; ++i) {
-        double pos = i * ratio;
-        size_t lo  = static_cast<size_t>(pos);
-        size_t hi  = lo + 1 < in.size() ? lo + 1 : lo;
-        double frac = pos - lo;
-        out[i] = static_cast<int16_t>(in[lo] + frac * (in[hi] - in[lo]));
-    }
-    LOG_I("PiperTTS: Resampled " << in.size() << " samples @" << src_rate
-          << "Hz → " << out.size() << " samples @" << TARGET_SAMPLE_RATE << "Hz");
-    return out;
-}
 
 PiperTTS::PiperTTS(WhillatsSetAudioCallback callback)
     : _callback(callback) {}
@@ -160,7 +143,7 @@ bool PiperTTS::runProcessingThread() {
     if (!audio.empty()) {
         LOG_I("PiperTTS: Generated " << audio.size() << " samples at " << native_rate << "Hz");
         if (native_rate != TARGET_SAMPLE_RATE)
-            audio = resample_to_16k(audio, native_rate);
+            audio = resampleAudio(audio.data(), audio.size(), native_rate, TARGET_SAMPLE_RATE);
         _outputSampleRate = TARGET_SAMPLE_RATE;
         std::vector<uint16_t> u16(audio.begin(), audio.end());
         _callback.OnBufferComplete(true, u16);
