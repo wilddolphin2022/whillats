@@ -79,10 +79,31 @@ static std::shared_ptr<WhillatsServerConnection> getOrCreateServer() {
     if ((e = getenv("LLAMA_MMPROJ")))      strncpy(cfg.llama_mmproj, e, sizeof(cfg.llama_mmproj)-1);
     if ((e = getenv("PIPER_MODEL")))       strncpy(cfg.piper_model, e, sizeof(cfg.piper_model)-1);
     if ((e = getenv("ESPEAK_DATA_PATH")))  strncpy(cfg.espeak_data, e, sizeof(cfg.espeak_data)-1);
-    strncpy(cfg.language, "en", sizeof(cfg.language)-1);
+    // Leave cfg.language empty so Whisper uses auto-detect mode
     cfg.whisper_threads = 4;
     cfg.llama_threads = 6;
     cfg.tts_threads = 2;
+    // Per-language Piper models: PIPER_MODEL_ES, PIPER_MODEL_RU, etc.
+    {
+        const char* lang_envs[][2] = {
+            { "en", "PIPER_MODEL_EN" },
+            { "es", "PIPER_MODEL_ES" },
+            { "ru", "PIPER_MODEL_RU" },
+            { "de", "PIPER_MODEL_DE" },
+            { "fr", "PIPER_MODEL_FR" },
+            { "zh", "PIPER_MODEL_ZH" },
+            { "ja", "PIPER_MODEL_JA" },
+        };
+        cfg.piper_lang_model_count = 0;
+        for (auto& le : lang_envs) {
+            const char* path = getenv(le[1]);
+            if (path && path[0] && cfg.piper_lang_model_count < whillats_ipc::PIPER_LANG_MAX) {
+                int idx = cfg.piper_lang_model_count++;
+                strncpy(cfg.piper_lang_models[idx].lang, le[0], sizeof(cfg.piper_lang_models[idx].lang)-1);
+                strncpy(cfg.piper_lang_models[idx].path, path, sizeof(cfg.piper_lang_models[idx].path)-1);
+            }
+        }
+    }
 
     if (!s_serverConn->start(server_path, cfg)) {
         fprintf(stderr, "[whillats] ERROR: Failed to start whillats_server at %s\n", server_path.c_str());
