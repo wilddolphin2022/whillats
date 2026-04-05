@@ -148,7 +148,7 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     wparams.temperature = 0.0f;
     wparams.no_speech_thold = 0.95f;
     wparams.logprob_thold = -1.0f;
-    wparams.language = "en";
+    wparams.language = (_language == "auto") ? nullptr : _language.c_str();
     wparams.translate = false;
     wparams.print_progress = false;
     wparams.print_realtime = false;
@@ -208,7 +208,11 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
     int lang_id = whisper_full_lang_id_from_state(_state);
     const char* detected_lang = whisper_lang_str(lang_id);
     LOG_I("Auto-detected language by whisper_full_with_state: " << detected_lang);
-    if(_language != detected_lang) {
+    if (_language == "auto") {
+        // In auto mode: always report detected language; never lock _language so
+        // every chunk gets fresh detection.
+        _languageCallback.OnLanguageDetected(true, detected_lang);
+    } else if (_language != detected_lang) {
         LOG_I("Detected language mismatch, updating from " << _language << " to " << detected_lang);
         _language = detected_lang;
         _languageCallback.OnLanguageDetected(true, detected_lang);
