@@ -151,7 +151,7 @@ int main(int argc, char* argv[]) {
     if (mmproj_path) strncpy(cfg.llama_mmproj, mmproj_path, sizeof(cfg.llama_mmproj)-1);
     if (piper_model) strncpy(cfg.piper_model, piper_model, sizeof(cfg.piper_model)-1);
     if (espeak_data) strncpy(cfg.espeak_data, espeak_data, sizeof(cfg.espeak_data)-1);
-    strncpy(cfg.language, "en", sizeof(cfg.language)-1);
+    // Leave cfg.language empty → server won't call setLanguage() → Whisper stays in "auto" mode
     cfg.whisper_threads = 4;
     cfg.llama_threads = 6;
     cfg.tts_threads = 2;
