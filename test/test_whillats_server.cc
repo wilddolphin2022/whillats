@@ -117,6 +117,8 @@ int main(int argc, char* argv[]) {
     const char* espeak_data = nullptr;
     const char* image_path = nullptr;
     bool test_tts = false, test_whisper = false, test_llama = false;
+    // Extra per-language Piper models: --piper_model_es=PATH, --piper_model_ru=PATH, etc.
+    std::vector<std::pair<std::string,std::string>> piper_lang_models;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -131,10 +133,20 @@ int main(int argc, char* argv[]) {
         else if (arg == "--whisper") test_whisper = true;
         else if (arg == "--llama") test_llama = true;
         else if (arg == "--all") { test_tts = test_whisper = test_llama = true; }
+        else if (arg.find("--piper_model_") == 0) {
+            // --piper_model_es=PATH  →  lang="es", path=PATH
+            auto eq = arg.find('=');
+            if (eq != std::string::npos) {
+                std::string lang = arg.substr(14, eq - 14);
+                std::string path = argv[i] + eq + 1;
+                piper_lang_models.push_back({lang, path});
+            }
+        }
         else if (arg == "--help") {
             fprintf(stderr,
                 "Usage: %s --server=PATH [--whisper_model=PATH] [--llama_model=PATH]\n"
                 "  [--mmproj_path=PATH] [--piper_model=PATH] [--espeak_data=PATH]\n"
+                "  [--piper_model_es=PATH] [--piper_model_ru=PATH] [...]\n"
                 "  [--image=PATH] [--tts] [--whisper] [--llama] [--all]\n", argv[0]);
             return 0;
         }
@@ -152,6 +164,17 @@ int main(int argc, char* argv[]) {
     if (piper_model) strncpy(cfg.piper_model, piper_model, sizeof(cfg.piper_model)-1);
     if (espeak_data) strncpy(cfg.espeak_data, espeak_data, sizeof(cfg.espeak_data)-1);
     // Leave cfg.language empty → server won't call setLanguage() → Whisper stays in "auto" mode
+
+    // Per-language Piper models
+    cfg.piper_lang_model_count = 0;
+    for (auto& [lang, path] : piper_lang_models) {
+        int idx = cfg.piper_lang_model_count;
+        if (idx >= whillats_ipc::PIPER_LANG_MAX) break;
+        strncpy(cfg.piper_lang_models[idx].lang, lang.c_str(), sizeof(cfg.piper_lang_models[idx].lang)-1);
+        strncpy(cfg.piper_lang_models[idx].path, path.c_str(), sizeof(cfg.piper_lang_models[idx].path)-1);
+        cfg.piper_lang_model_count++;
+        fprintf(stderr, "[test] Piper lang model: %s = %s\n", lang.c_str(), path.c_str());
+    }
     cfg.whisper_threads = 4;
     cfg.llama_threads = 6;
     cfg.tts_threads = 2;

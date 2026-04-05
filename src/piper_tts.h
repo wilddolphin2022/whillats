@@ -14,6 +14,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -28,10 +29,14 @@ public:
     PiperTTS(WhillatsSetAudioCallback callback);
     ~PiperTTS();
 
+    // Start with the default (fallback) model.
     bool start(const std::string& model_path,
                const std::string& espeak_data_path,
                const std::string& config_path = "");
     void stop();
+
+    // Register an additional language-specific model. Call after start().
+    bool addLangModel(const std::string& lang, const std::string& model_path);
 
     void queueText(const char* text, const char* language = "en");
 
@@ -39,9 +44,14 @@ public:
 
 private:
     bool runProcessingThread();
+    PiperSubprocess* subprocessForLang(const std::string& lang);
 
     WhillatsSetAudioCallback _callback;
-    std::unique_ptr<PiperSubprocess> _subprocess;
+    std::string _espeakDataPath;
+
+    // "en" (or whatever default) is always in the map after start().
+    // Other languages are added via addLangModel().
+    std::map<std::string, std::unique_ptr<PiperSubprocess>> _subprocesses;
 
     bool _running{false};
     std::thread _processingThread;
@@ -50,6 +60,7 @@ private:
     std::condition_variable _queueCondition;
     std::atomic<bool> _initialized{false};
     int _outputSampleRate = 22050;
+    std::string _defaultLang = "en";
 };
 
 #endif // PIPER_TTS_H

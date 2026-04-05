@@ -75,6 +75,13 @@ inline bool read_header(int fd, Header& h) {
     return read_exact(fd, &h, HEADER_SIZE);
 }
 
+struct PiperLangEntry {
+    char lang[8];    // e.g. "en", "es", "ru"
+    char path[504];  // path to .onnx model
+} __attribute__((packed));  // 512 bytes each
+
+static constexpr int32_t PIPER_LANG_MAX = 8;
+
 struct ConfigMsg {
     char whisper_model[512];
     char llama_model[512];
@@ -85,6 +92,9 @@ struct ConfigMsg {
     int32_t whisper_threads;
     int32_t llama_threads;
     int32_t tts_threads;
+    // Per-language Piper models (supplement piper_model default)
+    PiperLangEntry piper_lang_models[PIPER_LANG_MAX];
+    int32_t piper_lang_model_count;
 } __attribute__((packed));
 
 struct TtsAudioMsg {

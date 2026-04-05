@@ -226,9 +226,19 @@ int main(int argc, char* argv[]) {
                 tts = std::make_unique<PiperTTS>(ttsCb);
                 const char* model = getenv("PIPER_MODEL");
                 const char* espeak = getenv("ESPEAK_DATA_PATH");
-                if (model && tts->start(model, espeak ? espeak : ""))
+                if (model && tts->start(model, espeak ? espeak : "")) {
                     fprintf(stderr, "[whillats_server] Piper TTS started (rate=%d)\n", tts->getSampleRate());
-                else
+                    // Load per-language models from config
+                    for (int li = 0; li < cfg.piper_lang_model_count && li < whillats_ipc::PIPER_LANG_MAX; ++li) {
+                        const auto& e = cfg.piper_lang_models[li];
+                        if (e.lang[0] && e.path[0]) {
+                            if (tts->addLangModel(e.lang, e.path))
+                                fprintf(stderr, "[whillats_server] Piper lang model loaded: %s\n", e.lang);
+                            else
+                                fprintf(stderr, "[whillats_server] Piper lang model FAILED: %s\n", e.lang);
+                        }
+                    }
+                } else
                     fprintf(stderr, "[whillats_server] Piper TTS failed to start\n");
             }
 #elif defined(WHILLATS_STYLETTS2)
