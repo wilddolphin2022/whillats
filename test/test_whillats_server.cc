@@ -72,9 +72,14 @@ static void language_cb(bool success, const char* lang, void*) {
 }
 
 static void llama_cb(bool success, const char* text, void*) {
-    fprintf(stderr, "[test] Llama: %s\n", text);
-    if (text) llama_full_response += text;
-    llama_done = true;
+    if (success && text) {
+        fprintf(stderr, "[test] Llama: %s\n", text);
+        llama_full_response += text;
+    } else {
+        // success=false / text=nullptr → generation complete (MSG_LLAMA_DONE)
+        fprintf(stderr, "[test] Llama done (%zu chars total)\n", llama_full_response.size());
+        llama_done = true;
+    }
 }
 
 static void tts_cb(bool success, const uint16_t* buffer, size_t size, void*) {

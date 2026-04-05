@@ -20,6 +20,7 @@ enum MsgType : uint8_t {
     MSG_LLAMA_ASK          = 0x12,
     MSG_LLAMA_RESPONSE     = 0x13,
     MSG_LLAMA_VIDEO_FRAME  = 0x14,
+    MSG_LLAMA_DONE         = 0x15,  // sent after all tokens for a prompt are delivered
 
     MSG_TTS_START          = 0x20,
     MSG_TTS_STOP           = 0x21,

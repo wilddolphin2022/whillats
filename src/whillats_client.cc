@@ -135,6 +135,11 @@ void WhillatsServerConnection::readerThread() {
                     _llamaFn(true, (const char*)payload, _llamaUd);
                 break;
 
+            case MSG_LLAMA_DONE:
+                if (_llamaFn)
+                    _llamaFn(false, nullptr, _llamaUd);
+                break;
+
             case MSG_TTS_AUDIO:
                 if (_ttsFn && payload && h.len >= sizeof(TtsAudioMsg)) {
                     TtsAudioMsg hdr;

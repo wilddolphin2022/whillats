@@ -52,6 +52,8 @@ static void language_callback(bool success, const char* language, void*) {
 static void llama_callback(bool success, const char* response, void*) {
     if (success && response)
         send_response(MSG_LLAMA_RESPONSE, response);
+    else if (!success || !response)
+        write_msg(g_write_fd, MSG_LLAMA_DONE, nullptr, 0);
 }
 
 static void tts_audio_callback(bool success, const uint16_t* buffer, size_t buffer_size, void*) {
