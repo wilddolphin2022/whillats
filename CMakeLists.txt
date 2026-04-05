@@ -761,6 +761,7 @@ target_include_directories(test_whillats_server PRIVATE
     ${THIRD_PARTY_DIR}/llama.cpp/include
     ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
     ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
+    ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb
 )
 target_link_libraries(test_whillats_server PRIVATE ${PROJECT_NAME} pthread)
 target_compile_options(test_whillats_server PRIVATE $<$<CONFIG:Debug>:-g -O0>)

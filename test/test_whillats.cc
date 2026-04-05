@@ -48,9 +48,16 @@ void languageChangedCallback(bool success, const char* language, void*) {
 int main(int argc, char *argv[]) {
     Options opts = parseOptions(argc, argv);
 
-    if (argc == 1 || opts.help) {
+    if (opts.help) {
         fprintf(stderr, "%s\n", opts.help_string.c_str());
-        return 1;
+        return 0;
+    }
+    if (argc == 1) {
+        fprintf(stderr, "%s\n", opts.help_string.c_str());
+        fprintf(stderr,
+                "\nNo options given (smoke OK). Pass e.g. --tts or model flags to run "
+                "integration tests; set WHILLATS_SERVER to the server binary.\n");
+        return 0;
     }
 
     fprintf(stderr, "[test] Config: whisper=%s llama=%s\n",

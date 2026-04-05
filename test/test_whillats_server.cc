@@ -6,10 +6,50 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <memory>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 #include "whillats_client.h"
 #include "whillats_ipc.h"
 #include "test_utils.h"
+
+// Convert stb-loaded RGB/RGBA image to YUV420 planar YUVData
+static YUVData rgb_to_yuv420(const uint8_t* rgb, int w, int h, int channels) {
+    YUVData yuv;
+    yuv.width  = w;
+    yuv.height = h;
+    yuv.y_size  = (size_t)(w * h);
+    yuv.uv_size = (size_t)((w / 2) * (h / 2));
+
+    auto yp = std::unique_ptr<uint8_t[]>(new uint8_t[yuv.y_size]);
+    auto up = std::unique_ptr<uint8_t[]>(new uint8_t[yuv.uv_size]);
+    auto vp = std::unique_ptr<uint8_t[]>(new uint8_t[yuv.uv_size]);
+
+    // Y plane
+    for (int row = 0; row < h; ++row) {
+        for (int col = 0; col < w; ++col) {
+            int idx = (row * w + col) * channels;
+            int r = rgb[idx], g = rgb[idx+1], b = rgb[idx+2];
+            yp[row * w + col] = (uint8_t)((66*r + 129*g + 25*b + 128) / 256 + 16);
+        }
+    }
+    // U/V planes (2x2 subsampled)
+    for (int row = 0; row < h/2; ++row) {
+        for (int col = 0; col < w/2; ++col) {
+            int idx = (row*2 * w + col*2) * channels;
+            int r = rgb[idx], g = rgb[idx+1], b = rgb[idx+2];
+            up[row * (w/2) + col] = (uint8_t)((-38*r - 74*g + 112*b + 128) / 256 + 128);
+            vp[row * (w/2) + col] = (uint8_t)((112*r - 94*g - 18*b + 128) / 256 + 128);
+        }
+    }
+
+    yuv.y = std::move(yp);
+    yuv.u = std::move(up);
+    yuv.v = std::move(vp);
+    return yuv;
+}
 
 static std::atomic<bool> whisper_done{false};
 static std::atomic<bool> llama_done{false};
@@ -70,6 +110,7 @@ int main(int argc, char* argv[]) {
     const char* mmproj_path = nullptr;
     const char* piper_model = nullptr;
     const char* espeak_data = nullptr;
+    const char* image_path = nullptr;
     bool test_tts = false, test_whisper = false, test_llama = false;
 
     for (int i = 1; i < argc; ++i) {
@@ -80,6 +121,7 @@ int main(int argc, char* argv[]) {
         else if (arg.find("--mmproj_path=") == 0) mmproj_path = argv[i] + 14;
         else if (arg.find("--piper_model=") == 0) piper_model = argv[i] + 14;
         else if (arg.find("--espeak_data=") == 0) espeak_data = argv[i] + 14;
+        else if (arg.find("--image=") == 0) image_path = argv[i] + 8;
         else if (arg == "--tts") test_tts = true;
         else if (arg == "--whisper") test_whisper = true;
         else if (arg == "--llama") test_llama = true;
@@ -88,7 +130,7 @@ int main(int argc, char* argv[]) {
             fprintf(stderr,
                 "Usage: %s --server=PATH [--whisper_model=PATH] [--llama_model=PATH]\n"
                 "  [--mmproj_path=PATH] [--piper_model=PATH] [--espeak_data=PATH]\n"
-                "  [--tts] [--whisper] [--llama] [--all]\n", argv[0]);
+                "  [--image=PATH] [--tts] [--whisper] [--llama] [--all]\n", argv[0]);
             return 0;
         }
     }
@@ -218,15 +260,63 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "[test] Waiting for Llama model to load (may take 60s+ for large multimodal models)...\n");
             std::this_thread::sleep_for(std::chrono::seconds(60));
 
-            llama_full_response.clear(); llama_done = false;
-            fprintf(stderr, "[test] Llama prompt: What is your name?\n");
-            llama.askLlama("What is your name?");
+            // --- Image recognition (if image path provided or default test/512.png exists) ---
+            const char* img = image_path ? image_path : "test/512.png";
+            int img_w = 0, img_h = 0, img_ch = 0;
+            uint8_t* img_data = stbi_load(img, &img_w, &img_h, &img_ch, 3);
+            if (img_data && img_w > 0 && img_h > 0) {
+                fprintf(stderr, "\n=== Llama: Image recognition (%dx%d) ===\n", img_w, img_h);
+                YUVData yuv = rgb_to_yuv420(img_data, img_w, img_h, 3);
+                stbi_image_free(img_data);
+                llama.receiveVideoFrame(yuv);
 
-            if (wait_for(llama_done, 120)) {
-                fprintf(stderr, "[test] Llama PASSED: '%s'\n", llama_full_response.c_str());
+                llama_full_response.clear(); llama_done = false;
+                const char* image_prompt = "Describe this image in detail.";
+                fprintf(stderr, "[test] Llama image prompt: %s\n", image_prompt);
+                llama.askLlama(image_prompt);
+
+                if (wait_for(llama_done, 120)) {
+                    fprintf(stderr, "[test] Llama image description PASSED: '%s'\n",
+                            llama_full_response.c_str());
+
+                    // Synthesize the image description via TTS
+                    if (test_tts && !llama_full_response.empty()) {
+                        fprintf(stderr, "\n=== TTS: Synthesizing Llama image description ===\n");
+                        WhillatsTTSClient tts_llama(conn);
+                        if (tts_llama.start()) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                            tts_audio.clear(); tts_done = false;
+                            tts_llama.queueText(llama_full_response.c_str(), "en");
+                            if (wait_for(tts_done, 60)) {
+                                writeWavFile("llama_image_description.wav", tts_audio, 16000);
+                                fprintf(stderr, "[test] TTS image description PASSED (%zu samples) -> llama_image_description.wav\n",
+                                        tts_audio.size());
+                            } else {
+                                fprintf(stderr, "[test] TTS image description FAILED (timeout)\n");
+                                result = 1;
+                            }
+                            tts_llama.stop();
+                        }
+                    }
+                } else {
+                    fprintf(stderr, "[test] Llama image recognition FAILED (timeout)\n");
+                    result = 1;
+                }
             } else {
-                fprintf(stderr, "[test] Llama FAILED (timeout)\n");
-                result = 1;
+                if (img_data) stbi_image_free(img_data);
+                fprintf(stderr, "[test] Image not loaded (%s) — falling back to text prompt\n", img);
+
+                // --- Text-only Llama test ---
+                llama_full_response.clear(); llama_done = false;
+                fprintf(stderr, "[test] Llama prompt: What is your name?\n");
+                llama.askLlama("What is your name?");
+
+                if (wait_for(llama_done, 120)) {
+                    fprintf(stderr, "[test] Llama PASSED: '%s'\n", llama_full_response.c_str());
+                } else {
+                    fprintf(stderr, "[test] Llama FAILED (timeout)\n");
+                    result = 1;
+                }
             }
 
             llama.stop();

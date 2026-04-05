@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstring>
 
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 TalkingFace::TalkingFace() = default;
