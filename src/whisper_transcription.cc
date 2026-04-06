@@ -136,10 +136,11 @@ bool WhisperTranscriber::responseValidate(std::string& token_str) {
     }
 
     // Filter out garbage/noise tokens: require at least 2 "real" characters
-    // that are alphabetic, Cyrillic, or common punctuation
+    // that are alphabetic ASCII or the start of a multi-byte UTF-8 sequence.
+    // Count code points, not bytes: continuation bytes (0x80-0xBF) are skipped.
     int real_chars = 0;
     for (unsigned char c : token_spaces_check) {
-        if (std::isalpha(c) || c >= 0x80) {
+        if (std::isalpha(c) || c >= 0xC0) {
             real_chars++;
         }
     }
