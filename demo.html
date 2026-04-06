@@ -233,7 +233,7 @@
                                         class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
                                     <i class="fas fa-phone-slash mr-2"></i>Hang Up
                                 </button>
-                                <button id="btnToggleVideo" onclick="toggleVideo()"
+                                <button id="btnToggleVideo" onclick="toggleVideo()" style="display:none"
                                         class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition" title="Video off — AI cannot see you">
                                     <i class="fas fa-video-slash mr-2"></i>Video Off
                                 </button>
@@ -749,6 +749,7 @@
                 document.getElementById('speechDot').classList.replace('bg-gray-300', 'bg-green-500');
                 document.getElementById('speechStatus').textContent = 'Connected to AI';
                 document.getElementById('audioStatus').textContent = 'Connected';
+                document.getElementById('btnToggleVideo').style.display = 'inline-block';
                 document.getElementById('audioStatus').classList.replace('text-gray-500', 'text-green-600');
                 lastSpeechTime = Date.now();
                 if (!silenceTimer) {
@@ -845,8 +846,10 @@
             btn.classList.replace('bg-gray-600', 'bg-green-600');
             btn.classList.replace('hover:bg-gray-700', 'hover:bg-green-700');
             btn.title = 'Video on — AI can see you';
-            if (localStream) {
-                pip.srcObject = localStream;
+            if (localStream && localStream.getVideoTracks().length > 0) {
+                // PIP needs only the video track (avoids echo from audio)
+                const pipStream = new MediaStream(localStream.getVideoTracks());
+                pip.srcObject = pipStream;
                 pip.style.display = 'block';
             }
         } else {
@@ -859,13 +862,40 @@
         }
     }
 
-    function toggleVideo() {
+    async function toggleVideo() {
         videoEnabled = !videoEnabled;
-        setVideoButtonState(videoEnabled);
-        // If already in a call, enable/disable the video track live
-        if (localStream) {
-            localStream.getVideoTracks().forEach(t => { t.enabled = videoEnabled; });
+        if (videoEnabled) {
+            // Request camera if not already have a video track
+            const existingVideo = localStream ? localStream.getVideoTracks() : [];
+            if (existingVideo.length === 0) {
+                try {
+                    const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    const videoTrack = camStream.getVideoTracks()[0];
+                    if (localStream) {
+                        localStream.addTrack(videoTrack);
+                    } else {
+                        localStream = camStream;
+                    }
+                    // Add track to peer connection if in a call
+                    if (pc) {
+                        pc.addTrack(videoTrack, localStream);
+                    }
+                } catch (e) {
+                    log('Camera error: ' + e.message);
+                    videoEnabled = false;
+                    setVideoButtonState(false);
+                    return;
+                }
+            } else {
+                existingVideo.forEach(t => { t.enabled = true; });
+            }
+        } else {
+            // Disable video tracks (keep them so they can be re-enabled)
+            if (localStream) {
+                localStream.getVideoTracks().forEach(t => { t.enabled = false; });
+            }
         }
+        setVideoButtonState(videoEnabled);
     }
 
     async function toggleMedia() {
@@ -889,7 +919,10 @@
             log('Using room: ' + ROOM + ' target: ' + TARGET);
             document.getElementById('audioStatus').textContent = 'Requesting media...';
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+                    video: videoEnabled
+                });
                 initOutMeter(localStream);
                 if (videoEnabled) setVideoButtonState(true); // wire PIP
             } catch (micErr) {
@@ -947,6 +980,7 @@
         // Reset video to off
         videoEnabled = false;
         setVideoButtonState(false);
+        document.getElementById('btnToggleVideo').style.display = 'none';
         document.getElementById('noVideoMsg').innerHTML =
             '<div class="text-center"><i class="fas fa-robot text-4xl mb-2 text-gray-400"></i><p class="text-gray-400">Click Call AI to connect</p></div>';
         document.getElementById('audioStatus').textContent = 'Idle';

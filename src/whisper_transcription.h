@@ -87,8 +87,8 @@ private:
     float kVADThreshold = 0.75;
     int _nThreads = 0; // 0 = auto
 
-    static const size_t kMinPhraseSamples = 80000;  // 5s at 16kHz — enough for language detection
-    static const size_t kMaxPhraseSamples = 160000; // 10s at 16kHz
+    static const size_t kMinPhraseSamples = 32000;  // 2s at 16kHz — VAD trigger threshold
+    static const size_t kMaxPhraseSamples = 160000; // 10s at 16kHz — max context for language detection
 
     static const size_t kRingBufferSizeIncrement = 60 * WHISPER_SAMPLE_RATE; 
 

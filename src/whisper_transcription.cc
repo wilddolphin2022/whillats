@@ -383,16 +383,19 @@ void WhisperTranscriber::stop() {
 }
 
 bool WhisperTranscriber::RunProcessingThread() {
-    std::vector<float> chunk(kMinPhraseSamples);
-    while (_running) {  // Add a stop condition if needed
-        if (_audioBuffer->availableToRead() >= kMinPhraseSamples) {
-            _audioBuffer->read(chunk.data(), kMinPhraseSamples);
-            if (kDebug) {LOG_V("Read chunk size: " << kMinPhraseSamples << " samples. Buffer remaining: " << _audioBuffer->availableToRead());}
+    while (_running) {
+        size_t available = _audioBuffer->availableToRead();
+        if (available >= kMinPhraseSamples) {
+            // Read up to kMaxPhraseSamples to give language detection more context
+            size_t toRead = std::min(available, kMaxPhraseSamples);
+            std::vector<float> chunk(toRead);
+            _audioBuffer->read(chunk.data(), toRead);
+            if (kDebug) {LOG_V("Read chunk size: " << toRead << " samples. Buffer remaining: " << _audioBuffer->availableToRead());}
             if (vad_simple(chunk, WHISPER_SAMPLE_RATE, 600, kVADThreshold, 50.0f, true)) {
                 TranscribeAudioNonBlocking(chunk);
             }
         } else {
-            if (kDebug) {LOG_V("Not enough samples: " << _audioBuffer->availableToRead() << " < " << kMinPhraseSamples);}
+            if (kDebug) {LOG_V("Not enough samples: " << available << " < " << kMinPhraseSamples);}
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
