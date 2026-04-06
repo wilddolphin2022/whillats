@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTCsays.ai Demo | Wilddolphin LLC</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #0066cc 0%, #003366 100%);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .pulse-ring {
+            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 1; }
+            80%, 100% { transform: scale(1.4); opacity: 0; }
+        }
+        .wave-animation {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            height: 24px;
+        }
+        .wave-bar {
+            width: 3px;
+            background: #3b82f6;
+            border-radius: 2px;
+            animation: wave 1s ease-in-out infinite;
+        }
+        .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+        .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+        .wave-bar:nth-child(4) { animation-delay: 0.3s; }
+        .wave-bar:nth-child(5) { animation-delay: 0.4s; }
+        @keyframes wave {
+            0%, 100% { height: 6px; }
+            50% { height: 20px; }
+        }
+        #videoPreview {
+            border-radius: 12px;
+        }
+                .meter-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 8px;
+            width: 100%;
+        }
+        .meter-label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #6b7280;
+            width: 30px;
+            text-align: right;
+        }
+        .meter-bar-bg {
+            flex-grow: 1;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .meter-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(to right, #10b981 0%, #84cc16 55%, #facc15 80%, #ef4444 100%);
+            transition: width 70ms linear;
+        }
+        .arch-node {
+            transition: all 0.3s ease;
+        }
+        .arch-node:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        .transcript-box {
+            max-height: 200px;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+        .feature-card {
+            transition: transform 0.3s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body class="font-sans flex flex-col min-h-screen bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-lg fixed w-full z-50">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <a href="/" class="flex items-center space-x-3">
+                        <i class="fas fa-water text-blue-600 text-3xl"></i>
+                        <span class="font-bold text-xl text-gray-800">Wilddolphin LLC</span>
+                    </a>
+                </div>
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="/" class="text-gray-800 hover:text-blue-600">Home</a>
+                    <a href="/projects-page.html" class="text-gray-800 hover:text-blue-600">Projects</a>
+                    <a href="/services-page.html" class="text-gray-800 hover:text-blue-600">Services</a>
+                    <a href="/about-page.html" class="text-gray-800 hover:text-blue-600">About</a>
+                    <a href="/support-page.html" class="text-gray-800 hover:text-blue-600">Support</a>
+                    <a href="/contact-page.html" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Contact</a>
+                </div>
+                <div class="md:hidden flex items-center">
+                    <button class="text-gray-800 hover:text-blue-600 focus:outline-none">
+                        <i class="fas fa-bars text-2xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow pt-16">
+        <!-- Hero -->
+        <section class="gradient-bg text-white py-20">
+            <div class="max-w-7xl mx-auto px-4 text-center">
+                <h1 class="text-5xl font-bold mb-4">WebRTCsays.ai</h1>
+                <p class="text-xl text-blue-100 mb-2">WebRTC with an AI Core</p>
+                <p class="text-lg text-blue-200 max-w-2xl mx-auto mb-8">
+                    Real-time peer-to-peer communication powered by Whisper speech-to-text
+                    and Qwen3.5 language model, running natively with end-to-end encryption.
+                </p>
+                <div class="flex justify-center space-x-4">
+                    <a href="https://github.com/wilddolphin2025/webrtcsays.ai" target="_blank"
+                       class="bg-white text-blue-700 px-6 py-3 rounded-lg font-semibold hover:bg-blue-50 transition">
+                        <i class="fab fa-github mr-2"></i>Source Code
+                    </a>
+                    <a href="#demo"
+                       class="border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-700 transition">
+                        <i class="fas fa-play mr-2"></i>Try Demo
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture -->
+        <section class="py-16 bg-white">
+            <div class="max-w-6xl mx-auto px-4">
+                <h2 class="text-3xl font-bold text-center mb-4">How It Works</h2>
+                <p class="text-gray-600 text-center mb-12 max-w-2xl mx-auto">
+                    Audio from a remote WebRTC peer flows through a real-time AI pipeline:
+                    speech recognition, language understanding, and synthesised voice response.
+                </p>
+                <div class="flex flex-col md:flex-row items-center justify-center gap-4">
+                    <div class="arch-node bg-blue-50 border-2 border-blue-200 rounded-xl p-6 text-center w-48">
+                        <i class="fas fa-microphone text-3xl text-blue-600 mb-2"></i>
+                        <div class="font-semibold text-gray-800">Remote Audio</div>
+                        <div class="text-sm text-gray-500">WebRTC Playout</div>
+                    </div>
+                    <i class="fas fa-arrow-right text-2xl text-gray-300 hidden md:block"></i>
+                    <i class="fas fa-arrow-down text-2xl text-gray-300 md:hidden"></i>
+                    <div class="arch-node bg-green-50 border-2 border-green-200 rounded-xl p-6 text-center w-48">
+                        <i class="fas fa-brain text-3xl text-green-600 mb-2"></i>
+                        <div class="font-semibold text-gray-800">Whisper STT</div>
+                        <div class="text-sm text-gray-500">Speech to Text</div>
+                    </div>
+                    <i class="fas fa-arrow-right text-2xl text-gray-300 hidden md:block"></i>
+                    <i class="fas fa-arrow-down text-2xl text-gray-300 md:hidden"></i>
+                    <div class="arch-node bg-purple-50 border-2 border-purple-200 rounded-xl p-6 text-center w-48">
+                        <i class="fas fa-robot text-3xl text-purple-600 mb-2"></i>
+                        <div class="font-semibold text-gray-800">Qwen3.5 LLM</div>
+                        <div class="text-sm text-gray-500">Language Model</div>
+                    </div>
+                    <i class="fas fa-arrow-right text-2xl text-gray-300 hidden md:block"></i>
+                    <i class="fas fa-arrow-down text-2xl text-gray-300 md:hidden"></i>
+                    <div class="arch-node bg-orange-50 border-2 border-orange-200 rounded-xl p-6 text-center w-48">
+                        <i class="fas fa-volume-up text-3xl text-orange-600 mb-2"></i>
+                        <div class="font-semibold text-gray-800">TTS Response</div>
+                        <div class="text-sm text-gray-500">Back to Peer</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Demo -->
+        <section id="demo" class="py-16 bg-gray-50">
+            <div class="max-w-6xl mx-auto px-4">
+                <h2 class="text-3xl font-bold text-center mb-4">Live Browser Demo</h2>
+                <p class="text-gray-600 text-center mb-12 max-w-2xl mx-auto">
+                    Test your camera, microphone, and server-side Whisper speech recognition.
+                    The native WebRTCsays.ai application uses whisper.cpp for higher
+                    accuracy and runs entirely on-device.
+                </p>
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    <!-- Video Preview -->
+                    <div class="glass-card rounded-2xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">
+                            <i class="fas fa-video text-blue-600 mr-2"></i>Camera &amp; Mic
+                        </h3>
+                        <div class="bg-gray-900 rounded-xl overflow-hidden mb-4 relative" style="aspect-ratio: 1/1; max-width: 512px;">
+                            <video id="videoPreview" autoplay playsinline class="w-full h-full" style="object-fit: cover;"></video>
+                            <div id="noVideoMsg" class="absolute inset-0 flex items-center justify-center text-white">
+                                <div class="text-center">
+                                    <i class="fas fa-video-slash text-4xl mb-2 text-gray-400"></i>
+                                    <p class="text-gray-400">Click Call AI to start talking-face session</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <div class="meter-container" title="Your microphone level">
+                                <div class="meter-label">You</div>
+                                <div class="meter-bar-bg"><div id="meterOut" class="meter-fill"></div></div>
+                            </div>
+                            <div class="meter-container" title="AI audio level">
+                                <div class="meter-label">AI</div>
+                                <div class="meter-bar-bg"><div id="meterIn" class="meter-fill"></div></div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex space-x-2">
+                                <button id="btnStartMedia" onclick="toggleMedia()"
+                                        class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+                                    <i class="fas fa-phone mr-2"></i>Call AI
+                                </button>
+                                <button id="btnHangup" onclick="disconnect()" disabled
+                                        class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <i class="fas fa-phone-slash mr-2"></i>Hang Up
+                                </button>
+                                <button id="btnToggleVideo" onclick="toggleVideo()"
+                                        class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition" title="Video off — AI cannot see you">
+                                    <i class="fas fa-video-slash mr-2"></i>Video Off
+                                </button>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <div id="speechDot" class="w-3 h-3 rounded-full bg-gray-300"></div>
+                                <span id="audioStatus" class="text-sm text-gray-500">Idle</span>
+                            </div>
+                        </div>
+                        <audio id="remoteAudio" autoplay controls class="w-full mt-3"></audio>
+                    </div>
+
+                    <!-- Speech Recognition -->
+                    <div class="glass-card rounded-2xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">
+                            <i class="fas fa-language text-green-600 mr-2"></i>Speech Recognition
+                        </h3>
+                        <div class="transcript-box bg-gray-50 rounded-xl p-4 mb-4 min-h-[200px] border border-gray-200">
+                            <div id="transcript" class="text-sm leading-relaxed space-y-2">
+                                <div class="text-gray-400 italic text-center" id="transcriptPlaceholder">Conversation will appear here...</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <button id="btnClearLog" onclick="clearTranscript()"
+                                    class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition text-sm font-semibold">
+                                <i class="fas fa-broom mr-1"></i>Clear Log
+                            </button>
+                            <div class="flex items-center space-x-2">
+                                <span id="speechStatus" class="text-sm text-gray-500">Ready</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-3">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Live conversation transcript from server-side Whisper.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8 mt-8">
+                    <!-- Session Info -->
+                    <div class="glass-card rounded-2xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">
+                            <i class="fas fa-chart-bar text-purple-600 mr-2"></i>Session Info
+                        </h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-gray-50 rounded-lg p-3">
+                                <div class="text-xs text-gray-500 uppercase">ICE State</div>
+                                <div id="statFps" class="text-sm font-bold text-gray-800">--</div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3">
+                                <div class="text-xs text-gray-500 uppercase">Resolution</div>
+                                <div id="statResolution" class="text-sm font-bold text-gray-800">--</div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3">
+                                <div class="text-xs text-gray-500 uppercase">Audio RTP</div>
+                                <div id="statSampleRate" class="text-sm font-bold text-gray-800">--</div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3">
+                                <div class="text-xs text-gray-500 uppercase">Words</div>
+                                <div id="statWordCount" class="text-sm font-bold text-gray-800">0</div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3 col-span-2">
+                                <div class="text-xs text-gray-500 uppercase">Room</div>
+                                <div id="statRoom" class="text-sm font-mono text-gray-800 select-all">--</div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3 col-span-2">
+                                <div class="text-xs text-gray-500 uppercase">TURN Server</div>
+                                <div class="text-sm font-mono text-gray-800 select-all">turn.wilddolphin.us:3478</div>
+                            </div>
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 col-span-2">
+                                <div class="text-xs text-yellow-700"><i class="fas fa-microchip mr-1"></i>CPU-only demo — AI responses may take 5-15 seconds. GPU acceleration available for production deployments.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Protocol Log -->
+                    <div class="glass-card rounded-2xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">
+                            <i class="fas fa-terminal text-gray-600 mr-2"></i>Protocol Log
+                        </h3>
+                        <pre id="protocolLog" class="bg-gray-900 text-green-400 rounded-xl p-4 text-xs font-mono overflow-y-auto select-all" style="max-height: 200px; min-height: 150px;"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section class="py-16 bg-white">
+            <div class="max-w-6xl mx-auto px-4">
+                <h2 class="text-3xl font-bold text-center mb-12">Key Features</h2>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-lock text-2xl text-blue-600"></i>
+                        </div>
+                        <h3 class="text-lg font-bold mb-2">End-to-End Encryption</h3>
+                        <p class="text-gray-600 text-sm">All communication is encrypted with TLS certificates. AI processing happens entirely on-device.</p>
+                    </div>
+                    <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-microchip text-2xl text-green-600"></i>
+                        </div>
+                        <h3 class="text-lg font-bold mb-2">On-Device AI</h3>
+                        <p class="text-gray-600 text-sm">Whisper and Qwen3.5 9B run locally via llama.cpp with Metal/CUDA acceleration. No cloud needed.</p>
+                    </div>
+                    <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                        <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-globe text-2xl text-purple-600"></i>
+                        </div>
+                        <h3 class="text-lg font-bold mb-2">Cross-Platform</h3>
+                        <p class="text-gray-600 text-sm">Builds on Linux (x86_64, ARM64) and macOS (Apple Silicon). iOS framework also available.</p>
+                    </div>
+                    <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                        <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-comments text-2xl text-orange-600"></i>
+                        </div>
+                        <h3 class="text-lg font-bold mb-2">Multi-Language</h3>
+                        <p class="text-gray-600 text-sm">Whisper supports 99+ languages with automatic detection. Qwen3.5 handles multilingual conversations.</p>
+                    </div>
+                    <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-eye text-2xl text-red-600"></i>
+                        </div>
+                        <h3 class="text-lg font-bold mb-2">Vision Support</h3>
+                        <p class="text-gray-600 text-sm">Optional multimodal vision via LLaVA/mtmd allows the AI to see and describe video frames in real-time.</p>
+                    </div>
+                    <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                        <div class="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-code-branch text-2xl text-indigo-600"></i>
+                        </div>
+                        <h3 class="text-lg font-bold mb-2">Open Source</h3>
+                        <p class="text-gray-600 text-sm">BSD-3-Clause licensed. Fork of the official WebRTC project with AI capabilities added on top.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quick Start -->
+        <section class="py-16 bg-gray-50">
+            <div class="max-w-4xl mx-auto px-4">
+                <h2 class="text-3xl font-bold text-center mb-8">Quick Start</h2>
+                <div class="bg-gray-900 rounded-xl p-6 text-green-400 font-mono text-sm overflow-x-auto">
+                    <div class="text-gray-500 mb-2"># Clone and build</div>
+                    <div>git clone https://github.com/wilddolphin2025/webrtcsays.ai</div>
+                    <div>cd webrtcsays.ai && git checkout develop</div>
+                    <div>./build.sh release whillats</div>
+                    <div class="mt-4 text-gray-500"># Run with Qwen3.5 9B (text-only mode)</div>
+                    <div>src/out/release/directcall \</div>
+                    <div class="pl-4">--mode=callee 0.0.0.0:3456 \</div>
+                    <div class="pl-4">--whisper --llama \</div>
+                    <div class="pl-4">--whisper_model=~/models/ggml-small.bin \</div>
+                    <div class="pl-4">--llama_model=~/models/Qwen3.5-9B-Q3_K_M.gguf \</div>
+                    <div class="pl-4">--encryption</div>
+                </div>
+                <div class="text-center mt-6">
+                    <a href="https://github.com/wilddolphin2025/webrtcsays.ai" target="_blank"
+                       class="inline-block bg-gray-900 text-white px-8 py-3 rounded-lg hover:bg-gray-800 transition text-lg">
+                        <i class="fab fa-github mr-2"></i>View Full Documentation
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div>
+                <div class="flex items-center space-x-3 mb-4">
+                    <i class="fas fa-water text-blue-400 text-2xl"></i>
+                    <span class="font-bold text-xl">Wilddolphin LLC</span>
+                </div>
+                <p class="text-gray-400">Innovative software solutions, AI integrations, and custom development.</p>
+            </div>
+            <div>
+                <h4 class="font-bold mb-4">Projects</h4>
+                <ul class="space-y-2 text-gray-400">
+                    <li><a href="/projects-page.html#webrtc" class="hover:text-white">WebRTCsays.ai</a></li>
+                    <li><a href="/projects-page.html#ios" class="hover:text-white">AI Voice Transcription iOS App</a></li>
+                    <li><a href="/projects-page.html#android" class="hover:text-white">AI Voice Transcription Android App</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-bold mb-4">Company</h4>
+                <ul class="space-y-2 text-gray-400">
+                    <li><a href="/about-page.html" class="hover:text-white">About Us</a></li>
+                    <li><a href="/services-page.html" class="hover:text-white">Services</a></li>
+                    <li><a href="/contact-page.html" class="hover:text-white">Contact</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-bold mb-4">Legal & Support</h4>
+                <ul class="space-y-2 text-gray-400">
+                    <li><a href="/privacy-page.html" class="hover:text-white">Privacy Policy</a></li>
+                    <li><a href="/terms-page.html" class="hover:text-white">Terms of Service</a></li>
+                    <li><a href="/support-page.html" class="hover:text-white">App Support</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="max-w-7xl mx-auto px-4 mt-8 pt-8 border-t border-gray-800 text-center text-gray-400">
+            <p>&copy; 2026 Wilddolphin LLC. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+    const ROOM = new URLSearchParams(window.location.search).get('room') || 'room101';
+    const TARGET = 'Slim';
+    const DEFAULT_WS_ENDPOINTS = [
+        'wss://rtc.wilddolphin.us/ws',
+        'wss://rtc.wilddolphin.us:3457'
+    ];
+    const queryWs = new URLSearchParams(window.location.search).get('ws');
+    const WS_ENDPOINTS = queryWs ? [queryWs] : DEFAULT_WS_ENDPOINTS;
+    const ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'turn:turn.wilddolphin.us:3478?transport=udp', username: 'webrtcsays.ai', credential: 'wilddolphin' },
+        { urls: 'turn:turn.wilddolphin.us:5349?transport=tcp', username: 'webrtcsays.ai', credential: 'wilddolphin' }
+    ];
+
+    let ws = null;
+    let pc = null;
+    let localStream = null;
+    let remoteStream = null;
+    let isConnected = false;
+    let waitingSeen = false;
+    let inviteSent = false;
+    let callTimeout = null;
+    let statsTimer = null;
+    let audioKickTimer = null;
+    let silenceTimer = null;
+    let pendingRemoteCandidates = [];
+    let lastSpeechTime = 0;
+    let videoEnabled = false;
+
+    let audioCtx = null;
+    let meterRaf = 0;
+    let outSource = null, inSource = null;
+    let outAnalyser = null, inAnalyser = null;
+    let outData = null, inData = null;
+
+    function log(msg) {
+        console.log(new Date().toLocaleTimeString() + ' ' + msg);
+        const ts = new Date().toLocaleTimeString();
+        const logEl = document.getElementById('protocolLog');
+        if (logEl) {
+            logEl.textContent += ts + ' ' + msg + '\n';
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    }
+
+    function clearTranscript() {
+        document.getElementById('transcript').innerHTML =
+            '<div class="text-gray-400 italic text-center" id="transcriptPlaceholder">Conversation will appear here...</div>';
+    }
+
+    function addChatBubble(sender, text) {
+        const el = document.getElementById('transcript');
+        const placeholder = document.getElementById('transcriptPlaceholder');
+        if (placeholder) placeholder.style.display = 'none';
+        const isAI = sender === 'AI';
+        const bubbleClass = isAI ? 'bg-blue-100 text-blue-900 border-blue-200' : 'bg-green-100 text-green-900 border-green-200';
+        const alignClass = isAI ? 'text-left' : 'text-right';
+        const icon = isAI ? '<i class="fas fa-robot mr-1"></i>' : '<i class="fas fa-user mr-1"></i>';
+        const html = `
+            <div class="${alignClass} mb-2">
+                <div class="inline-block max-w-[85%] text-left border rounded-lg px-3 py-2 ${bubbleClass}">
+                    <div class="text-xs font-bold mb-1 opacity-75">${icon} ${sender}</div>
+                    <div>${text}</div>
+                </div>
+            </div>`;
+        el.innerHTML += html;
+        el.parentElement.scrollTop = el.parentElement.scrollHeight;
+    }
+
+    const meterOutEl = () => document.getElementById('meterOut');
+    const meterInEl = () => document.getElementById('meterIn');
+
+    function stopMeters() {
+        if (meterRaf) cancelAnimationFrame(meterRaf);
+        meterRaf = 0;
+        if (outSource) { try { outSource.disconnect(); } catch (_) {} outSource = null; }
+        if (inSource) { try { inSource.disconnect(); } catch (_) {} inSource = null; }
+        outAnalyser = null; inAnalyser = null; outData = null; inData = null;
+        meterOutEl().style.width = '0%';
+        meterInEl().style.width = '0%';
+    }
+
+    function levelPercent(analyser, data) {
+        if (!analyser || !data) return 0;
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        return Math.round(Math.min(1, rms * 3.0) * 100);
+    }
+
+    function animateMeters() {
+        meterOutEl().style.width = levelPercent(outAnalyser, outData) + '%';
+        meterInEl().style.width = levelPercent(inAnalyser, inData) + '%';
+        meterRaf = requestAnimationFrame(animateMeters);
+    }
+
+    async function ensureAudioCtx() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') {
+            try { await audioCtx.resume(); } catch (_) {}
+        }
+    }
+
+    async function initOutMeter(stream) {
+        if (!stream) return;
+        await ensureAudioCtx();
+        if (outSource) { try { outSource.disconnect(); } catch (_) {} }
+        outAnalyser = audioCtx.createAnalyser();
+        outAnalyser.fftSize = 512;
+        outData = new Uint8Array(outAnalyser.fftSize);
+        outSource = audioCtx.createMediaStreamSource(stream);
+        outSource.connect(outAnalyser);
+        if (!meterRaf) meterRaf = requestAnimationFrame(animateMeters);
+    }
+
+    async function initInMeter(stream) {
+        if (!stream) return;
+        await ensureAudioCtx();
+        if (inSource) { try { inSource.disconnect(); } catch (_) {} }
+        inAnalyser = audioCtx.createAnalyser();
+        inAnalyser.fftSize = 512;
+        inData = new Uint8Array(inAnalyser.fftSize);
+        inSource = audioCtx.createMediaStreamSource(stream);
+        inSource.connect(inAnalyser);
+        if (!meterRaf) meterRaf = requestAnimationFrame(animateMeters);
+    }
+
+    function cleanIncoming(raw) {
+        return raw.replace(/^[\u0000-\u001f]+/, '');
+    }
+
+    function resetTimeout() {
+        if (callTimeout) clearTimeout(callTimeout);
+        callTimeout = setTimeout(() => {
+            log('call setup timeout (no auto-cancel)');
+        }, 120000);
+    }
+
+    function stopTimeout() {
+        if (callTimeout) {
+            clearTimeout(callTimeout);
+            callTimeout = null;
+        }
+    }
+
+    function toLegacySdp(sdp) {
+        const lines = sdp.split(/\r\n|\n/).filter(Boolean);
+        const allowAudio = new Set(['opus', 'pcmu', 'pcma', 'g722', 'isac', 'telephone-event']);
+        const allowVideo = new Set(['vp8', 'vp9', 'h264', 'av1']);
+        const keepPt = new Set();
+        let media = '';
+
+        for (const line of lines) {
+            if (line.startsWith('m=audio ')) media = 'audio';
+            else if (line.startsWith('m=video ')) media = 'video';
+            else if (line.startsWith('m=')) media = '';
+            if (line.startsWith('a=rtpmap:')) {
+                const m = line.match(/^a=rtpmap:(\d+)\s+([^/]+)/i);
+                if (!m) continue;
+                const pt = m[1];
+                const codec = m[2].toLowerCase();
+                if ((media === 'audio' && allowAudio.has(codec)) || (media === 'video' && allowVideo.has(codec))) {
+                    keepPt.add(pt);
+                }
+            }
+        }
+
+        const out = [];
+        for (const line of lines) {
+            if (/ulpfec|flexfec|rtx|red/i.test(line)) continue;
+            if (line.startsWith('m=audio ') || line.startsWith('m=video ')) {
+                const parts = line.split(' ');
+                const pts = parts.slice(3).filter((pt) => keepPt.has(pt));
+                out.push(pts.length ? [...parts.slice(0, 3), ...pts].join(' ') : line);
+                continue;
+            }
+            if (line.startsWith('a=rtpmap:') || line.startsWith('a=fmtp:') || line.startsWith('a=rtcp-fb:')) {
+                const m = line.match(/^a=(?:rtpmap|fmtp|rtcp-fb):(\d+)/i);
+                if (m && !keepPt.has(m[1])) continue;
+            }
+            out.push(line);
+        }
+        return out.join('\r\n') + '\r\n';
+    }
+
+    function wsSendText(text) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(text);
+            log('>> ' + text.slice(0, 160));
+        }
+    }
+
+    async function connectWsWithFallback() {
+        let lastError = null;
+        for (const endpoint of WS_ENDPOINTS) {
+            try {
+                log('Trying signaling endpoint: ' + endpoint);
+                const sock = new WebSocket(endpoint);
+                await new Promise((resolve, reject) => {
+                    const timer = setTimeout(() => reject(new Error('timeout')), 5000);
+                    sock.onopen = () => { clearTimeout(timer); resolve(); };
+                    sock.onerror = () => { clearTimeout(timer); reject(new Error('error')); };
+                });
+                log('Connected signaling endpoint: ' + endpoint);
+                return sock;
+            } catch (e) {
+                lastError = e;
+            }
+        }
+        throw new Error('Unable to connect any signaling endpoint: ' + (lastError ? lastError.message : 'unknown'));
+    }
+
+    function startStats() {
+        if (statsTimer) clearInterval(statsTimer);
+        if (audioKickTimer) clearInterval(audioKickTimer);
+        statsTimer = setInterval(async () => {
+            if (!pc) return;
+            try {
+                const stats = await pc.getStats();
+                for (const report of stats.values()) {
+                    if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+                        document.getElementById('statSampleRate').textContent =
+                            `pkts:${report.packetsReceived} bytes:${report.bytesReceived}`;
+                        break;
+                    }
+                }
+            } catch (_) {}
+        }, 1500);
+        audioKickTimer = setInterval(() => {
+            const remoteAudio = document.getElementById('remoteAudio');
+            if (remoteAudio && remoteAudio.paused && pc && pc.connectionState === 'connected') {
+                remoteAudio.play().catch(() => {});
+            }
+        }, 2000);
+    }
+
+    function stopStats() {
+        if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+        if (audioKickTimer) { clearInterval(audioKickTimer); audioKickTimer = null; }
+    }
+
+    async function ensurePeer() {
+        if (pc) return;
+        const video = document.getElementById('videoPreview');
+        const remoteAudio = document.getElementById('remoteAudio');
+        pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        remoteStream = new MediaStream();
+        video.srcObject = remoteStream;
+        video.muted = true;
+        remoteAudio.srcObject = remoteStream;
+        remoteAudio.autoplay = true;
+        remoteAudio.controls = true;
+        remoteAudio.volume = 1.0;
+        remoteAudio.muted = false;
+
+        if (localStream) {
+            localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+        }
+
+        pc.ontrack = (ev) => {
+            log('remote track: ' + ev.track.kind);
+            if (ev.streams && ev.streams.length > 0) {
+                for (const track of ev.streams[0].getTracks()) {
+                    if (!remoteStream.getTracks().includes(track)) remoteStream.addTrack(track);
+                }
+            } else if (ev.track && !remoteStream.getTracks().includes(ev.track)) {
+                remoteStream.addTrack(ev.track);
+            }
+            if (ev.track.kind === 'audio') {
+                remoteAudio.play().catch((e) => log('Remote audio play err: ' + e.message));
+                initInMeter(remoteStream);
+                lastSpeechTime = Date.now();
+            }
+            if (ev.track.kind === 'video') {
+                document.getElementById('noVideoMsg').style.display = 'none';
+                video.play().catch((e) => log('Remote video play err: ' + e.message));
+                const checkRes = () => {
+                    if (video.videoWidth) document.getElementById('statResolution').textContent = video.videoWidth + 'x' + video.videoHeight;
+                };
+                video.onloadedmetadata = checkRes;
+                setTimeout(checkRes, 2000);
+                log('AI video received');
+            }
+        };
+
+        pc.onicecandidate = (ev) => {
+            if (!ev.candidate) return;
+            const c = ev.candidate;
+            wsSendText(`ICE:${c.sdpMLineIndex}:${c.candidate}`);
+        };
+
+        pc.onconnectionstatechange = () => {
+            document.getElementById('statFps').textContent = pc.connectionState;
+            log('pc state: ' + pc.connectionState);
+            const btn = document.getElementById('btnStartMedia');
+            const btnHangup = document.getElementById('btnHangup');
+            if (pc.connectionState === 'connected') {
+                isConnected = true;
+                stopTimeout();
+                startStats();
+                btn.style.display = 'none';
+                btnHangup.disabled = false;
+                btnHangup.classList.replace('bg-gray-400', 'bg-red-600');
+                document.getElementById('speechDot').classList.replace('bg-gray-300', 'bg-green-500');
+                document.getElementById('speechStatus').textContent = 'Connected to AI';
+                document.getElementById('audioStatus').textContent = 'Connected';
+                document.getElementById('audioStatus').classList.replace('text-gray-500', 'text-green-600');
+                lastSpeechTime = Date.now();
+                if (!silenceTimer) {
+                    silenceTimer = setInterval(() => {
+                        if (Date.now() - lastSpeechTime > 600000) {
+                            log('Auto-hangup: 10 min silence');
+                            disconnect();
+                        }
+                    }, 10000);
+                }
+            } else if (pc.connectionState === 'failed') {
+                disconnect();
+            }
+        };
+    }
+
+    async function handleSignalText(raw) {
+        const msg = cleanIncoming(String(raw || ''));
+        if (!msg) return;
+        log('<< ' + msg.slice(0, 220));
+        resetTimeout();
+
+        if (msg.startsWith('WHISPER:')) {
+            lastSpeechTime = Date.now(); // any Whisper activity = user is present
+            const cleanText = msg.replace(/^WHISPER:?\[.*?\]\s*/, '').replace(/\s+/g, ' ').trim();
+            if (cleanText) {
+                addChatBubble('You', cleanText);
+            }
+            return;
+        }
+
+        if (msg.startsWith('LLAMA')) {
+            const cleanText = msg.replace(/^LLAMA:?\[.*?\]\s*/, '').replace(/\s+/g, ' ').trim();
+            if (cleanText) {
+                addChatBubble('AI', cleanText);
+                lastSpeechTime = Date.now();
+            }
+            return;
+        }
+
+        if (msg.startsWith('486') || msg.startsWith('480') || msg.startsWith('400')) {
+            throw new Error('Call rejected: ' + msg);
+        }
+
+        if (msg.startsWith('200 OK') && !inviteSent) {
+            wsSendText(`INVITE:{"agent":"audio","room_name":"${ROOM}","video":${videoEnabled}}`);
+            inviteSent = true;
+            document.getElementById('audioStatus').textContent = 'Invite sent';
+            return;
+        }
+
+        if (msg.startsWith('WAITING')) {
+            waitingSeen = true;
+            await ensurePeer();
+            const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+            await pc.setLocalDescription(offer);
+            wsSendText(`OFFER:${offer.sdp || ''}`);
+            return;
+        }
+
+        if (msg.startsWith('ANSWER:')) {
+            await ensurePeer();
+            const sdp = msg.slice('ANSWER:'.length);
+            await pc.setRemoteDescription({ type: 'answer', sdp });
+            while (pendingRemoteCandidates.length) {
+                await pc.addIceCandidate(pendingRemoteCandidates.shift());
+            }
+            return;
+        }
+
+        if (msg.startsWith('ICE:')) {
+            await ensurePeer();
+            const payload = msg.slice('ICE:'.length);
+            const i = payload.indexOf(':');
+            if (i < 0) return;
+            const mline = Number(payload.slice(0, i));
+            const cand = payload.slice(i + 1);
+            const ice = { candidate: cand, sdpMLineIndex: Number.isFinite(mline) ? mline : 0, sdpMid: '0' };
+            if (pc.remoteDescription) await pc.addIceCandidate(ice);
+            else pendingRemoteCandidates.push(ice);
+            return;
+        }
+
+        if (msg.startsWith('BYE')) {
+            disconnect();
+        }
+    }
+
+    function toggleVideo() {
+        videoEnabled = !videoEnabled;
+        const btn = document.getElementById('btnToggleVideo');
+        if (videoEnabled) {
+            btn.innerHTML = '<i class="fas fa-video mr-2"></i>Video On';
+            btn.classList.replace('bg-gray-600', 'bg-green-600');
+            btn.classList.replace('hover:bg-gray-700', 'hover:bg-green-700');
+            btn.title = 'Video on — AI can see you';
+        } else {
+            btn.innerHTML = '<i class="fas fa-video-slash mr-2"></i>Video Off';
+            btn.classList.replace('bg-green-600', 'bg-gray-600');
+            btn.classList.replace('hover:bg-green-700', 'hover:bg-gray-700');
+            btn.title = 'Video off — AI cannot see you';
+        }
+        // If already in a call, enable/disable the video track live
+        if (localStream) {
+            localStream.getVideoTracks().forEach(t => { t.enabled = videoEnabled; });
+        }
+    }
+
+    async function toggleMedia() {
+        const btn = document.getElementById('btnStartMedia');
+        if (pc || ws) {
+            disconnect();
+            return;
+        }
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Connecting...';
+        btn.classList.replace('bg-blue-600', 'bg-gray-400');
+        await connect();
+    }
+
+    async function connect() {
+        try {
+            waitingSeen = false;
+            inviteSent = false;
+            pendingRemoteCandidates = [];
+            log('Using room: ' + ROOM + ' target: ' + TARGET);
+            document.getElementById('audioStatus').textContent = 'Requesting media...';
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
+                initOutMeter(localStream);
+            } catch (micErr) {
+                log('Media error: ' + micErr.message + ' - continuing receive-only');
+                localStream = null;
+            }
+
+            document.getElementById('noVideoMsg').innerHTML =
+                '<div class="text-center"><i class="fas fa-phone text-4xl mb-2 text-green-400"></i><p class="text-green-400">Connecting to AI...</p></div>';
+
+            ws = await connectWsWithFallback();
+            ws.onclose = () => log('WebSocket closed');
+            ws.onerror = () => log('WebSocket error');
+            ws.onmessage = async (ev) => {
+                try {
+                    await handleSignalText(ev.data);
+                } catch (e) {
+                    log('Signal handling error: ' + e.message);
+                }
+            };
+
+            resetTimeout();
+            wsSendText(`HELLO:${TARGET}`);
+            document.getElementById('audioStatus').textContent = 'Calling AI...';
+            document.getElementById('audioStatus').classList.replace('text-gray-500', 'text-green-600');
+        } catch (err) {
+            log('Error: ' + err.message);
+            document.getElementById('audioStatus').textContent = 'Error: ' + err.message;
+            disconnect();
+        }
+    }
+
+    function disconnect() {
+        stopTimeout();
+        stopStats();
+        if (silenceTimer) { clearInterval(silenceTimer); silenceTimer = null; }
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            try { wsSendText('BYE'); } catch (_) {}
+        }
+        if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+        if (pc) { pc.close(); pc = null; }
+        if (localStream) {
+            localStream.getTracks().forEach((t) => t.stop());
+            localStream = null;
+        }
+        stopMeters();
+        isConnected = false;
+        waitingSeen = false;
+        inviteSent = false;
+        pendingRemoteCandidates = [];
+
+        document.getElementById('videoPreview').srcObject = null;
+        document.getElementById('remoteAudio').srcObject = null;
+        document.getElementById('noVideoMsg').style.display = 'flex';
+        document.getElementById('noVideoMsg').innerHTML =
+            '<div class="text-center"><i class="fas fa-robot text-4xl mb-2 text-gray-400"></i><p class="text-gray-400">Click Call AI to connect</p></div>';
+        document.getElementById('audioStatus').textContent = 'Idle';
+        document.getElementById('audioStatus').classList.replace('text-green-600', 'text-gray-500');
+        document.getElementById('speechDot').classList.replace('bg-green-500', 'bg-gray-300');
+        document.getElementById('speechStatus').textContent = 'Disconnected';
+        document.getElementById('statResolution').textContent = '--';
+        document.getElementById('statFps').textContent = '--';
+        document.getElementById('statSampleRate').textContent = '--';
+
+        const btn = document.getElementById('btnStartMedia');
+        const btnHangup = document.getElementById('btnHangup');
+        btn.innerHTML = '<i class="fas fa-phone mr-2"></i>Call AI';
+        btn.classList.replace('bg-gray-400', 'bg-blue-600');
+        btn.style.display = 'inline-block';
+        btn.disabled = false;
+        btnHangup.disabled = true;
+        btnHangup.classList.replace('bg-red-600', 'bg-gray-400');
+        log('Disconnected');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('btnStartMedia').innerHTML = '<i class="fas fa-phone mr-2"></i>Call AI';
+        document.getElementById('noVideoMsg').innerHTML =
+            '<div class="text-center"><i class="fas fa-robot text-4xl mb-2 text-gray-400"></i><p class="text-gray-400">Click Call AI to connect</p></div>';
+        document.getElementById('statRoom').textContent = ROOM;
+        log('Ready. Room=' + ROOM + ' target=' + TARGET);
+    });
+    </script>
+</body>
+</html>

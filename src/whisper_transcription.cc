@@ -135,13 +135,39 @@ bool WhisperTranscriber::responseValidate(std::string& token_str) {
         return false;
     }
 
-    // Filter out garbage/noise tokens: require at least 2 "real" characters
-    // that are alphabetic ASCII or the start of a multi-byte UTF-8 sequence.
-    // Count code points, not bytes: continuation bytes (0x80-0xBF) are skipped.
+    // Filter out garbage/noise tokens.
+    // Require at least 2 "word" characters: ASCII letters/digits OR the start of
+    // a multi-byte UTF-8 letter sequence in a known script range.
+    // Pure IPA modifier letters (ʕ ʔ ˈ etc., U+02B0-U+02FF) and similar
+    // non-alphabetic Unicode blocks are excluded by checking that lead bytes
+    // fall in common script ranges (Cyrillic E0-EF, CJK F0+, Latin-ext C3-CF, etc.)
+    // rather than U+02xx (C0 A0-BF / CA xx).
     int real_chars = 0;
-    for (unsigned char c : token_spaces_check) {
-        if (std::isalpha(c) || c >= 0xC0) {
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(token_spaces_check.c_str());
+    while (*p) {
+        unsigned char c = *p;
+        if (std::isalnum(c)) {
+            // ASCII letter or digit
             real_chars++;
+            p++;
+        } else if (c >= 0xC0) {
+            // Start of multi-byte UTF-8 sequence — decode code point to check range
+            uint32_t cp = 0;
+            int bytes = 0;
+            if ((c & 0xE0) == 0xC0)      { cp = c & 0x1F; bytes = 2; }
+            else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; bytes = 3; }
+            else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; bytes = 4; }
+            for (int i = 1; i < bytes && p[i]; i++)
+                cp = (cp << 6) | (p[i] & 0x3F);
+            // Accept common letter scripts; reject IPA/spacing modifiers (U+0250-U+02FF)
+            // and other non-word symbol blocks
+            if (!( (cp >= 0x0250 && cp <= 0x02FF) ||  // IPA / spacing modifiers
+                   (cp >= 0x2000 && cp <= 0x206F) ||  // general punctuation
+                   (cp >= 0x2200 && cp <= 0x22FF) ))   // math operators
+                real_chars++;
+            p += bytes;
+        } else {
+            p++;
         }
     }
     if (real_chars < 2) {
