@@ -1,5 +1,5 @@
 /*
- *  (c) 2025, wilddolphin2025 
+ *  (c) 2025, wilddolphin2025
  *  For WebRTCsays.ai project
  *  https://github.com/wilddolphin2025
  *
@@ -13,167 +13,58 @@
 #ifndef LLAMA_DEVICE_BASE_H
 #define LLAMA_DEVICE_BASE_H
 
-#include <cstdio>
-#include <cstring>
 #include <string>
-#include <vector>
-#include <atomic>
-#include <queue>
+#include <memory>
 #include <thread>
-#include <functional>
+#include <mutex>
 #include <condition_variable>
 #include <deque>
-#include <set>
-#include <algorithm>
-#include <memory>
+#include <atomic>
 #include <chrono>
 
 #include "whillats.h"
 #include "whisper_helpers.h"
-#include "llama.h"
-#include "clip.h"
-#include "mtmd.h" // Ensure mtmd.h is included
-
-struct llama_model;
-struct llama_context;
-struct llama_sampler;
-struct llama_vocab;
-typedef int32_t llama_token;
-
-class LlamaSimpleChat;
-
-class LlamaSimpleChat {
-public:
-  LlamaSimpleChat();
-  ~LlamaSimpleChat();
-
-  // Non-copyable and non-movable (std::atomic members)
-  LlamaSimpleChat(const LlamaSimpleChat&) = delete;
-  LlamaSimpleChat& operator=(const LlamaSimpleChat&) = delete;
-  LlamaSimpleChat(LlamaSimpleChat&&) = delete;
-  LlamaSimpleChat& operator=(LlamaSimpleChat&&) = delete;
-
-  // Unified setters
-  bool SetModelPaths(const std::string &path, const std::string &mmproj_path);
-  bool SetNGL(int layers);
-  bool SetContextSize(int size);
-  void SetThreadCount(int n) { n_threads_ = n; }
-  void StopGeneration();
-
-  bool Initialize();
-  std::string generate(const std::string& request, WhillatsSetResponseCallback callback);
-  std::string generateFromImage(YUVData* yuv, const std::string& prompt, WhillatsSetResponseCallback callback);
-
-  bool InitializeContext();
-  void FreeContext();
-
-  bool LoadModel();
-
-  std::string model_path_;
-  std::string mmproj_path_;
-  int ngl_ = 10;
-  int n_predict_ = 4096;
-  int n_threads_ = 0; // 0 = auto
-  std::string prompt_ = "You are a helpful assistant.";
-
-  llama_model* model_ = nullptr;
-  const llama_vocab* vocab_ = nullptr;
-  llama_context* ctx_ = nullptr;
-  llama_sampler* smpl_ = nullptr;
-  
-  std::atomic<bool> continue_{false};
-
-  bool isRepetitive(const std::string& text, size_t minPatternLength = 4);
-  bool isCompleteSentence(const std::string &text);
-
-  std::chrono::steady_clock::time_point _lastResponseStart;
-  std::chrono::steady_clock::time_point _lastResponseEnd;
-
-  // Vision via mtmd
-  mtmd::context_ptr ctx_mtmd_;
-  enum class ChatFormat { LLAMA3, CHATML, GEMMA };
-  ChatFormat chat_format_ = ChatFormat::CHATML;
-
-  void DetectStoppingTokens();
-  void DetectChatFormat();
-  std::deque<llama_token> context_tokens_;
-  int n_past_ = 0;
-  std::set<llama_token> stopping_token_ids_;
-  std::vector<std::string> stopping_token_strings_;
-  bool ResetContextForImage();
-};
+#include "llama_http_client.h"
 
 struct Request {
     std::string              prompt;
     bool                     withImage;
-    std::shared_ptr<YUVData> yuv;   // nullptr for text-only, deep-copied frame if withImage
+    std::shared_ptr<YUVData> yuv;
 };
 
 class LlamaDeviceBase {
 public:
-    LlamaDeviceBase(const char* model_path, const char* mmproj_path, WhillatsSetResponseCallback callback);
+    // server_url: e.g. "http://127.0.0.1:8080"
+    LlamaDeviceBase(const char* server_url, WhillatsSetResponseCallback callback);
     virtual ~LlamaDeviceBase();
 
     bool start();
     void stop();
     bool isRunning() const { return _running; }
-    void setThreadCount(int n) { _nThreads = n; }
+    void setThreadCount(int n) { /* unused — llama-server manages its own threads */ }
 
-    void askLlama(const char *prompt);
-    void askWithImage(const char *prompt, const YUVData& yuv);
-    
-    // New method to receive video frames
+    void askLlama(const char* prompt);
     void receiveVideoFrame(const YUVData& yuv);
-    
-    // Debug/monitoring methods
-    size_t getImageQueueSize() const;
-    bool hasMultimodalSupport() const { return _hasMultimodalModel; }
-    void recheckMultimodalSupport();
+
+    bool hasMultimodalSupport() const { return true; }
 
 private:
-    bool _running = false;
-    int _nThreads = 0; // 0 = auto
-    std::atomic<bool> _destructing_ {false};
+    std::string                     _server_url;
+    std::unique_ptr<LlamaHttpClient> _http;
+    WhillatsSetResponseCallback     _responseCallback;
 
-    std::thread _processingThread;
-    std::string _model_path;
-    std::string _mmproj_path;
+    bool                         _running = false;
+    std::thread                  _processingThread;
+    std::deque<Request>          _requestQueue;
+    std::mutex                   _queueMutex;
+    std::condition_variable      _queueCondition;
 
-    WhillatsSetResponseCallback _responseCallback;
-    
-    void processPrompts();
-    bool initialize();
+    // Most-recent video frame for multimodal prompts
+    std::shared_ptr<YUVData>     _lastFrame;
+    std::mutex                   _frameMutex;
+
     bool RunProcessingThread();
-
-    std::unique_ptr<LlamaSimpleChat> _llama_chat;
-
-    std::deque<Request>       _requestQueue;
-    std::mutex                _queueMutex;
-    std::condition_variable   _queueCondition;
-
-    uint64_t                  _lastYuvHash = 0;
-    
-    std::vector<llama_token> context_tokens_;
-    const size_t max_context_tokens_ = 2048;
-    
-    // Image management for video frames
-    struct TimestampedImage {
-        std::shared_ptr<YUVData> yuv;
-        std::chrono::steady_clock::time_point timestamp;
-        uint64_t hash;
-    };
-    
-    std::deque<TimestampedImage> _imageQueue;
-    mutable std::mutex           _imageMutex;
-    bool                         _hasMultimodalModel;
-    int                          _imageRetentionMs;
-    
-    // Helper methods
-    bool TrimContext();
-    bool AppendToContext(const std::vector<llama_token>& new_tokens);
-    void cleanupOldImages();
-    std::shared_ptr<YUVData> getRecentImage();
-    bool detectMultimodalSupport();
+    std::string yuvToJpegBase64(const YUVData& yuv);
 };
 
 #endif // LLAMA_DEVICE_BASE_H

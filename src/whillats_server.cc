@@ -128,17 +128,14 @@ int main(int argc, char* argv[]) {
 
             // Preload Llama immediately if model path provided
             if (!llama && cfg.llama_model[0]) {
-                fprintf(stderr, "[whillats_server] Preloading Llama...\n");
-                if (cfg.llama_mmproj[0])
-                    llama = std::make_unique<LlamaDeviceBase>(cfg.llama_model, cfg.llama_mmproj, llamaCb);
-                else
-                    llama = std::make_unique<LlamaDeviceBase>(cfg.llama_model, "", llamaCb);
-                if (cfg.llama_threads > 0) llama->setThreadCount(cfg.llama_threads);
+                // llama_model field holds the llama-server URL (e.g. http://127.0.0.1:8080)
+                fprintf(stderr, "[whillats_server] Connecting to llama-server: %s\n", cfg.llama_model);
+                llama = std::make_unique<LlamaDeviceBase>(cfg.llama_model, llamaCb);
                 std::thread([&llama]() {
                     if (llama && llama->start())
-                        fprintf(stderr, "[whillats_server] Llama preloaded\n");
+                        fprintf(stderr, "[whillats_server] Llama-server connected\n");
                     else
-                        fprintf(stderr, "[whillats_server] Llama preload failed\n");
+                        fprintf(stderr, "[whillats_server] Llama-server connection failed\n");
                 }).detach();
             }
 
