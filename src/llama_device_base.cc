@@ -943,25 +943,30 @@ void LlamaSimpleChat::DetectStoppingTokens() {
 void LlamaSimpleChat::DetectChatFormat() {
     if (!vocab_) return;
 
-    // Probe a few known special tokens instead of scanning the full vocabulary.
-    // llama_tokenize returns > 0 if the string matches a known token sequence.
-    auto probeToken = [&](const char* text) -> bool {
-        llama_token buf;
-        int n = llama_tokenize(vocab_, text, strlen(text), &buf, 1, false, true);
-        return n == 1;
+    // Scan special/added tokens in the vocabulary for known chat-format markers.
+    // llama_tokenize is unreliable for multi-byte special tokens (may return
+    // multiple pieces even when the token exists as a single entry).
+    // Scanning the vocab directly is authoritative.
+    auto vocabContains = [&](const char* text) -> bool {
+        int n_vocab = llama_vocab_n_tokens(vocab_);
+        for (llama_token id = 0; id < n_vocab; ++id) {
+            const char* s = llama_vocab_get_text(vocab_, id);
+            if (s && strcmp(s, text) == 0) return true;
+        }
+        return false;
     };
 
-    if (probeToken("<start_of_turn>")) {
+    if (vocabContains("<start_of_turn>")) {
         chat_format_ = ChatFormat::GEMMA;
         LOG_I("Detected Gemma format");
         return;
     }
-    if (probeToken("<|im_start|>")) {
+    if (vocabContains("<|im_start|>")) {
         chat_format_ = ChatFormat::CHATML;
         LOG_I("Detected ChatML format (Qwen / compatible model)");
         return;
     }
-    if (probeToken("<|start_header_id|>")) {
+    if (vocabContains("<|start_header_id|>")) {
         chat_format_ = ChatFormat::LLAMA3;
         LOG_I("Detected Llama-3 format");
         return;
