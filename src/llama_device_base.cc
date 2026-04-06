@@ -395,8 +395,9 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     if (context_tokens_.empty()) {
         std::string system_prompt;
         if (chat_format_ == ChatFormat::GEMMA) {
-            // Gemma has no system role; embed instruction in the first user turn
-            system_prompt = "<start_of_turn>user\nYou are a helpful assistant.<end_of_turn>\n<start_of_turn>model\nOkay.<end_of_turn>\n";
+            // Gemma has no system role; embed instruction in the first user turn.
+            // Keep it language-neutral so multilingual prefixes in user messages work.
+            system_prompt = "<start_of_turn>user\nYou are a helpful multilingual voice assistant. Always respond in the same language the user speaks to you.<end_of_turn>\n<start_of_turn>model\nUnderstood.<end_of_turn>\n";
         } else if (chat_format_ == ChatFormat::CHATML) {
             system_prompt = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n";
         } else {

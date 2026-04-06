@@ -201,12 +201,12 @@ int main(int argc, char* argv[]) {
                 memcpy(prompt_buf.data(), payload.data(), h.len);
                 // Prefix prompt with native-language instruction so Llama responds in the user's language
                 std::string prefix;
-                if (g_detected_language == "ru")      prefix = "Отвечай только по-русски. ";
-                else if (g_detected_language == "es") prefix = "Responde solo en español. ";
-                else if (g_detected_language == "de") prefix = "Antworte nur auf Deutsch. ";
-                else if (g_detected_language == "fr") prefix = "Réponds uniquement en français. ";
-                else if (g_detected_language == "zh") prefix = "只用中文回答。";
-                else if (g_detected_language == "ja") prefix = "日本語だけで答えてください。";
+                if (g_detected_language == "ru")      prefix = "ВАЖНО: Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке. Ни одного английского слова. ";
+                else if (g_detected_language == "es") prefix = "IMPORTANTE: Responde EXCLUSIVAMENTE en español. Sin palabras en inglés. ";
+                else if (g_detected_language == "de") prefix = "WICHTIG: Antworte AUSSCHLIESSLICH auf Deutsch. Kein einziges englisches Wort. ";
+                else if (g_detected_language == "fr") prefix = "IMPORTANT: Réponds EXCLUSIVEMENT en français. Pas un seul mot en anglais. ";
+                else if (g_detected_language == "zh") prefix = "重要：请完全用中文回答，不要使用任何英文单词。";
+                else if (g_detected_language == "ja") prefix = "重要：日本語のみで答えてください。英語は一切使わないでください。";
                 std::string prompt = prefix + std::string(prompt_buf.data());
                 llama->askLlama(prompt.c_str());
             }
