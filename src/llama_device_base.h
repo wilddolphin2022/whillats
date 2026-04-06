@@ -85,7 +85,7 @@ public:
   int n_past_ = 0;
   std::atomic<bool> continue_{true};
 
-  enum class ChatFormat { GEMMA, CHATML, LLAMA3 };
+  enum class ChatFormat { GEMMA, GEMMA4, CHATML, LLAMA3 };
   ChatFormat chat_format_ = ChatFormat::CHATML;
 
   std::set<llama_token> stopping_token_ids_;

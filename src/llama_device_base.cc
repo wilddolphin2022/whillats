@@ -318,10 +318,13 @@ static std::string make_system_prompt(LlamaSimpleChat::ChatFormat fmt) {
         "Never use markdown, bullet points, asterisks, or any special formatting. "
         "Speak in plain sentences only.";
 
-    if (fmt == LlamaSimpleChat::ChatFormat::GEMMA) {
-        // Gemma has no system role — embed as a priming exchange
+    if (fmt == LlamaSimpleChat::ChatFormat::GEMMA4) {
+        // Gemma-4 (unsloth): <|turn>system\n...<turn|>\n
+        return "<|turn>system\n" + instruction + "<turn|>\n";
+    } else if (fmt == LlamaSimpleChat::ChatFormat::GEMMA) {
+        // Classic Gemma: no system role — prime via a user/model exchange
         return "<start_of_turn>user\n" + instruction + "<end_of_turn>\n"
-               "<start_of_turn>model\nUnderstood. I will respond naturally in plain speech.<end_of_turn>\n";
+               "<start_of_turn>model\nUnderstood.<end_of_turn>\n";
     } else if (fmt == LlamaSimpleChat::ChatFormat::CHATML) {
         return "<|im_start|>system\n" + instruction + "<|im_end|>\n";
     } else {
@@ -364,7 +367,9 @@ std::string LlamaSimpleChat::generate(const std::string &prompt,
 
     // Wrap prompt in chat template
     std::string wrapped;
-    if (chat_format_ == ChatFormat::GEMMA) {
+    if (chat_format_ == ChatFormat::GEMMA4) {
+        wrapped = "<|turn>user\n" + prompt + "<turn|>\n<|turn>model\n";
+    } else if (chat_format_ == ChatFormat::GEMMA) {
         wrapped = "<start_of_turn>user\n" + prompt + "<end_of_turn>\n<start_of_turn>model\n";
     } else if (chat_format_ == ChatFormat::CHATML) {
         wrapped = "<|im_start|>user\n" + prompt + "<|im_end|>\n<|im_start|>assistant\n";
@@ -528,7 +533,10 @@ std::string LlamaSimpleChat::generateFromImage(YUVData* yuv, const std::string& 
     if (!bitmap.ptr) { LOG_E("Failed to create bitmap"); llama_batch_free(batch); return ""; }
 
     std::string full_prompt;
-    if (chat_format_ == ChatFormat::GEMMA) {
+    if (chat_format_ == ChatFormat::GEMMA4) {
+        full_prompt = "<|turn>user\n" + std::string(MTMD_DEFAULT_IMAGE_MARKER)
+                    + " " + prompt + "<turn|>\n<|turn>model\n";
+    } else if (chat_format_ == ChatFormat::GEMMA) {
         full_prompt = "<start_of_turn>user\n" + std::string(MTMD_DEFAULT_IMAGE_MARKER)
                     + " " + prompt + "<end_of_turn>\n<start_of_turn>model\n";
     } else if (chat_format_ == ChatFormat::CHATML) {
@@ -632,7 +640,7 @@ void LlamaSimpleChat::DetectStoppingTokens() {
     static const std::vector<std::string> known = {
         "<|eot_id|>", "<|end_of_text|>", "<|end|>", "</s>",
         "<|im_end|>", "<|endoftext|>", "</think>",
-        "<end_of_turn>", "<turn|>"
+        "<end_of_turn>", "<turn|>", "<|turn>"
     };
 
     int n_vocab = llama_vocab_n_tokens(vocab_);
@@ -666,6 +674,9 @@ void LlamaSimpleChat::DetectChatFormat() {
         }
         return false;
     };
+    // Gemma-4 (unsloth) uses <|turn> / <turn|> markers
+    if (vocabContains("<|turn>"))         { chat_format_ = ChatFormat::GEMMA4; LOG_I("Chat format: Gemma4"); return; }
+    // Classic Gemma uses <start_of_turn>
     if (vocabContains("<start_of_turn>")) { chat_format_ = ChatFormat::GEMMA;  LOG_I("Chat format: Gemma"); return; }
     if (vocabContains("<|im_start|>"))    { chat_format_ = ChatFormat::CHATML; LOG_I("Chat format: ChatML"); return; }
     if (vocabContains("<|start_header_id|>")) { chat_format_ = ChatFormat::LLAMA3; LOG_I("Chat format: Llama3"); return; }
