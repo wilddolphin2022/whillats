@@ -1,217 +1,290 @@
-# Whillats Build & Run Guide
-
-## Architecture
-
-Whillats uses a **client-server split** to isolate AI workloads from the WebRTC process:
-
-- **`libwhillats.so`** — thin client library (no AI deps, safe for libc++ / -fno-exceptions)
-- **`whillats_server`** — fat standalone binary (Whisper, Llama, Piper/StyleTTS2, optional CUDA)
+# Whillats Build & Deployment Guide
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for full design details.
 
-## Prerequisites
+---
 
-- CMake 3.14+
-- GCC 11+ (C++17)
-- Build tools: `sudo apt install build-essential cmake`
+## Local Development Build
+
+### Prerequisites
+
+- CMake 3.16+
+- GCC 11+ or Clang 14+ (C++17)
+- `sudo apt install build-essential cmake ninja-build`
 - (Optional) CUDA Toolkit 12.x for GPU acceleration
 
-## Quick Build
-
-### CPU-only (Piper TTS)
+### Build whillats_server (CPU, Piper TTS)
 
 ```bash
 cd src/modules/third_party/whillats
 
-cmake -B build \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DWHILLATS_PIPER=ON \
-  -DWHILLATS_OLD_ABI=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DWHILLATS_PIPER=ON
 
-cmake --build build -j$(nproc)
+cmake --build build -j$(nproc) --target whillats_server
 ```
 
-### GPU (CUDA + Piper TTS)
+### Build whillats_server (GPU / CUDA)
 
 ```bash
-cmake -B build \
-  -DCMAKE_BUILD_TYPE=Debug \
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
   -DWHILLATS_PIPER=ON \
-  -DWHILLATS_OLD_ABI=ON \
   -DGGML_CUDA=ON
 
-cmake --build build -j$(nproc)
+cmake --build build -j$(nproc) --target whillats_server
 ```
 
-Only `whillats_server` links CUDA. `libwhillats.so` stays CPU-only.
-
-### StyleTTS2 (instead of Piper)
+### StyleTTS2 (alternative to Piper)
 
 ```bash
-cmake -B build \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DWHILLATS_STYLETTS2=ON \
-  -DWHILLATS_OLD_ABI=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DWHILLATS_STYLETTS2=ON
 
-cmake --build build -j$(nproc)
+cmake --build build -j$(nproc) --target whillats_server
 ```
 
 `WHILLATS_PIPER` and `WHILLATS_STYLETTS2` are mutually exclusive.
 
-## CMake Options
+### CMake Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `WHILLATS_PIPER` | OFF | Piper neural TTS (fast CPU, ONNX) |
 | `WHILLATS_STYLETTS2` | ON | StyleTTS2 neural TTS (ONNX) |
-| `WHILLATS_OLD_ABI` | OFF | `_GLIBCXX_USE_CXX11_ABI=0` for compat |
-| `GGML_CUDA` | OFF | CUDA GPU for Whisper + Llama |
+| `WHILLATS_OLD_ABI` | OFF | `_GLIBCXX_USE_CXX11_ABI=0` for old ABI compat |
+| `GGML_CUDA` | OFF | CUDA GPU backend for Whisper |
 
-## Build Outputs
+### Build Outputs
 
 ```
-build/lib/Debug/libwhillats.so            # Thin client (no AI)
-build/bin/Debug/whillats_server           # Fat AI server
-build/bin/Debug/test_whillats             # Client test (-fno-exceptions)
-build/bin/Debug/test_whillats_server      # IPC protocol test
-build/bin/debug/espeak-ng-data/           # espeak runtime data
+build/bin/Release/whillats_server      # AI server (Whisper + Piper)
+build/bin/Release/espeak-ng-data/      # espeak runtime data
+build/bin/Release/test_whillats        # Pipeline test
+build/bin/Release/test_whillats_server # IPC protocol test
 ```
+
+---
+
+## Build llama-server (llama.cpp)
+
+As of talkingface5, the LLM is handled by llama-server separately. whillats_server communicates with it over HTTP and does **not** link llama.cpp.
+
+```bash
+git clone --depth=1 https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DLLAMA_BUILD_SERVER=ON \
+  -DLLAMA_BUILD_TESTS=OFF \
+  -DLLAMA_BUILD_EXAMPLES=OFF
+
+cmake --build build -j$(nproc) --target llama-server
+```
+
+---
+
+## Build directcall + libdirect.so (WebRTC GN)
+
+The thin whillats client is compiled in-tree by WebRTC's GN build system — no separate libwhillats.so needed.
+
+```bash
+cd src   # webrtcsays.ai/src
+
+# Generate build files
+gn gen out/release --args='
+  target_os="linux"
+  is_debug=false
+  is_clang=true
+  use_sysroot=false
+  treat_warnings_as_errors=false
+  rtc_include_opus=true
+  rtc_include_tests=false
+  rtc_build_examples=true
+  rtc_build_sdk=false
+  rtc_enable_symbol_export=true
+  rtc_use_speech_audio_devices=true
+  use_custom_libcxx=true
+  enable_js_protobuf=false
+  rtc_enable_protobuf=false
+  enable_libaom=false
+'
+
+ninja -C out/release libdirect.so directcall
+```
+
+---
 
 ## Models
 
-Download before running:
+| Model | Size | Source |
+|-------|------|--------|
+| Whisper small | 466MB | `https://huggingface.co/ggerganov/whisper.cpp` |
+| Gemma-4 E4B Q2_K | ~4.5GB | `bartowski/google_gemma-4-E4B-it-GGUF` (gated, HF token) |
+| Gemma-4 mmproj BF16 | ~950MB | `ggml-org/gemma-4-E4B-it-GGUF` (gated) |
+| Piper EN (lessac low) | 15MB | `rhasspy/piper-voices` |
+| Piper RU (ruslan med) | 60MB | `rhasspy/piper-voices` |
+| Piper ES (carlfm) | 10MB | `rhasspy/piper-voices` |
+| Piper ZH (huayan med) | 60MB | `rhasspy/piper-voices` |
 
-| Model | Size | Download |
-|-------|------|----------|
-| Whisper base | 142MB | `wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin` |
-| Whisper small | 487MB | `wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin` |
-| Qwen 1.5B Q4 | 1.0GB | `wget https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf` |
-| Piper low | 15MB | `wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/low/en_US-lessac-low.onnx` |
-| Piper medium | 60MB | `wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx` |
+Place in `/opt/models/` (deployment) or `~/models/` (local dev).
 
-Place models in `~/webrtcsays.ai/models/`:
+---
+
+## Running Locally
+
+### Start llama-server
+
+```bash
+./llama.cpp/build/bin/llama-server \
+  --model /opt/models/google_gemma-4-E4B-it-Q2_K.gguf \
+  --mmproj /opt/models/mmproj-BF16.gguf \
+  --port 8080 \
+  --host 127.0.0.1 \
+  --ctx-size 4096 \
+  --n-predict 512 \
+  --threads 6
 ```
-models/
-├── ggml-base.bin
-├── ggml-small.bin
-├── Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
-└── piper/
-    ├── en_US-lessac-low.onnx
-    └── en_US-lessac-low.onnx.json
+
+Wait for `model loaded` and `server is listening on http://127.0.0.1:8080`.
+
+### Start directcall
+
+```bash
+cd src
+
+WHILLATS_SERVER=./modules/third_party/whillats/build/bin/Release/whillats_server \
+PIPER_MODEL=~/models/piper/en_US-lessac-low.onnx \
+PIPER_MODEL_RU=~/models/piper/ru_RU-ruslan-medium.onnx \
+PIPER_MODEL_ES=~/models/piper/es_ES-carlfm-x_low.onnx \
+PIPER_MODEL_ZH=~/models/piper/zh_CN-huayan-medium.onnx \
+ESPEAK_DATA_PATH=./modules/third_party/whillats/build/bin/Release/espeak-ng-data \
+./out/release/directcall --config config.talkingface5.json
 ```
 
-## Running
+### config.talkingface5.json
+
+```json
+{
+  "mode": "callee",
+  "user_name": "Slim",
+  "room_name": "room101",
+  "websocket_signaling": true,
+  "websocket_port": 3459,
+  "whisper": true,
+  "llama": true,
+  "language": "auto",
+  "whisper_model": "/opt/models/ggml-small.bin",
+  "llama_model": "http://127.0.0.1:8080",
+  "llama_mmproj": "",
+  "whisper_threads": 4,
+  "llama_threads": 0,
+  "tts_threads": 2
+}
+```
+
+Note: `llama_model` is the llama-server URL, not a file path.
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `WHILLATS_SERVER` | Yes (Linux) | Path to `whillats_server` binary |
-| `PIPER_MODEL` | Piper mode | Path to `.onnx` voice model |
-| `ESPEAK_DATA_PATH` | Yes | Path to `espeak-ng-data` directory |
-| `WHISPER_MODEL` | Auto | Set by API from config |
-| `LLAMA_MODEL` | Auto | Set by API from config |
-| `LD_LIBRARY_PATH` | Yes | Include `build/lib/debug` |
+| `WHILLATS_SERVER` | Yes | Path to `whillats_server` binary |
+| `PIPER_MODEL` | Yes | Default (English) Piper `.onnx` model |
+| `PIPER_MODEL_RU` | Optional | Russian Piper model |
+| `PIPER_MODEL_ES` | Optional | Spanish Piper model |
+| `PIPER_MODEL_ZH` | Optional | Chinese Piper model |
+| `PIPER_MODEL_DE` | Optional | German Piper model |
+| `PIPER_MODEL_FR` | Optional | French Piper model |
+| `ESPEAK_DATA_PATH` | Yes | Path to `espeak-ng-data/` directory |
 
-### test_whillats — Full Pipeline Test
+---
 
-Tests TTS → Whisper → Llama through the server. Built with `-fno-exceptions`.
+## Automated Deployment (clean Ubuntu machine)
 
-```bash
-cd src/modules/third_party/whillats
-
-LD_LIBRARY_PATH=./build/lib/debug:./build/bin \
-PIPER_MODEL=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
-ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
-WHILLATS_SERVER=./build/bin/Debug/whillats_server \
-./build/bin/Debug/test_whillats \
-  --whisper_model=$HOME/webrtcsays.ai/models/ggml-base.bin \
-  --llama_model=$HOME/webrtcsays.ai/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf \
-  --llama
-```
-
-Expected output:
-```
-[test] TTS: 49152 samples
-[test] Saved synthesized_audio.wav
-[test] Saved synthesized_audio_long.wav
-[test] Whisper: Hello, this is a test of text to speak.
-[test] Whisper PASSED
-[test] Llama: I don't have a name.
-[test] Llama PASSED
-```
-
-### test_whillats_server — IPC Protocol Test
-
-Tests the IPC layer directly (independent of libwhillats.so).
+Use `deploy-talkingface5.sh` from the webrtcsays.ai repo root:
 
 ```bash
-LD_LIBRARY_PATH=./build/lib/debug:./build/bin \
-ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
-./build/bin/Debug/test_whillats_server \
-  --server=./build/bin/Debug/whillats_server \
-  --piper_model=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
-  --espeak_data=./build/bin/debug/espeak-ng-data \
-  --llama_model=$HOME/webrtcsays.ai/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf \
-  --whisper_model=$HOME/webrtcsays.ai/models/ggml-base.bin \
-  --all
+cd webrtcsays.ai
+
+# With HF token (for gated Gemma-4 download)
+HF_TOKEN=hf_xxx ./deploy-talkingface5.sh root@your-server ~/.ssh/id_key
+
+# Without HF token (if models already on server)
+./deploy-talkingface5.sh root@your-server ~/.ssh/id_key
 ```
 
-### directcall — WebRTC Live
+### What the script does
 
-Thin whillats client is compiled in-tree by GN — no `LD_LIBRARY_PATH` needed.
+| Phase | Action |
+|-------|--------|
+| 1 | Install system deps (cmake, ninja, depot_tools, pip) |
+| 2 | Clone + build llama-server from llama.cpp (CPU-only) |
+| 3 | Clone + build whillats_server (talkingface5 branch, Piper TTS) |
+| 4 | Clone + build directcall + libdirect.so (WebRTC GN) |
+| 5 | Download AI models (Whisper, Gemma-4 Q2_K + mmproj, Piper EN/RU/ES/ZH) |
+| 6 | Generate TLS certificates (self-signed, 10 years) |
+| 7 | Write runtime scripts and config.talkingface5.json |
+| 8 | Install + enable two systemd services |
+| 9 | Upload demo.html to www.wilddolphin.us via FTP |
+
+### Deployed Layout
+
+```
+/opt/directcall3-dev/
+  directcall                        # WebRTC process
+  whillats_server.talkingface5      # Whisper + Piper server
+  bin/llama-server                  # LLM HTTP server
+  lib/libdirect.so                  # WebRTC shared lib
+  lib/libonnxruntime.so             # ONNX Runtime for Piper
+  config.talkingface5.json          # Runtime config
+  run-directcall.sh                 # Launcher (sets LD_LIBRARY_PATH)
+  cert.pem / key.pem                # TLS certs
+  espeak-ng-data.talkingface5/      # espeak runtime data
+  RobotPhoneLogo.jpeg               # Talking face image
+
+/opt/models/
+  ggml-small.bin                    # Whisper
+  google_gemma-4-E4B-it-Q2_K.gguf  # LLM
+  mmproj-BF16.gguf                  # Multimodal projector
+  piper/
+    en_US-lessac-low.onnx + .json
+    ru_RU-ruslan-medium.onnx + .json
+    es_ES-carlfm-x_low.onnx + .json
+    zh_CN-huayan-medium.onnx + .json
+```
+
+### Systemd Services
+
+```
+llama-server-talkingface5   # LLM (port 8080, localhost only)
+directcall3-talkingface5    # WebRTC + STT/TTS (Requires= llama-server)
+```
 
 ```bash
-cd ~/webrtcsays.ai/src
+# Logs
+journalctl -u llama-server-talkingface5 -f
+journalctl -u directcall3-talkingface5 -f
 
-# Build (GN compiles whillats client sources with WebRTC clang/libc++)
-gn gen out/debug
-ninja -C out/debug directcall
+# Restart
+systemctl restart llama-server-talkingface5
+systemctl restart directcall3-talkingface5
 
-# Run
-PIPER_MODEL=$HOME/webrtcsays.ai/models/piper/en_US-lessac-low.onnx \
-ESPEAK_DATA_PATH=./modules/third_party/whillats/build/bin/debug/espeak-ng-data \
-WHILLATS_SERVER=./modules/third_party/whillats/build/bin/Debug/whillats_server \
-./out/debug/directcall --config ../config.talking-face.json
+# Status
+systemctl status llama-server-talkingface5
+systemctl status directcall3-talkingface5
 ```
 
-### StyleTTS2 Mode
-
-```bash
-cmake -B build -DWHILLATS_STYLETTS2=ON -DWHILLATS_OLD_ABI=ON
-cmake --build build -j$(nproc)
-
-STYLETTS2_MODEL_DIR=$HOME/webrtcsays.ai/models/styletts2 \
-ESPEAK_DATA_PATH=./build/bin/debug/espeak-ng-data \
-WHILLATS_SERVER=./build/bin/Debug/whillats_server \
-./build/bin/Debug/test_whillats
-```
-
-## Performance
-
-Tested on AMD EPYC 7H12 (8 cores) + NVIDIA A100 40GB:
-
-| Component | CPU | GPU (A100) |
-|-----------|-----|------------|
-| Piper TTS (low, 16kHz) | ~0.5s/sentence | ~0.5s (CPU-only ONNX) |
-| Whisper base (30s audio) | ~15s | ~4s |
-| Llama 1.5B Q4 (per sentence) | ~1.0s | ~0.5s |
-| Model preload (all 3) | ~15s | ~8s |
-
-Models preload in background on server startup. First query is fast.
-
-## Dependencies (auto-fetched)
-
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp)
-- [llama.cpp](https://github.com/ggerganov/llama.cpp)
-- [espeak-ng](https://github.com/espeak-ng/espeak-ng)
-- [ONNX Runtime](https://github.com/microsoft/onnxruntime) (for Piper/StyleTTS2)
-- [Piper](https://github.com/OHF-Voice/piper1-gpl) (when `WHILLATS_PIPER=ON`)
+---
 
 ## Troubleshooting
 
-- **`length_error` crash**: Ensure `directcall` uses `libwhillats.so` (thin) and `WHILLATS_SERVER` points to the fat server binary. Never load AI code in the WebRTC process.
-- **Whisper slow**: Use `ggml-base.bin` (142MB) instead of `ggml-small.bin` (487MB). Enable GPU with `-DGGML_CUDA=ON`.
-- **Llama timeout**: Models preload on server startup. If still slow, reduce model size or enable GPU.
-- **No audio**: Check `PIPER_MODEL` and `ESPEAK_DATA_PATH` are set correctly.
-- **Clean rebuild**: `rm -rf build && cmake -B build ...`
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| No response from LLM | llama-server not ready | Check `curl http://127.0.0.1:8080/health` |
+| No transcription | Whisper chunk too small / VAD threshold | Check `kVADThreshold`, ensure mic input is reaching server |
+| Model speaks in English | Language detection not firing | Ensure `"language": "auto"` in config |
+| Echo / AI hears itself | Browser AEC disabled | `echoCancellation: true` in getUserMedia |
+| `length_error` crash | C++ ABI mismatch | Ensure client code compiled by WebRTC clang in-tree |
+| `libdirect.so` not found | LD_LIBRARY_PATH missing | Use `run-directcall.sh` wrapper |
+| llama-server OOM | Model too large for RAM | Use Q2_K quantization; disable mmproj |
+| Clean rebuild needed | Stale CMake cache | `rm -rf build && cmake -B build ...` |
