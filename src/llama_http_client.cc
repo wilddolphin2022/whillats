@@ -238,28 +238,42 @@ void LlamaHttpClient::doStreamingPost(const std::string& json_body,
         if (data == "[DONE]") break;
 
         // Extract "content" from delta: {"choices":[{"delta":{"content":"tok"}}]}
-        // Minimal extraction — find "content":"<tok>"
-        auto pos = data.find("\"content\":\"");
-        if (pos == std::string::npos) {
-            // Also handle null content (role-only chunks)
-            continue;
-        }
-        pos += 11;  // length of "content":"
+        // Must match "content":" but NOT "reasoning_content":" (thinking tokens).
+        // Search for the exact key preceded by a non-word char (quote or comma or {).
         std::string token;
-        while (pos < data.size()) {
-            char c = data[pos++];
-            if (c == '"') break;
-            if (c == '\\' && pos < data.size()) {
-                char esc = data[pos++];
-                switch (esc) {
-                    case 'n': token += '\n'; break;
-                    case 'r': token += '\r'; break;
-                    case 't': token += '\t'; break;
-                    default:  token += esc;  break;
-                }
-            } else {
-                token += c;
+        size_t search_from = 0;
+        while (true) {
+            auto pos = data.find("\"content\":", search_from);
+            if (pos == std::string::npos) break;
+            // Reject if preceded by a word char (i.e. part of "reasoning_content")
+            if (pos > 0 && data[pos-1] != '"' && data[pos-1] != ',' &&
+                            data[pos-1] != '{' && data[pos-1] != ' ') {
+                search_from = pos + 10;
+                continue;
             }
+            size_t val_pos = pos + 10; // after "content":
+            // skip whitespace
+            while (val_pos < data.size() && data[val_pos] == ' ') ++val_pos;
+            // skip null values
+            if (val_pos + 4 <= data.size() && data.substr(val_pos, 4) == "null") break;
+            if (val_pos >= data.size() || data[val_pos] != '"') break;
+            ++val_pos; // skip opening quote
+            while (val_pos < data.size()) {
+                char c = data[val_pos++];
+                if (c == '"') break;
+                if (c == '\\' && val_pos < data.size()) {
+                    char esc = data[val_pos++];
+                    switch (esc) {
+                        case 'n': token += '\n'; break;
+                        case 'r': token += '\r'; break;
+                        case 't': token += '\t'; break;
+                        default:  token += esc;  break;
+                    }
+                } else {
+                    token += c;
+                }
+            }
+            break;
         }
         if (!token.empty()) {
             cb.OnResponseComplete(true, token.c_str());
