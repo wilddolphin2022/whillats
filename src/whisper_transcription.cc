@@ -210,14 +210,8 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
         }
     }
 
-    if (!new_tokens.empty()) {
-        LOG_V("Total decoded tokens: " << new_tokens.size());
-        ProcessTokens(new_tokens);
-    } else {
-        LOG_V("No tokens decoded");
-    }
-
-    // After processing, retrieve and log the detected language
+    // Detect language BEFORE sending text so the language tag is correct when
+    // the client receives the transcription result.
     int lang_id = whisper_full_lang_id_from_state(_state);
     const char* detected_lang = whisper_lang_str(lang_id);
     LOG_I("Auto-detected language by whisper_full_with_state: " << detected_lang);
@@ -229,6 +223,13 @@ bool WhisperTranscriber::TranscribeAudioNonBlocking(const std::vector<float>& sa
         LOG_I("Detected language mismatch, updating from " << _language << " to " << detected_lang);
         _language = detected_lang;
         _languageCallback.OnLanguageDetected(true, detected_lang);
+    }
+
+    if (!new_tokens.empty()) {
+        LOG_V("Total decoded tokens: " << new_tokens.size());
+        ProcessTokens(new_tokens);
+    } else {
+        LOG_V("No tokens decoded");
     }
 
     return true;
