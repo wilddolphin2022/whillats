@@ -273,7 +273,7 @@ bool LlamaSimpleChat::InitializeContext() {
     ctx_params.n_batch = 512;
 #endif
     ctx_params.no_perf = false;
-    ctx_params.flash_attn = true;
+    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
     ctx_params.type_k = GGML_TYPE_Q8_0;
     ctx_params.type_v = GGML_TYPE_Q8_0;
     // Use as many physical cores as are available on the machine instead of
