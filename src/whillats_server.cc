@@ -32,8 +32,6 @@ void WhillatsSetResponseCallback::OnResponseComplete(bool success, const char* r
 static int g_write_fd = -1;
 static std::atomic<bool> g_running{true};
 static std::mutex g_write_mutex;
-// Language detected by Whisper for the current utterance
-static std::string g_detected_language = "en";
 
 static void send_response(uint8_t type, const char* text) {
     uint32_t len = text ? (uint32_t)strlen(text) : 0;
@@ -47,21 +45,15 @@ static void whisper_callback(bool success, const char* response, void*) {
 }
 
 static void language_callback(bool success, const char* language, void*) {
-    if (success && language) {
-        g_detected_language = language;
+    if (success && language)
         send_response(MSG_WHISPER_LANGUAGE, language);
-    }
 }
 
 static void llama_callback(bool success, const char* response, void*) {
-    if (success && response) {
-        // Re-send detected language before each token so client TTS uses correct voice
-        send_response(MSG_WHISPER_LANGUAGE, g_detected_language.c_str());
+    if (success && response)
         send_response(MSG_LLAMA_RESPONSE, response);
-    } else {
-        std::lock_guard<std::mutex> lock(g_write_mutex);
+    else
         write_msg(g_write_fd, MSG_LLAMA_DONE, nullptr, 0);
-    }
 }
 
 static void tts_audio_callback(bool success, const uint16_t* buffer, size_t buffer_size, void*) {
@@ -199,16 +191,7 @@ int main(int argc, char* argv[]) {
             if (llama && h.len > 0) {
                 std::vector<char> prompt_buf(h.len + 1, '\0');
                 memcpy(prompt_buf.data(), payload.data(), h.len);
-                // Prefix prompt with native-language instruction so Llama responds in the user's language
-                std::string prefix;
-                if (g_detected_language == "ru")      prefix = "ВАЖНО: Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке. Ни одного английского слова. ";
-                else if (g_detected_language == "es") prefix = "IMPORTANTE: Responde EXCLUSIVAMENTE en español. Sin palabras en inglés. ";
-                else if (g_detected_language == "de") prefix = "WICHTIG: Antworte AUSSCHLIESSLICH auf Deutsch. Kein einziges englisches Wort. ";
-                else if (g_detected_language == "fr") prefix = "IMPORTANT: Réponds EXCLUSIVEMENT en français. Pas un seul mot en anglais. ";
-                else if (g_detected_language == "zh") prefix = "重要：请完全用中文回答，不要使用任何英文单词。";
-                else if (g_detected_language == "ja") prefix = "重要：日本語のみで答えてください。英語は一切使わないでください。";
-                std::string prompt = prefix + std::string(prompt_buf.data());
-                llama->askLlama(prompt.c_str());
+                llama->askLlama(prompt_buf.data());
             }
             break;
         }

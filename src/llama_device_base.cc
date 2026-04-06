@@ -110,12 +110,9 @@ bool LlamaSimpleChat::Initialize() {
         LOG_E("Failed to initialize sampler.");
         return false;
     }
-    llama_sampler_chain_add(smpl_, llama_sampler_init_min_p(0.0f, 1));
-    llama_sampler_chain_add(smpl_, llama_sampler_init_top_k(40));
-    llama_sampler_chain_add(smpl_, llama_sampler_init_top_p(0.95f, 1));
+    llama_sampler_chain_add(smpl_, llama_sampler_init_top_k(50));
+    llama_sampler_chain_add(smpl_, llama_sampler_init_top_p(0.9f, 1));
     llama_sampler_chain_add(smpl_, llama_sampler_init_temp(0.7f));
-    // penalty_last_n=-1 (full ctx), repeat=1.0 (off), freq=0.0, presence=0.5
-    llama_sampler_chain_add(smpl_, llama_sampler_init_penalties(-1, 1.0f, 0.0f, 0.5f));
     llama_sampler_chain_add(smpl_, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     
     DetectStoppingTokens();
@@ -273,9 +270,6 @@ bool LlamaSimpleChat::InitializeContext() {
     ctx_params.n_batch = 512;
 #endif
     ctx_params.no_perf = false;
-    ctx_params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
-    ctx_params.type_k = GGML_TYPE_Q8_0;
-    ctx_params.type_v = GGML_TYPE_Q8_0;
     // Use as many physical cores as are available on the machine instead of
     // the previous hard-cap of 4.  On Apple Silicon machines like the M4 Mac
     // mini this unlocks the additional high-performance cores and noticeably
@@ -395,9 +389,8 @@ std::string LlamaSimpleChat::generate(const std::string &prompt, WhillatsSetResp
     if (context_tokens_.empty()) {
         std::string system_prompt;
         if (chat_format_ == ChatFormat::GEMMA) {
-            // Gemma has no system role; embed instruction in the first user turn.
-            // Keep it language-neutral so multilingual prefixes in user messages work.
-            system_prompt = "<start_of_turn>user\nYou are a helpful multilingual voice assistant. Always respond in the same language the user speaks to you.<end_of_turn>\n<start_of_turn>model\nUnderstood.<end_of_turn>\n";
+            // Gemma has no system role; embed instruction in the first user turn
+            system_prompt = "<start_of_turn>user\nYou are a helpful assistant.<end_of_turn>\n<start_of_turn>model\nOkay.<end_of_turn>\n";
         } else if (chat_format_ == ChatFormat::CHATML) {
             system_prompt = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n";
         } else {
@@ -943,30 +936,25 @@ void LlamaSimpleChat::DetectStoppingTokens() {
 void LlamaSimpleChat::DetectChatFormat() {
     if (!vocab_) return;
 
-    // Scan special/added tokens in the vocabulary for known chat-format markers.
-    // llama_tokenize is unreliable for multi-byte special tokens (may return
-    // multiple pieces even when the token exists as a single entry).
-    // Scanning the vocab directly is authoritative.
-    auto vocabContains = [&](const char* text) -> bool {
-        int n_vocab = llama_vocab_n_tokens(vocab_);
-        for (llama_token id = 0; id < n_vocab; ++id) {
-            const char* s = llama_vocab_get_text(vocab_, id);
-            if (s && strcmp(s, text) == 0) return true;
-        }
-        return false;
+    // Probe a few known special tokens instead of scanning the full vocabulary.
+    // llama_tokenize returns > 0 if the string matches a known token sequence.
+    auto probeToken = [&](const char* text) -> bool {
+        llama_token buf;
+        int n = llama_tokenize(vocab_, text, strlen(text), &buf, 1, false, true);
+        return n == 1;
     };
 
-    if (vocabContains("<start_of_turn>")) {
+    if (probeToken("<start_of_turn>")) {
         chat_format_ = ChatFormat::GEMMA;
         LOG_I("Detected Gemma format");
         return;
     }
-    if (vocabContains("<|im_start|>")) {
+    if (probeToken("<|im_start|>")) {
         chat_format_ = ChatFormat::CHATML;
         LOG_I("Detected ChatML format (Qwen / compatible model)");
         return;
     }
-    if (vocabContains("<|start_header_id|>")) {
+    if (probeToken("<|start_header_id|>")) {
         chat_format_ = ChatFormat::LLAMA3;
         LOG_I("Detected Llama-3 format");
         return;
