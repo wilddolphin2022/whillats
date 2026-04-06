@@ -135,6 +135,18 @@ bool WhisperTranscriber::responseValidate(std::string& token_str) {
         return false;
     }
 
+    // Filter out garbage/noise tokens: require at least 2 "real" characters
+    // that are alphabetic, Cyrillic, or common punctuation
+    int real_chars = 0;
+    for (unsigned char c : token_spaces_check) {
+        if (std::isalpha(c) || c >= 0x80) {
+            real_chars++;
+        }
+    }
+    if (real_chars < 2) {
+        return false;
+    }
+
     token_str = token_str_cleaned;
     return true;
 }
