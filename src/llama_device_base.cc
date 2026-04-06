@@ -110,9 +110,12 @@ bool LlamaSimpleChat::Initialize() {
         LOG_E("Failed to initialize sampler.");
         return false;
     }
-    llama_sampler_chain_add(smpl_, llama_sampler_init_top_k(50));
-    llama_sampler_chain_add(smpl_, llama_sampler_init_top_p(0.9f, 1));
+    llama_sampler_chain_add(smpl_, llama_sampler_init_min_p(0.0f, 1));
+    llama_sampler_chain_add(smpl_, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(smpl_, llama_sampler_init_top_p(0.95f, 1));
     llama_sampler_chain_add(smpl_, llama_sampler_init_temp(0.7f));
+    // penalty_last_n=-1 (full ctx), repeat=1.0 (off), freq=0.0, presence=0.5
+    llama_sampler_chain_add(smpl_, llama_sampler_init_penalties(-1, 1.0f, 0.0f, 0.5f));
     llama_sampler_chain_add(smpl_, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     
     DetectStoppingTokens();
@@ -270,6 +273,9 @@ bool LlamaSimpleChat::InitializeContext() {
     ctx_params.n_batch = 512;
 #endif
     ctx_params.no_perf = false;
+    ctx_params.flash_attn = true;
+    ctx_params.type_k = GGML_TYPE_Q8_0;
+    ctx_params.type_v = GGML_TYPE_Q8_0;
     // Use as many physical cores as are available on the machine instead of
     // the previous hard-cap of 4.  On Apple Silicon machines like the M4 Mac
     // mini this unlocks the additional high-performance cores and noticeably
