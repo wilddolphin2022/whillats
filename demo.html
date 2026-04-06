@@ -920,7 +920,7 @@
             document.getElementById('audioStatus').textContent = 'Requesting media...';
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+                    audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false },
                     video: videoEnabled
                 });
                 initOutMeter(localStream);
