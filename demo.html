@@ -206,6 +206,11 @@
                                     <p class="text-gray-400">Click Call AI to start talking-face session</p>
                                 </div>
                             </div>
+                            <!-- PIP local camera preview — visible only when video is on -->
+                            <video id="localVideoPip" autoplay playsinline muted
+                                   style="display:none; position:absolute; bottom:8px; right:8px; width:96px; height:72px;
+                                          object-fit:cover; border-radius:8px; border:2px solid rgba(255,255,255,0.5);
+                                          box-shadow:0 2px 8px rgba(0,0,0,0.6); z-index:10;"></video>
                         </div>
                         
                         <div class="mb-4">
@@ -832,20 +837,31 @@
         }
     }
 
-    function toggleVideo() {
-        videoEnabled = !videoEnabled;
+    function setVideoButtonState(on) {
         const btn = document.getElementById('btnToggleVideo');
-        if (videoEnabled) {
+        const pip = document.getElementById('localVideoPip');
+        if (on) {
             btn.innerHTML = '<i class="fas fa-video mr-2"></i>Video On';
             btn.classList.replace('bg-gray-600', 'bg-green-600');
             btn.classList.replace('hover:bg-gray-700', 'hover:bg-green-700');
             btn.title = 'Video on — AI can see you';
+            if (localStream) {
+                pip.srcObject = localStream;
+                pip.style.display = 'block';
+            }
         } else {
             btn.innerHTML = '<i class="fas fa-video-slash mr-2"></i>Video Off';
             btn.classList.replace('bg-green-600', 'bg-gray-600');
             btn.classList.replace('hover:bg-green-700', 'hover:bg-gray-700');
             btn.title = 'Video off — AI cannot see you';
+            pip.srcObject = null;
+            pip.style.display = 'none';
         }
+    }
+
+    function toggleVideo() {
+        videoEnabled = !videoEnabled;
+        setVideoButtonState(videoEnabled);
         // If already in a call, enable/disable the video track live
         if (localStream) {
             localStream.getVideoTracks().forEach(t => { t.enabled = videoEnabled; });
@@ -875,6 +891,7 @@
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
                 initOutMeter(localStream);
+                if (videoEnabled) setVideoButtonState(true); // wire PIP
             } catch (micErr) {
                 log('Media error: ' + micErr.message + ' - continuing receive-only');
                 localStream = null;
@@ -927,6 +944,9 @@
         document.getElementById('videoPreview').srcObject = null;
         document.getElementById('remoteAudio').srcObject = null;
         document.getElementById('noVideoMsg').style.display = 'flex';
+        // Reset video to off
+        videoEnabled = false;
+        setVideoButtonState(false);
         document.getElementById('noVideoMsg').innerHTML =
             '<div class="text-center"><i class="fas fa-robot text-4xl mb-2 text-gray-400"></i><p class="text-gray-400">Click Call AI to connect</p></div>';
         document.getElementById('audioStatus').textContent = 'Idle';
