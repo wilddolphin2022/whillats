@@ -220,18 +220,9 @@ bool LlamaSimpleChat::InitializeContext() {
     if (ctx_) FreeContext();
     if (!model_ || !vocab_) { LOG_E("Model or vocab not loaded."); return false; }
 
-    if (context_tokens_.empty()) {
-        const int n_prompt = -llama_tokenize(vocab_, prompt_.c_str(), prompt_.size(),
-                                              nullptr, 0, true, true);
-        if (n_prompt < 0) { LOG_E("Failed to count prompt tokens."); return false; }
-        std::vector<llama_token> prompt_tokens(n_prompt);
-        if (llama_tokenize(vocab_, prompt_.c_str(), prompt_.size(),
-                           prompt_tokens.data(), prompt_tokens.size(), true, true) < 0) {
-            LOG_E("Failed to tokenize prompt."); return false;
-        }
-        context_tokens_ = std::deque<llama_token>(prompt_tokens.begin(), prompt_tokens.end());
-        n_past_ = 0;
-    }
+    // Don't pre-seed context — chat system prompt is handled in generate()
+    context_tokens_.clear();
+    n_past_ = 0;
 
     llama_context_params ctx_params = llama_context_default_params();
 #ifdef GGML_USE_METAL
@@ -665,13 +656,19 @@ void LlamaSimpleChat::DetectStoppingTokens() {
 
 void LlamaSimpleChat::DetectChatFormat() {
     if (!vocab_) return;
-    auto probe = [&](const char* text) -> bool {
-        llama_token buf;
-        return llama_tokenize(vocab_, text, strlen(text), &buf, 1, false, true) == 1;
+    // Scan vocab directly — llama_tokenize is unreliable for special tokens in
+    // quantized models (may return multiple pieces even for single-token entries).
+    auto vocabContains = [&](const char* text) -> bool {
+        int n_vocab = llama_vocab_n_tokens(vocab_);
+        for (llama_token id = 0; id < n_vocab; ++id) {
+            const char* s = llama_vocab_get_text(vocab_, id);
+            if (s && strcmp(s, text) == 0) return true;
+        }
+        return false;
     };
-    if (probe("<start_of_turn>")) { chat_format_ = ChatFormat::GEMMA;  LOG_I("Chat format: Gemma"); return; }
-    if (probe("<|im_start|>"))    { chat_format_ = ChatFormat::CHATML; LOG_I("Chat format: ChatML"); return; }
-    if (probe("<|start_header_id|>")) { chat_format_ = ChatFormat::LLAMA3; LOG_I("Chat format: Llama3"); return; }
+    if (vocabContains("<start_of_turn>")) { chat_format_ = ChatFormat::GEMMA;  LOG_I("Chat format: Gemma"); return; }
+    if (vocabContains("<|im_start|>"))    { chat_format_ = ChatFormat::CHATML; LOG_I("Chat format: ChatML"); return; }
+    if (vocabContains("<|start_header_id|>")) { chat_format_ = ChatFormat::LLAMA3; LOG_I("Chat format: Llama3"); return; }
     chat_format_ = ChatFormat::CHATML;
     LOG_I("Chat format: ChatML (default)");
 }
