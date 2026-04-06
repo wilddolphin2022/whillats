@@ -407,7 +407,6 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         src/whillats_server.cc
         src/whisper_transcription.cc
         src/llama_device_base.cc
-        src/llama_http_client.cc
         src/whillats_utils.cc
     )
 
@@ -480,6 +479,9 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         ${CMAKE_CURRENT_SOURCE_DIR}/src/include
         ${THIRD_PARTY_DIR}/whisper.cpp/include
         ${THIRD_PARTY_DIR}/whisper.cpp/ggml/include
+        ${THIRD_PARTY_DIR}/llama.cpp/include
+        ${THIRD_PARTY_DIR}/llama.cpp/ggml/include
+        ${THIRD_PARTY_DIR}/llama.cpp/tools/mtmd
         ${THIRD_PARTY_DIR}/llama.cpp/vendor/stb
     )
 
@@ -501,21 +503,36 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         )
     endif()
 
-    # Server links Whisper + TTS only; Llama is handled via llama-server HTTP
+    # Server links Whisper + Llama + TTS
     target_link_libraries(whillats_server
         PRIVATE
             whisper
+            mtmd_shared
+            llama
+            ggml-base
             espeak-ng
             pthread
     )
+
+    # Server: CUDA support (optional)
+    if(GGML_CUDA)
+        find_package(CUDAToolkit)
+        if(CUDAToolkit_FOUND)
+            target_link_libraries(whillats_server PRIVATE CUDA::cudart ggml-cuda)
+            target_include_directories(whillats_server PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+            message(STATUS "whillats_server: CUDA enabled")
+        endif()
+    endif()
 
     # Server: platform link options
     if(APPLE)
         target_link_libraries(whillats_server PRIVATE
             "-framework Accelerate"
+            "-framework Metal"
+            "-framework MetalKit"
         )
     elseif(UNIX)
-        target_link_libraries(whillats_server PRIVATE stdc++)
+        target_link_libraries(whillats_server PRIVATE gomp stdc++)
     endif()
 
     # Library: platform link options (minimal)
