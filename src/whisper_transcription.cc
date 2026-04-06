@@ -16,6 +16,7 @@
 
 #include <cstring>
 #include <algorithm>
+#include <map>
 #include <thread>
 #include <chrono>
 #include <regex>
@@ -172,6 +173,24 @@ bool WhisperTranscriber::responseValidate(std::string& token_str) {
     }
     if (real_chars < 2) {
         return false;
+    }
+
+    // Reject noise hallucinations: any single non-ASCII codepoint repeated 3+
+    // times (e.g. "ღღღღღ", "ˈˈˈˈ") is always noise, never real speech.
+    {
+        std::map<uint32_t, int> cp_count;
+        const unsigned char* q = reinterpret_cast<const unsigned char*>(token_spaces_check.c_str());
+        while (*q) {
+            unsigned char c = *q;
+            if (c < 0x80) { q++; continue; }  // ASCII — skip
+            uint32_t cp = 0; int bytes = 1;
+            if      ((c & 0xE0) == 0xC0) { cp = c & 0x1F; bytes = 2; }
+            else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; bytes = 3; }
+            else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; bytes = 4; }
+            for (int i = 1; i < bytes && q[i]; i++) cp = (cp << 6) | (q[i] & 0x3F);
+            if (++cp_count[cp] >= 3) return false;
+            q += bytes;
+        }
     }
 
     token_str = token_str_cleaned;
